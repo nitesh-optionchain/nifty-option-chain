@@ -4,3 +4,4 @@ plotly
 streamlit-autorefresh
 python-dotenv
 pydantic
+pytz

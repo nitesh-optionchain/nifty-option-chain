@@ -92,12 +92,15 @@ class InitNubraSdk:
         self.env_path_login = env_creds
         if self.env_path_login:
             self.load_env_variables()
-        if not type(self).FLAG["value"]:
-            self.auth_flow()
-            self.__refresh_ref_data()
-            type(self).FLAG["value"] = True
-            self.__get_user_info()
-
+       if not type(self).FLAG["value"]:
+    try:
+        self.auth_flow()
+        self.__refresh_ref_data()
+        self.__get_user_info()
+        type(self).FLAG["value"] = True
+    except Exception as e:
+        print("SDK INIT FAILED:", e)
+        raise
     def __refresh_ref_data(self):
         """
         Refreshes reference data by loading tokens and verifying session validity. If session is invalid or missing, triggers login.

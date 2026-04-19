@@ -205,8 +205,9 @@ class InitNubraSdk:
         try:
             dotenv_path = os.path.join(os.getcwd(), ".env")
             load_dotenv(dotenv_path)
-            self.__phone_number = os.getenv("PHONE_NO")
-            self.__mpin = os.getenv("MPIN")
+            import streamlit as st
+            self.__phone_number = st.secrets.get("PHONE_NO")
+            self.__mpin = st.secrets.get("MPIN")
             self.client_code= os.getenv("CLIENT_CODE")
             self.exchange_client_code = os.getenv("EXCHANGE_CLIENT_CODE")
             self.username = os.getenv("USERNAME")

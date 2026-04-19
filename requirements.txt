@@ -3,4 +3,3 @@ pandas
 plotly
 streamlit-autorefresh
 python-dotenv
-nybra-python-sdk

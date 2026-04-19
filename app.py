@@ -17,7 +17,7 @@ st_autorefresh(interval=5000, key="pro_final_v3")
 # ==========================================
 ADMIN_DB = {
     "9304768496": "Admin Chief", 
-    "9822334455": "Amit Kumar",
+    "7982046438": "Rupesh Kumar",
     "9011223344": "Amit Sharma"
 }
 

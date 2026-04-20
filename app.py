@@ -1,140 +1,139 @@
-import os, json, streamlit as st
-import pandas as pd
-from datetime import datetime
-from streamlit_autorefresh import st_autorefresh
 from nubra_python_sdk.marketdata.market_data import MarketData
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
+import streamlit as st
+import pandas as pd
+from streamlit_autorefresh import st_autorefresh
 
-# ==========================================
-# 1. CONFIG & REFRESH
-# ==========================================
-st.set_page_config(page_title="NIFTY PRO - ADMIN PANEL", layout="wide")
-st_autorefresh(interval=5000, key="pro_final_v9")
+# =========================
+# CONFIG
+# =========================
+st.set_page_config(page_title="Option Chain Data", layout="wide")
+st_autorefresh(interval=5000)
 
-# CSS: Background colors fix karne ke liye
-st.markdown("""
-    <style>
-    /* Metrics clean look */
-    [data-testid="stMetricValue"] { color: #ffffff !important; }
-    /* Table text center */
-    [data-testid="stTable"] td { text-align: center !important; }
-    </style>
-    """, unsafe_allow_html=True)
+st.title("📊 OPTION CHAIN DATA (EXACT DESIGN TABLE)")
 
-# ==========================================
-# 2. SESSION STATES (For Signals)
-# ==========================================
-if "signal" not in st.session_state:
-    st.session_state.signal = {"Strike": "-", "Entry": "-", "Target": "-", "SL": "-", "Status": "WAITING"}
+# =========================
+# SESSION
+# =========================
+if "prev" not in st.session_state:
+    st.session_state.prev = None
 
-# ==========================================
-# 3. SDK LOGIN & DATA FETCH
-# ==========================================
-try:
-    if "nubra" not in st.session_state:
-        st.session_state.nubra = InitNubraSdk(NubraEnv.UAT, env_creds=True)
-    
-    nubra = st.session_state.nubra
-    market_data = MarketData(nubra)
-    
-    result = market_data.option_chain("NIFTY", exchange="NSE")
-    chain = result.chain
-    spot = chain.at_the_money_strike / 100
-    atm = int(round(spot / 50) * 50)
-    
-    # Nifty Change (Assuming 24500 base)
-    change_pts = spot - 24500 
-    change_pct = (change_pts / 24500) * 100
+# =========================
+# INIT
+# =========================
+nubra = InitNubraSdk(NubraEnv.UAT, env_creds=True)
+md = MarketData(nubra)
 
-except Exception as e:
-    st.error(f"❌ SDK Error: {e}")
+# =========================
+# FETCH
+# =========================
+res = md.option_chain("NIFTY", exchange="NSE")
+if not res:
     st.stop()
 
-# ==========================================
-# 4. HEADER (Clean Metrics)
-# ==========================================
-st.title("🛡️ NIFTY LIVE INSTITUTIONAL DASHBOARD")
-m1, m2, m3, m4 = st.columns(4)
-m1.metric("NIFTY SPOT", f"{spot:,.2f}", f"{change_pts:+.2f} ({change_pct:+.2f}%)")
-m2.metric("INDIA VIX", "13.45") 
-m3.metric("VOL SPIKE", "HIGH 🔥" if abs(change_pct) > 0.4 else "NORMAL")
-m4.metric("STATUS", "📈 BULLISH" if change_pts > 0 else "📉 BEARISH")
+chain = res.chain
 
-# ==========================================
-# 5. ADMIN PANEL (Hamesha Visible)
-# ==========================================
-st.markdown("---")
-with st.container():
-    st.subheader("🎯 ADMIN SIGNAL CONTROL")
-    c1, c2, c3, c4, c5 = st.columns(5)
-    
-    # Input fields
-    s_stk = c1.text_input("Strike", st.session_state.signal["Strike"])
-    s_ent = c2.text_input("Entry", st.session_state.signal["Entry"])
-    s_tgt = c3.text_input("Target", st.session_state.signal["Target"])
-    s_sl = c4.text_input("SL", st.session_state.signal["SL"])
-    
-    if c5.button("📢 UPDATE SIGNAL", use_container_width=True):
-        st.session_state.signal = {
-            "Strike": s_stk, "Entry": s_ent, 
-            "Target": s_tgt, "SL": s_sl, "Status": "LIVE 🔥"
-        }
-        st.rerun()
+# =========================
+# DATA PREP
+# =========================
+ce = pd.DataFrame([vars(x) for x in chain.ce])
+pe = pd.DataFrame([vars(x) for x in chain.pe])
 
-# ==========================================
-# 6. OPTION CHAIN (OI & VOL % FIXED)
-# ==========================================
-df_ce = pd.DataFrame([vars(x) for x in chain.ce])
-df_pe = pd.DataFrame([vars(x) for x in chain.pe])
-df = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE","_PE")).fillna(0)
+df = pd.merge(
+    ce[["strike_price","open_interest","volume"]],
+    pe[["strike_price","open_interest","volume"]],
+    on="strike_price",
+    suffixes=("_CE","_PE")
+)
+
 df["STRIKE"] = (df["strike_price"]/100).astype(int)
+atm = int(chain.at_the_money_strike/100)
 
-# Max calculations for percentages
-max_c_oi = df["open_interest_CE"].max() or 1
-max_p_oi = df["open_interest_PE"].max() or 1
-max_c_vo = df["volume_CE"].max() or 1
-max_p_vo = df["volume_PE"].max() or 1
+df = df.sort_values("STRIKE").reset_index(drop=True)
 
-def fmt(v, m):
-    p = (v/m*100) if m > 0 else 0
-    return f"{v:,.0f}\n({p:.1f}%)"
+# =========================
+# CHANGE CALC
+# =========================
+if st.session_state.prev is not None:
+    prev = st.session_state.prev.set_index("STRIKE")
+    df = df.set_index("STRIKE")
 
-atm_idx = df.index[df["STRIKE"] >= atm][0]
-display_df = df.iloc[max(atm_idx-8,0): atm_idx+9].copy()
+    df["CE_OI_CHG"] = (df["open_interest_CE"] - prev["open_interest_CE"]).fillna(0)
+    df["PE_OI_CHG"] = (df["open_interest_PE"] - prev["open_interest_PE"]).fillna(0)
 
-ui = pd.DataFrame()
-ui["CE OI (%)"] = display_df.apply(lambda r: fmt(r["open_interest_CE"], max_c_oi), axis=1)
-ui["CE VOL (%)"] = display_df.apply(lambda r: fmt(r["volume_CE"], max_c_vo), axis=1)
-ui["STRIKE"] = display_df["STRIKE"]
-ui["PE VOL (%)"] = display_df.apply(lambda r: fmt(r["volume_PE"], max_p_vo), axis=1)
-ui["PE OI (%)"] = display_df.apply(lambda r: fmt(r["open_interest_PE"], max_p_oi), axis=1)
+    df["CE_VOL_CHG"] = (df["volume_CE"] - prev["volume_CE"]).fillna(0)
+    df["PE_VOL_CHG"] = (df["volume_PE"] - prev["volume_PE"]).fillna(0)
 
-def apply_institutional_style(row):
-    # 5 columns mapping
-    s = [''] * 5
-    try:
-        # Extract % values
-        c_oi_p = float(row.iloc[0].split('(')[1].replace('%)',''))
-        c_vo_p = float(row.iloc[1].split('(')[1].replace('%)',''))
-        p_vo_p = float(row.iloc[3].split('(')[1].replace('%)',''))
-        p_oi_p = float(row.iloc[4].split('(')[1].replace('%)',''))
+    df = df.reset_index()
+else:
+    df["CE_OI_CHG"] = 0
+    df["PE_OI_CHG"] = 0
+    df["CE_VOL_CHG"] = 0
+    df["PE_VOL_CHG"] = 0
 
-        # 1. STRIKE (Index 2) - Grey & Yellow ATM
-        if int(row["STRIKE"]) == atm:
-            s[2] = 'background-color: yellow; color: black; font-weight: bold'
+st.session_state.prev = df.copy()
+
+# =========================
+# % CALC (IMPORTANT)
+# =========================
+df["CE_VOL_%"] = ((df["CE_VOL_CHG"]/(df["volume_CE"]+1))*100).round(2)
+df["PE_VOL_%"] = ((df["PE_VOL_CHG"]/(df["volume_PE"]+1))*100).round(2)
+
+# =========================
+# ATM RANGE
+# =========================
+atm_idx = df.index[df["STRIKE"] == atm][0]
+df = df.iloc[max(atm_idx-5,0):atm_idx+5]
+
+# =========================
+# FINAL DISPLAY STRUCTURE (MATCH IMAGE)
+# =========================
+display_df = pd.DataFrame({
+    "OI Chg": df["CE_OI_CHG"],
+    "OI": df["open_interest_CE"],
+    "Volume": df["volume_CE"],
+    "Vol %": df["CE_VOL_%"],
+
+    "STRIKE": df["STRIKE"],
+
+    "Volume ": df["volume_PE"],
+    "Vol % ": df["PE_VOL_%"],
+    "OI ": df["open_interest_PE"],
+    "OI Chg ": df["PE_OI_CHG"],
+})
+
+# =========================
+# COLOR STYLE
+# =========================
+def style(row):
+    styles = []
+
+    for col in display_df.columns:
+
+        if col == "STRIKE" and row[col] == atm:
+            styles.append("background-color:orange;font-weight:bold")
+
+        elif "OI Chg" in col and row[col] > 0:
+            styles.append("color:green")
+
+        elif "OI Chg" in col and row[col] < 0:
+            styles.append("color:red")
+
+        elif "Vol %" in col and row[col] > 20:
+            styles.append("background-color:yellow")
+
         else:
-            s[2] = 'background-color: #D3D3D3; color: black'
+            styles.append("")
 
-        # 2. CE SIDE (Blue & Green)
-        if c_oi_p > 65: s[0] = 'background-color: #00008B; color: white; font-weight: bold'
-        if c_vo_p > 65: s[1] = 'background-color: #006400; color: white; font-weight: bold'
+    return styles
 
-        # 3. PE SIDE (Red & Orange)
-        if p_vo_p > 65: s[3] = 'background-color: #8B0000; color: white; font-weight: bold'
-        if p_oi_p > 65: s[4] = 'background-color: #FF8C00; color: white; font-weight: bold'
+# =========================
+# TABLE
+# =========================
+st.dataframe(
+    display_df.style.apply(style, axis=1),
+    use_container_width=True,
+    height=500
+)
 
-    except: pass
-    return s
-
-st.subheader("📊 Institutional Option Chain Analysis")
-st.table(ui.style.apply(apply_institutional_style, axis=1))
+st.success("✅ Exact Design Data Showing")

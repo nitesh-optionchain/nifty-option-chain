@@ -1,194 +1,159 @@
+import os, json, streamlit as st
+import pandas as pd
+import numpy as np
+import plotly.graph_objects as go
+from datetime import datetime, timedelta
+from streamlit_autorefresh import st_autorefresh
 from nubra_python_sdk.marketdata.market_data import MarketData
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
-import streamlit as st
-import pandas as pd
-import plotly.express as px
-from streamlit_autorefresh import st_autorefresh
-from datetime import datetime
 
 # ==========================================
 # 1. CONFIG & REFRESH
 # ==========================================
 st.set_page_config(page_title="NIFTY PRO - ADMIN PANEL", layout="wide")
-st_autorefresh(interval=5000, key="pro_final_v3")
+st_autorefresh(interval=5000, key="pro_final_v4")
 
 # ==========================================
-# 2. ADMIN & AUTH (UNCHANGED)
+# 2. PERSISTENCE (S/R & VIX)
 # ==========================================
-ADMIN_DB = {
-    "9304768496": "Admin Chief", 
-    "7982046438": "Rupesh Kumar",
-    "9011223344": "Amit Sharma"
-}
+DB_FILE = "shared_levels.json"
+def load_db():
+    if os.path.exists(DB_FILE):
+        with open(DB_FILE, "r") as f: return json.load(f)
+    return {"R": "25000", "S": "24000", "VIX": "13.50"}
 
-query_params = st.query_params
-url_id = query_params.get("id", None)
-
-is_admin = False
-current_admin_name = "Guest"
-
-if url_id in ADMIN_DB:
-    is_admin = True
-    current_admin_name = ADMIN_DB[url_id]
-    st.sidebar.success(f"⚡ Auto-Logged in: {current_admin_name}")
-else:
-    with st.sidebar.expander("🔑 Admin Login"):
-        user_key = st.text_input("Enter Mobile ID:", type="password")
-        if user_key in ADMIN_DB:
-            is_admin = True
-            current_admin_name = ADMIN_DB[user_key]
-            st.sidebar.success(f"✅ Welcome: {current_admin_name}")
+def save_db(r, s, v):
+    with open(DB_FILE, "w") as f: json.dump({"R": r, "S": s, "VIX": v}, f)
 
 # ==========================================
-# SESSION STATES (UNCHANGED)
+# 3. SDK LOGIN & DATA FETCH
 # ==========================================
-if "prev_df" not in st.session_state: st.session_state.prev_df = None
-if "pcr_history" not in st.session_state: st.session_state.pcr_history = []
-if "prev_total_vol" not in st.session_state: st.session_state.prev_total_vol = 0
-if "signal" not in st.session_state:
-    st.session_state.signal = {"Strike": "-", "Entry": "-", "Target": "-", "SL": "-", "Status": "WAITING"}
+@st.cache_resource
+def get_sdk():
+    try: return InitNubraSdk(NubraEnv.UAT, env_creds=True)
+    except: return None
 
-# ==========================================
-# 3. SDK LOGIN (🔥 FIXED)
-# ==========================================
+nubra = get_sdk()
+if not nubra:
+    st.error("❌ SDK Auth Failed")
+    st.stop()
+
+md = MarketData(nubra)
+
 try:
-    if "nubra" not in st.session_state:
-        st.session_state.nubra = InitNubraSdk(NubraEnv.UAT, env_creds=True)
+    # Option Chain Data
+    result = md.option_chain("NIFTY", exchange="NSE")
+    chain = result.chain
+    spot = chain.at_the_money_strike / 100
+    atm = int(round(spot / 50) * 50)
+    
+    # Nifty Change Logic (Assuming 24500 as prev close for demo, update with real prev_close)
+    prev_close = 24500 
+    change = spot - prev_close
+    change_pct = (change / prev_close) * 100
 
-    nubra = st.session_state.nubra
-    market_data = MarketData(nubra)
+    # Historical for Chart
+    now = datetime.now()
+    chart_req = {
+        "exchange": "NSE", "type": "INDEX", "values": ["NIFTY"],
+        "fields": ["open", "high", "low", "close"],
+        "startDate": (now - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+        "endDate": now.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+        "interval": "5m", "intraDay": True, "realTime": True
+    }
+    hist_res = md.historical_data(chart_req)
 
 except Exception as e:
-    st.error(f"❌ SDK Auth Failed: {e}")
+    if "Unauthorized" in str(e):
+        st.cache_resource.clear()
+        st.rerun()
+    st.error(f"API Error: {e}")
     st.stop()
 
 # ==========================================
-# 4. DATA FETCH (SAFE FIX ADDED)
+# 4. UPPER HEADER (Live Nifty, VIX, Vol Spike)
 # ==========================================
-result = market_data.option_chain("NIFTY", exchange="NSE")
-
-if not result:
-    st.warning("No data received from API")
-    st.stop()
-
-chain = result.chain
-spot = chain.at_the_money_strike / 100
-atm = int(spot)
-
-df_ce = pd.DataFrame([vars(x) for x in chain.ce])
-df_pe = pd.DataFrame([vars(x) for x in chain.pe])
-
-df = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE","_PE"))
-
-# 🔥 SAFE FIX (no UI change)
-df = df.fillna(0)
-
-df["STRIKE"] = (df["strike_price"]/100).astype(int)
-
-# ==========================================
-# CHANGE TRACKING (UNCHANGED)
-# ==========================================
-if st.session_state.prev_df is not None:
-    prev = st.session_state.prev_df.set_index("STRIKE")
-    curr = df.set_index("STRIKE")
-
-    df["oi_chg_CE"] = df["STRIKE"].map(curr["open_interest_CE"] - prev["open_interest_CE"]).fillna(0)
-    df["oi_chg_PE"] = df["STRIKE"].map(curr["open_interest_PE"] - prev["open_interest_PE"]).fillna(0)
-    df["prc_chg_CE"] = df["STRIKE"].map(curr["last_traded_price_CE"] - prev["last_traded_price_CE"]).fillna(0)
-    df["prc_chg_PE"] = df["STRIKE"].map(curr["last_traded_price_PE"] - prev["last_traded_price_PE"]).fillna(0)
-else:
-    df["oi_chg_CE"] = df["oi_chg_PE"] = df["prc_chg_CE"] = df["prc_chg_PE"] = 0
-
-st.session_state.prev_df = df.copy()
-
-# ==========================================
-# 5. DASHBOARD UI (UNCHANGED)
-# ==========================================
-max_ce_vol, max_pe_vol = df["volume_CE"].max(), df["volume_PE"].max()
-max_ce_oi, max_pe_oi = df["open_interest_CE"].max(), df["open_interest_PE"].max()
-
-# 🔥 SAFE PCR (divide error fix)
-total_ce = df["open_interest_CE"].sum()
-total_pe = df["open_interest_PE"].sum()
-pcr = round(total_pe / total_ce, 2) if total_ce != 0 else 0
-
+db_data = load_db()
 st.title("🛡️ NIFTY LIVE INSTITUTIONAL DASHBOARD")
-m1, m2, m3 = st.columns(3)
-m1.metric("SPOT", f"{spot:,.2f}")
-m2.metric("PCR", pcr)
-m3.metric("STATUS", "📈 NORMAL" if pcr > 0.8 else "📉 BEARISH")
+
+m1, m2, m3, m4 = st.columns(4)
+# Nifty Position (Kitna bada ya gira)
+m1.metric("NIFTY SPOT", f"{spot:,.2f}", f"{change:+.2f} ({change_pct:+.2f}%)")
+# India VIX from Manual Update
+m2.metric("INDIA VIX", db_data["VIX"])
+# Volume Spike Logic
+m3.metric("VOLUME SPIKE", "HIGH 🔥" if change_pct > 0.5 or change_pct < -0.5 else "NORMAL")
+# Status
+m4.metric("MARKET STATUS", "BULLISH 🚀" if change > 0 else "BEARISH 📉")
+
+# --- CHART ---
+if hasattr(hist_res, 'data') and hist_res.data:
+    df_h = pd.DataFrame(hist_res.data)
+    df_h['time'] = pd.to_datetime(df_h['timestamp'])
+    fig = go.Figure(data=[go.Candlestick(
+        x=df_h['time'], open=df_h['open'], high=df_h['high'],
+        low=df_h['low'], close=df_h['close'],
+        increasing_line_color='#26a69a', decreasing_line_color='#ef5350'
+    )])
+    fig.update_layout(height=350, template='plotly_dark', xaxis_rangeslider_visible=False, margin=dict(l=5,r=5,t=5,b=5))
+    st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True})
 
 # ==========================================
-# SIGNAL PANEL (UNCHANGED)
+# 5. ADMIN MANUAL UPDATE (S/R & VIX)
 # ==========================================
 st.markdown("---")
-st.subheader("🎯 LIVE TRADE SIGNALS")
-
-c1, c2, c3, c4, c5 = st.columns(5)
-
-if is_admin:
-    with c1: s_strike = st.text_input("Strike", st.session_state.signal["Strike"])
-    with c2: s_entry = st.text_input("Entry", st.session_state.signal["Entry"])
-    with c3: s_target = st.text_input("Target", st.session_state.signal["Target"])
-    with c4: s_sl = st.text_input("SL", st.session_state.signal["SL"])
-    with c5: 
-        if st.button("📢 UPDATE"):
-            st.session_state.signal = {
-                "Strike": s_strike,
-                "Entry": s_entry,
-                "Target": s_target,
-                "SL": s_sl,
-                "Status": f"LIVE ({current_admin_name})"
-            }
-else:
-    c1.info(f"STRIKE: {st.session_state.signal['Strike']}")
-    c2.success(f"ENTRY: {st.session_state.signal['Entry']}")
-    c3.warning(f"TARGET: {st.session_state.signal['Target']}")
-    c4.error(f"SL: {st.session_state.signal['SL']}")
-    c5.write(f"**STATUS:** {st.session_state.signal['Status']}")
+with st.expander("⚙️ ADMIN CONTROL: UPDATE S/R & VIX"):
+    c1, c2, c3, c4 = st.columns([2, 2, 2, 1])
+    new_r = c1.text_input("RESISTANCE (R)", db_data["R"])
+    new_s = c2.text_input("SUPPORT (S)", db_data["S"])
+    new_vix = c3.text_input("INDIA VIX", db_data["VIX"])
+    if c4.button("SYNC"):
+        save_db(new_r, new_s, new_vix)
+        st.rerun()
 
 # ==========================================
-# 6. OPTION CHAIN (100% SAME UI)
+# 6. OPTION CHAIN (OI Color & Strike Color)
 # ==========================================
-def format_val(val, delta, m_val):
-    p = (val/m_val*100) if m_val > 0 else 0
-    return f"{val:,.0f}\n({delta:+,})\n{p:.1f}%"
+df_ce = pd.DataFrame([vars(x) for x in chain.ce])
+df_pe = pd.DataFrame([vars(x) for x in chain.pe])
+df = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE","_PE")).fillna(0)
+df["STRIKE"] = (df["strike_price"]/100).astype(int)
 
-def get_bup(p, o):
-    if p > 0 and o > 0: return "🟢 LONG"
-    if p < 0 and o > 0: return "🔴 SHORT"
-    return "⚪ -"
+max_c_oi = df["open_interest_CE"].max() or 1
+max_p_oi = df["open_interest_PE"].max() or 1
 
-atm_idx = df.index[df["STRIKE"] >= atm][0]
-display_df = df.iloc[max(atm_idx-7,0): atm_idx+8].copy()
+def fmt(v, m):
+    p = (v/m*100) if m > 0 else 0
+    return f"{v:,.0f}\n({p:.1f}%)"
 
 ui = pd.DataFrame()
-ui["CE BUILDUP"] = display_df.apply(lambda r: get_bup(r["prc_chg_CE"], r["oi_chg_CE"]), axis=1)
-ui["CE OI\n(Δ/%)"] = display_df.apply(lambda r: format_val(r["open_interest_CE"], r["oi_chg_CE"], max_ce_oi), axis=1)
-ui["CE VOL\n(%)"] = display_df.apply(lambda r: format_val(r["volume_CE"], 0, max_ce_vol), axis=1)
-ui["STRIKE"] = display_df["STRIKE"]
-ui["PE VOL\n(%)"] = display_df.apply(lambda r: format_val(r["volume_PE"], 0, max_pe_vol), axis=1)
-ui["PE OI\n(Δ/%)"] = display_df.apply(lambda r: format_val(r["open_interest_PE"], r["oi_chg_PE"], max_pe_oi), axis=1)
-ui["PE BUILDUP"] = display_df.apply(lambda r: get_bup(r["prc_chg_PE"], r["oi_chg_PE"]), axis=1)
+ui["CE OI (%)"] = df.apply(lambda r: fmt(r["open_interest_CE"], max_c_oi), axis=1)
+ui["CE VOL"] = df["volume_CE"].apply(lambda x: f"{x:,.0f}")
+ui["STRIKE"] = df["STRIKE"]
+ui["PE VOL"] = df["volume_PE"].apply(lambda x: f"{x:,.0f}")
+ui["PE OI (%)"] = df.apply(lambda r: fmt(r["open_interest_PE"], max_p_oi), axis=1)
 
-def final_style(row):
-    styles = [''] * len(row)
+def apply_custom_style(row):
+    s = [''] * len(row)
     try:
-        ce_p = float(str(row.iloc[2]).split('\n')[-1].replace('%',''))
-        pe_p = float(str(row.iloc[4]).split('\n')[-1].replace('%',''))
+        # Extract Percentage from string "(65.0%)"
+        ce_oi_p = float(row.iloc[0].split('(')[1].replace('%)',''))
+        pe_oi_p = float(row.iloc[4].split('(')[1].replace('%)',''))
 
-        if ce_p >= 100: styles[2] = 'background-color: #ff5252; color: white; font-weight: bold'
-        elif ce_p > 75: styles[2] = 'background-color: #ffcdd2'
+        # 1. STRIKE COLUMN (Light Grey)
+        if int(row["STRIKE"]) == atm:
+            s[2] = 'background-color: yellow; color: black; font-weight: bold'
+        else:
+            s[2] = 'background-color: #D3D3D3; color: black' # Light Grey
 
-        if pe_p >= 100: styles[4] = 'background-color: #2979ff; color: white; font-weight: bold'
-        elif pe_p > 75: styles[4] = 'background-color: #bbdefb'
+        # 2. OI COLOUR (65% se jada hone par)
+        if ce_oi_p > 65:
+            s[0] = 'background-color: #00008B; color: white' # Deep Blue for CE
+        
+        if pe_oi_p > 65:
+            s[4] = 'background-color: #FF8C00; color: white' # Deep Orange for PE
 
-        if row.iloc[3] == atm:
-            styles[3] = 'background-color: yellow; color: black; font-weight: bold'
+    except: pass
+    return s
 
-    except:
-        pass
-
-    return styles
-
-st.table(ui.style.apply(final_style, axis=1))
+st.table(ui.style.apply(apply_custom_style, axis=1))

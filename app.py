@@ -10,130 +10,189 @@ from streamlit_autorefresh import st_autorefresh
 st.set_page_config(page_title="Option Chain Data", layout="wide")
 st_autorefresh(interval=5000)
 
-st.title("📊 OPTION CHAIN DATA (EXACT DESIGN TABLE)")
+st.title("📊 Option Chain Data")
+
+# =========================
+# SIDEBAR
+# =========================
+symbol = st.sidebar.selectbox("Select Index", ["NIFTY", "BANKNIFTY"])
 
 # =========================
 # SESSION
 # =========================
-if "prev" not in st.session_state:
-    st.session_state.prev = None
+if "prev_data" not in st.session_state:
+    st.session_state.prev_data = {}
+
+if symbol not in st.session_state.prev_data:
+    st.session_state.prev_data[symbol] = pd.DataFrame()
 
 # =========================
 # INIT
 # =========================
 nubra = InitNubraSdk(NubraEnv.UAT, env_creds=True)
-md = MarketData(nubra)
+market_data = MarketData(nubra)
 
 # =========================
 # FETCH
 # =========================
-res = md.option_chain("NIFTY", exchange="NSE")
-if not res:
-    st.stop()
+def get_data(symbol):
+    result = market_data.option_chain(symbol, exchange="NSE")
+    if not result:
+        return None
 
-chain = res.chain
+    chain = result.chain
 
-# =========================
-# DATA PREP
-# =========================
-ce = pd.DataFrame([vars(x) for x in chain.ce])
-pe = pd.DataFrame([vars(x) for x in chain.pe])
+    ce_df = pd.DataFrame([vars(x) for x in chain.ce])
+    pe_df = pd.DataFrame([vars(x) for x in chain.pe])
 
-df = pd.merge(
-    ce[["strike_price","open_interest","volume"]],
-    pe[["strike_price","open_interest","volume"]],
-    on="strike_price",
-    suffixes=("_CE","_PE")
-)
+    df = pd.merge(
+        ce_df[["strike_price","open_interest","volume"]],
+        pe_df[["strike_price","open_interest","volume"]],
+        on="strike_price",
+        suffixes=("_CE","_PE")
+    )
 
-df["STRIKE"] = (df["strike_price"]/100).astype(int)
-atm = int(chain.at_the_money_strike/100)
+    df["STRIKE"] = (df["strike_price"]/100).astype(int)
+    atm = int(chain.at_the_money_strike/100)
 
-df = df.sort_values("STRIKE").reset_index(drop=True)
+    return df.sort_values("STRIKE").reset_index(drop=True), atm
 
 # =========================
-# CHANGE CALC
+# FORMAT
 # =========================
-if st.session_state.prev is not None:
-    prev = st.session_state.prev.set_index("STRIKE")
+def pct_format(pct):
+    if pct > 0:
+        return f"+{pct:.2f}% ↑"
+    elif pct < 0:
+        return f"{pct:.2f}% ↓"
+    else:
+        return "0.00% —"
+
+# =========================
+# PROCESS
+# =========================
+def process(symbol, df):
+
+    prev = st.session_state.prev_data[symbol]
+
     df = df.set_index("STRIKE")
 
-    df["CE_OI_CHG"] = (df["open_interest_CE"] - prev["open_interest_CE"]).fillna(0)
-    df["PE_OI_CHG"] = (df["open_interest_PE"] - prev["open_interest_PE"]).fillna(0)
+    if not prev.empty:
+        prev = prev.reindex(df.index)
 
-    df["CE_VOL_CHG"] = (df["volume_CE"] - prev["volume_CE"]).fillna(0)
-    df["PE_VOL_CHG"] = (df["volume_PE"] - prev["volume_PE"]).fillna(0)
+        df["CE ΔOI"] = (df["open_interest_CE"] - prev["open_interest_CE"]).fillna(0)
+        df["PE ΔOI"] = (df["open_interest_PE"] - prev["open_interest_PE"]).fillna(0)
+
+        df["CE ΔVOL"] = (df["volume_CE"] - prev["volume_CE"]).fillna(0)
+        df["PE ΔVOL"] = (df["volume_PE"] - prev["volume_PE"]).fillna(0)
+
+    else:
+        df["CE ΔOI"] = 0
+        df["PE ΔOI"] = 0
+        df["CE ΔVOL"] = 0
+        df["PE ΔVOL"] = 0
 
     df = df.reset_index()
-else:
-    df["CE_OI_CHG"] = 0
-    df["PE_OI_CHG"] = 0
-    df["CE_VOL_CHG"] = 0
-    df["PE_VOL_CHG"] = 0
 
-st.session_state.prev = df.copy()
+    # TOTAL VOL
+    df["TOTAL VOL"] = df["volume_CE"] + df["volume_PE"]
+
+    if not prev.empty:
+        prev_total = (prev["volume_CE"] + prev["volume_PE"]).reindex(df["STRIKE"]).fillna(0)
+        delta = df["TOTAL VOL"] - prev_total.values
+    else:
+        delta = 0
+
+    df["TOTAL VOL %"] = (delta / df["TOTAL VOL"].replace(0,1) * 100)
+    df["TOTAL VOL %"] = df["TOTAL VOL %"].apply(pct_format)
+
+    # SIGNAL
+    df["SIGNAL"] = "⚪ NORMAL"
+    df.loc[(df["PE ΔOI"] > 0) & (df["PE ΔVOL"] > 0), "SIGNAL"] = "🟢 BUY"
+    df.loc[(df["CE ΔOI"] > 0) & (df["CE ΔVOL"] > 0), "SIGNAL"] = "🔴 SELL"
+
+    # SAVE
+    st.session_state.prev_data[symbol] = df[[
+        "STRIKE","open_interest_CE","open_interest_PE","volume_CE","volume_PE"
+    ]].copy().set_index("STRIKE")
+
+    return df
 
 # =========================
-# % CALC (IMPORTANT)
+# MAIN
 # =========================
-df["CE_VOL_%"] = ((df["CE_VOL_CHG"]/(df["volume_CE"]+1))*100).round(2)
-df["PE_VOL_%"] = ((df["PE_VOL_CHG"]/(df["volume_PE"]+1))*100).round(2)
+data = get_data(symbol)
+if not data:
+    st.stop()
 
-# =========================
-# ATM RANGE
-# =========================
+df, atm = data
+df = process(symbol, df)
+
 atm_idx = df.index[df["STRIKE"] == atm][0]
-df = df.iloc[max(atm_idx-5,0):atm_idx+5]
+top10 = df.iloc[max(atm_idx-5,0):atm_idx+5]
+
+res = df.loc[df["open_interest_CE"].idxmax(), "STRIKE"]
+sup = df.loc[df["open_interest_PE"].idxmax(), "STRIKE"]
+
+display_df = top10[[
+    "volume_CE",
+    "STRIKE",
+    "TOTAL VOL",
+    "TOTAL VOL %",
+    "volume_PE",
+    "SIGNAL"
+]]
 
 # =========================
-# FINAL DISPLAY STRUCTURE (MATCH IMAGE)
-# =========================
-display_df = pd.DataFrame({
-    "OI Chg": df["CE_OI_CHG"],
-    "OI": df["open_interest_CE"],
-    "Volume": df["volume_CE"],
-    "Vol %": df["CE_VOL_%"],
-
-    "STRIKE": df["STRIKE"],
-
-    "Volume ": df["volume_PE"],
-    "Vol % ": df["PE_VOL_%"],
-    "OI ": df["open_interest_PE"],
-    "OI Chg ": df["PE_OI_CHG"],
-})
-
-# =========================
-# COLOR STYLE
+# STYLE
 # =========================
 def style(row):
     styles = []
 
     for col in display_df.columns:
 
-        if col == "STRIKE" and row[col] == atm:
-            styles.append("background-color:orange;font-weight:bold")
+        if col == "STRIKE":
+            if row[col] == atm:
+                styles.append("background-color:yellow;font-weight:bold")
+            elif row[col] == res:
+                styles.append("background-color:#00cc66;color:white")
+            elif row[col] == sup:
+                styles.append("background-color:#ff3333;color:white")
+            else:
+                styles.append("")
 
-        elif "OI Chg" in col and row[col] > 0:
-            styles.append("color:green")
+        elif col == "TOTAL VOL %":
+            if "↑" in row[col]:
+                styles.append("background-color:#00cc66;color:white;font-weight:bold")
+            elif "↓" in row[col]:
+                styles.append("background-color:#ff3333;color:white;font-weight:bold")
+            else:
+                styles.append("")
 
-        elif "OI Chg" in col and row[col] < 0:
-            styles.append("color:red")
-
-        elif "Vol %" in col and row[col] > 20:
-            styles.append("background-color:yellow")
+        elif col == "SIGNAL":
+            if "BUY" in row[col]:
+                styles.append("color:green;font-weight:bold")
+            elif "SELL" in row[col]:
+                styles.append("color:red;font-weight:bold")
+            else:
+                styles.append("")
 
         else:
             styles.append("")
 
     return styles
 
-# =========================
+# METRICS
+c1, c2, c3 = st.columns(3)
+c1.metric("ATM", atm)
+c2.metric("Resistance", int(res))
+c3.metric("Support", int(sup))
+
 # TABLE
-# =========================
 st.dataframe(
     display_df.style.apply(style, axis=1),
     use_container_width=True,
-    height=500
+    height=600
 )
 
-st.success("✅ Exact Design Data Showing")
+st.success(f"{symbol} Option Chain Running")

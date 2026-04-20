@@ -8,23 +8,23 @@ from nubra_python_sdk.marketdata.market_data import MarketData
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 
 # ==========================================
-# 1. CONFIG & REFRESH (Fixed for Mobile & Admin)
+# 1. CONFIG & PERSISTENCE
 # ==========================================
-st.set_page_config(page_title="NIFTY PRO - INSTITUTIONAL", layout="wide")
-st_autorefresh(interval=5000, key="pro_terminal_final")
+st.set_page_config(page_title="NIFTY PRO TERMINAL", layout="wide")
+st_autorefresh(interval=5000, key="pro_terminal_fixed")
 
-# CSS for better visibility
-st.markdown("<style>.stMetric { background-color: #1e2130; padding: 12px; border-radius: 10px; border: 1px solid #333; }</style>", unsafe_allow_html=True)
+# File based persistence for S/R Sync
+DB_FILE = "shared_levels.json"
+def load_db():
+    if os.path.exists(DB_FILE):
+        with open(DB_FILE, "r") as f: return json.load(f)
+    return {"R": "25000", "S": "24000", "VIX": "13.50"}
+
+def save_db(data):
+    with open(DB_FILE, "w") as f: json.dump(data, f)
 
 # ==========================================
-# 2. ADMIN AUTH (Your Logic)
-# ==========================================
-ADMIN_DB = {"9304768496": "Admin Chief", "9822334455": "Amit Kumar"}
-url_id = st.query_params.get("id", None)
-is_admin = url_id in ADMIN_DB or st.sidebar.text_input("Admin ID:", type="password") in ADMIN_DB
-
-# ==========================================
-# 3. SDK & DATA FETCH (Safe Integration)
+# 2. SDK LOGIN
 # ==========================================
 @st.cache_resource
 def get_sdk():
@@ -36,16 +36,18 @@ if not nubra:
     st.error("❌ SDK Auth Failed")
     st.stop()
 
+# ==========================================
+# 3. DATA FETCHING
+# ==========================================
 md = MarketData(nubra)
-
 try:
-    # Option Chain for Table
-    oc_result = md.option_chain("NIFTY", exchange="NSE")
-    chain = oc_result.chain
+    # Option Chain
+    result = md.option_chain("NIFTY", exchange="NSE")
+    chain = result.chain
     spot = chain.at_the_money_strike / 100
     atm = int(round(spot / 50) * 50)
 
-    # Historical for Chart & Boring Candle (Your Request)
+    # Historical for Chart
     now = datetime.now()
     chart_req = {
         "exchange": "NSE", "type": "INDEX", "values": ["NIFTY"],
@@ -56,29 +58,30 @@ try:
     }
     hist_res = md.historical_data(chart_req)
 except Exception as e:
-    st.error(f"Data Error: {e}")
+    st.error(f"API Error: {e}")
     st.stop()
 
 # ==========================================
-# 4. DASHBOARD HEADER & CHART (Zoom Enabled)
+# 4. HEADER & CHART
 # ==========================================
-st.title("🛡️ NIFTY LIVE TERMINAL")
+db_data = load_db()
+st.title("🛡️ NIFTY LIVE INSTITUTIONAL DASHBOARD")
 
 m1, m2, m3, m4 = st.columns(4)
 m1.metric("NIFTY SPOT", f"{spot:,.2f}")
-m2.metric("INDIA VIX", "13.45") # Hardcoded or fetch from SDK
+m2.metric("INDIA VIX", db_data.get("VIX", "13.50")) # Manual/DB VIX
+m3.metric("STATUS", "ACTIVE 🔥")
 
 # Boring Candle Logic
-status = "⌛ LOADING"
+c_stat = "⌛ LOADING"
 if hasattr(hist_res, 'data') and hist_res.data:
     df_h = pd.DataFrame(hist_res.data)
     last = df_h.iloc[-1]
     body, rng = abs(last['close'] - last['open']), last['high'] - last['low']
-    status = "😴 BORING" if body < (rng * 0.5) else "🚀 TRENDING"
-m3.metric("CANDLE", status)
-m4.metric("PCR", "0.92") # Calculate if needed
+    c_stat = "😴 BORING" if body < (rng * 0.5) else "🚀 TRENDING"
+m4.metric("CANDLE", c_stat)
 
-# --- INTERACTIVE CHART ---
+# Interactive Chart (Zoomable)
 if hasattr(hist_res, 'data') and hist_res.data:
     df_h['time'] = pd.to_datetime(df_h['timestamp'])
     fig = go.Figure(data=[go.Candlestick(
@@ -86,45 +89,43 @@ if hasattr(hist_res, 'data') and hist_res.data:
         low=df_h['low'], close=df_h['close'],
         increasing_line_color='#26a69a', decreasing_line_color='#ef5350'
     )])
-    fig.update_layout(height=400, template='plotly_dark', xaxis_rangeslider_visible=False, dragmode='pan')
+    fig.update_layout(height=350, template='plotly_dark', xaxis_rangeslider_visible=False, margin=dict(l=5,r=5,t=5,b=5))
     st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True})
 
 # ==========================================
-# 5. SIGNAL PANEL (Your Admin Logic)
+# 5. MANUAL UPDATE PANEL (Admin Sync)
 # ==========================================
 st.markdown("---")
-if "sig" not in st.session_state: st.session_state.sig = {"S": "-", "E": "-", "T": "-", "SL": "-", "St": "WAITING"}
+st.subheader("⚙️ MANUAL UPDATE (S/R & VIX)")
+col1, col2, col3, col4 = st.columns([2, 2, 2, 1])
+new_r = col1.text_input("RESISTANCE (R)", db_data["R"])
+new_s = col2.text_input("SUPPORT (S)", db_data["S"])
+new_vix = col3.text_input("INDIA VIX", db_data["VIX"])
 
-c1, c2, c3, c4, c5 = st.columns(5)
-if is_admin:
-    s_s = c1.text_input("Strike", st.session_state.sig["S"])
-    s_e = c2.text_input("Entry", st.session_state.sig["E"])
-    s_t = c3.text_input("Target", st.session_state.sig["T"])
-    s_sl = c4.text_input("SL", st.session_state.sig["SL"])
-    if c5.button("📢 UPDATE"):
-        st.session_state.sig = {"S": s_s, "E": s_e, "T": s_t, "SL": s_sl, "St": "LIVE"}
-        st.rerun()
-else:
-    c1.metric("STRIKE", st.session_state.sig["S"])
-    c2.metric("ENTRY", st.session_state.sig["E"])
-    c3.metric("TARGET", st.session_state.sig["T"])
-    c4.metric("SL", st.session_state.sig["SL"])
-    c5.write(f"**STATUS:** {st.session_state.sig['St']}")
+if col4.button("💾 SYNC ALL"):
+    save_db({"R": new_r, "S": new_s, "VIX": new_vix})
+    st.rerun()
+
+# Display Current Active Levels
+st.info(f"**ACTIVE LEVELS:** Resistance: {new_r} | Support: {new_s} | VIX: {new_vix}")
 
 # ==========================================
-# 6. OPTION CHAIN (Merge Buildup + Inst. Colors)
+# 6. OPTION CHAIN (Color Fixing)
 # ==========================================
 df_ce = pd.DataFrame([vars(x) for x in chain.ce])
 df_pe = pd.DataFrame([vars(x) for x in chain.pe])
 df = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE","_PE")).fillna(0)
 df["STRIKE"] = (df["strike_price"]/100).astype(int)
 
-max_c_oi, max_c_vo = df["open_interest_CE"].max() or 1, df["volume_CE"].max() or 1
-max_p_oi, max_p_vo = df["open_interest_PE"].max() or 1, df["volume_PE"].max() or 1
+# Max values for percentage calculation
+max_c_oi = df["open_interest_CE"].max() or 1
+max_c_vo = df["volume_CE"].max() or 1
+max_p_oi = df["open_interest_PE"].max() or 1
+max_p_vo = df["volume_PE"].max() or 1
 
 def fmt(v, m):
     p = (v/m*100) if m > 0 else 0
-    return f"{v:,.0f}\n{p:.1f}%"
+    return f"{v:,.0f}\n({p:.1f}%)"
 
 ui = pd.DataFrame()
 ui["CE OI (%)"] = df.apply(lambda r: fmt(r["open_interest_CE"], max_c_oi), axis=1)
@@ -133,24 +134,36 @@ ui["STRIKE"] = df["STRIKE"]
 ui["PE VOL (%)"] = df.apply(lambda r: fmt(r["volume_PE"], max_p_vo), axis=1)
 ui["PE OI (%)"] = df.apply(lambda r: fmt(r["open_interest_PE"], max_p_oi), axis=1)
 
-def final_style(row):
-    s = [''] * len(row)
+def apply_institutional_style(row):
+    # Strike column is index 2
+    s = ['background-color: transparent'] * len(row)
     try:
-        c_oi_p = float(row.iloc[0].split('\n')[1].replace('%',''))
-        c_vo_p = float(row.iloc[1].split('\n')[1].replace('%',''))
-        p_vo_p = float(row.iloc[3].split('\n')[1].replace('%',''))
-        p_oi_p = float(row.iloc[4].split('\n')[1].replace('%',''))
+        # Extract Percentages
+        c_oi_p = float(row.iloc[0].split('(')[1].replace('%)',''))
+        c_vo_p = float(row.iloc[1].split('(')[1].replace('%)',''))
+        p_vo_p = float(row.iloc[3].split('(')[1].replace('%)',''))
+        p_oi_p = float(row.iloc[4].split('(')[1].replace('%)',''))
+        
+        raw_c_vo = float(row.iloc[1].split('\n')[0].replace(',',''))
+        raw_p_vo = float(row.iloc[3].split('\n')[0].replace(',',''))
 
-        # Strike / ATM
-        if int(row["STRIKE"]) == atm: s[2] = 'background-color: yellow; color: black; font-weight: bold'
-        else: s[2] = 'background-color: #D3D3D3; color: black'
+        # 1. STRIKE COLUMN (Index 2)
+        if int(row["STRIKE"]) == atm:
+            s[2] = 'background-color: #FFFF00; color: black; font-weight: bold; text-align: center' # ATM Yellow
+        else:
+            s[2] = 'background-color: #D3D3D3; color: black; text-align: center' # Strike Grey
 
-        # Institutional Buildup Colors
-        if c_oi_p >= 65: s[0] = 'background-color: #00008B; color: white' # Resistance
-        if c_vo_p >= 90: s[1] = 'background-color: #006400; color: white' # High Volume
-        if p_oi_p >= 65: s[4] = 'background-color: #FF8C00; color: white' # Support
-        if p_vo_p >= 90: s[3] = 'background-color: #8B0000; color: white' # High Volume
+        # 2. CE SIDE (Left)
+        if c_oi_p >= 65: s[0] = 'background-color: #00008B; color: white' # OI Blue
+        if raw_c_vo >= max_c_vo: s[1] = 'background-color: #006400; color: white' # Max Vol Green
+        elif c_vo_p >= 70: s[1] = 'background-color: #FF1493; color: white' # High Vol Pink
+
+        # 3. PE SIDE (Right)
+        if raw_p_vo >= max_pe_vol: s[3] = 'background-color: #8B0000; color: white' # Max Vol Red
+        elif p_vo_p >= 70: s[3] = 'background-color: #A52A2A; color: white' # High Vol Brown
+        if p_oi_p >= 65: s[4] = 'background-color: #FF8C00; color: white' # OI Orange
+
     except: pass
     return s
 
-st.table(ui.style.apply(final_style, axis=1))
+st.table(ui.style.apply(apply_institutional_style, axis=1))

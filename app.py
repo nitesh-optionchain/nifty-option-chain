@@ -1,198 +1,139 @@
+import os, json, streamlit as st
+import pandas as pd
+from datetime import datetime
+from streamlit_autorefresh import st_autorefresh
 from nubra_python_sdk.marketdata.market_data import MarketData
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
-import streamlit as st
-import pandas as pd
-from streamlit_autorefresh import st_autorefresh
 
-# =========================
-# CONFIG
-# =========================
-st.set_page_config(page_title="Option Chain Data", layout="wide")
-st_autorefresh(interval=5000)
+# ==========================================
+# 1. CONFIG & REFRESH
+# ==========================================
+st.set_page_config(page_title="NIFTY PRO - ADMIN PANEL", layout="wide")
+st_autorefresh(interval=5000, key="pro_final_v10")
 
-st.title("📊 Option Chain Data")
+# CSS: Background colors aur CE OI Blue fix karne ke liye
+st.markdown("""
+    <style>
+    [data-testid="stMetricValue"] { color: #ffffff !important; }
+    [data-testid="stTable"] td { text-align: center !important; }
+    /* Force CE OI Blue */
+    .ce-oi-blue { background-color: #00008B !important; color: white !important; font-weight: bold; }
+    </style>
+    """, unsafe_allow_html=True)
 
-# =========================
-# SIDEBAR
-# =========================
-symbol = st.sidebar.selectbox("Select Index", ["NIFTY", "BANKNIFTY"])
+# ==========================================
+# 2. SESSION STATES
+# ==========================================
+if "signal" not in st.session_state:
+    st.session_state.signal = {"Strike": "-", "Entry": "-", "Target": "-", "SL": "-", "Status": "WAITING"}
 
-# =========================
-# SESSION
-# =========================
-if "prev_data" not in st.session_state:
-    st.session_state.prev_data = {}
-
-if symbol not in st.session_state.prev_data:
-    st.session_state.prev_data[symbol] = pd.DataFrame()
-
-# =========================
-# INIT
-# =========================
-nubra = InitNubraSdk(NubraEnv.UAT, env_creds=True)
-market_data = MarketData(nubra)
-
-# =========================
-# FETCH
-# =========================
-def get_data(symbol):
-    result = market_data.option_chain(symbol, exchange="NSE")
-    if not result:
-        return None
-
-    chain = result.chain
-
-    ce_df = pd.DataFrame([vars(x) for x in chain.ce])
-    pe_df = pd.DataFrame([vars(x) for x in chain.pe])
-
-    df = pd.merge(
-        ce_df[["strike_price","open_interest","volume"]],
-        pe_df[["strike_price","open_interest","volume"]],
-        on="strike_price",
-        suffixes=("_CE","_PE")
-    )
-
-    df["STRIKE"] = (df["strike_price"]/100).astype(int)
-    atm = int(chain.at_the_money_strike/100)
-
-    return df.sort_values("STRIKE").reset_index(drop=True), atm
-
-# =========================
-# FORMAT
-# =========================
-def pct_format(pct):
-    if pct > 0:
-        return f"+{pct:.2f}% ↑"
-    elif pct < 0:
-        return f"{pct:.2f}% ↓"
+# ==========================================
+# 3. SDK LOGIN & DATA FETCH
+# ==========================================
+try:
+    if "nubra" not in st.session_state:
+        st.session_state.nubra = InitNubraSdk(NubraEnv.UAT, env_creds=True)
+    
+    nubra = st.session_state.nubra
+    market_data = MarketData(nubra)
+    
+    result = market_data.option_chain("NIFTY", exchange="NSE")
+    
+    if result and result.chain:
+        chain = result.chain
+        spot = chain.at_the_money_strike / 100
+        atm = int(round(spot / 50) * 50)
+        
+        # Nifty Change Logic (Real data se close na mile toh spot hi base hai)
+        # Yahan hum 24800 dummy le rahe hain, ise aap live close se replace kar sakte hain
+        prev_close = 24800 
+        change_pts = spot - prev_close
+        change_pct = (change_pts / prev_close) * 100
     else:
-        return "0.00% —"
+        st.error("Waiting for API Data...")
+        st.stop()
 
-# =========================
-# PROCESS
-# =========================
-def process(symbol, df):
-
-    prev = st.session_state.prev_data[symbol]
-
-    df = df.set_index("STRIKE")
-
-    if not prev.empty:
-        prev = prev.reindex(df.index)
-
-        df["CE ΔOI"] = (df["open_interest_CE"] - prev["open_interest_CE"]).fillna(0)
-        df["PE ΔOI"] = (df["open_interest_PE"] - prev["open_interest_PE"]).fillna(0)
-
-        df["CE ΔVOL"] = (df["volume_CE"] - prev["volume_CE"]).fillna(0)
-        df["PE ΔVOL"] = (df["volume_PE"] - prev["volume_PE"]).fillna(0)
-
-    else:
-        df["CE ΔOI"] = 0
-        df["PE ΔOI"] = 0
-        df["CE ΔVOL"] = 0
-        df["PE ΔVOL"] = 0
-
-    df = df.reset_index()
-
-    # TOTAL VOL
-    df["TOTAL VOL"] = df["volume_CE"] + df["volume_PE"]
-
-    if not prev.empty:
-        prev_total = (prev["volume_CE"] + prev["volume_PE"]).reindex(df["STRIKE"]).fillna(0)
-        delta = df["TOTAL VOL"] - prev_total.values
-    else:
-        delta = 0
-
-    df["TOTAL VOL %"] = (delta / df["TOTAL VOL"].replace(0,1) * 100)
-    df["TOTAL VOL %"] = df["TOTAL VOL %"].apply(pct_format)
-
-    # SIGNAL
-    df["SIGNAL"] = "⚪ NORMAL"
-    df.loc[(df["PE ΔOI"] > 0) & (df["PE ΔVOL"] > 0), "SIGNAL"] = "🟢 BUY"
-    df.loc[(df["CE ΔOI"] > 0) & (df["CE ΔVOL"] > 0), "SIGNAL"] = "🔴 SELL"
-
-    # SAVE
-    st.session_state.prev_data[symbol] = df[[
-        "STRIKE","open_interest_CE","open_interest_PE","volume_CE","volume_PE"
-    ]].copy().set_index("STRIKE")
-
-    return df
-
-# =========================
-# MAIN
-# =========================
-data = get_data(symbol)
-if not data:
+except Exception as e:
+    st.error(f"❌ SDK Error: {e}")
     st.stop()
 
-df, atm = data
-df = process(symbol, df)
+# ==========================================
+# 4. HEADER (Nifty Spot, VIX, Spike - FIXED)
+# ==========================================
+st.title("🛡️ NIFTY LIVE INSTITUTIONAL DASHBOARD")
+m1, m2, m3, m4 = st.columns(4)
 
-atm_idx = df.index[df["STRIKE"] == atm][0]
-top10 = df.iloc[max(atm_idx-5,0):atm_idx+5]
+# Spot aur Change hamesha show hoga agar data hai
+m1.metric("NIFTY SPOT", f"{spot:,.2f}", f"{change_pts:+.2f} ({change_pct:+.2f}%)")
+m2.metric("INDIA VIX", "13.45") # Manual for now
+m3.metric("VOL SPIKE", "HIGH 🔥" if abs(change_pct) > 0.4 else "NORMAL")
+m4.metric("STATUS", "📈 BULLISH" if change_pts > 0 else "📉 BEARISH")
 
-res = df.loc[df["open_interest_CE"].idxmax(), "STRIKE"]
-sup = df.loc[df["open_interest_PE"].idxmax(), "STRIKE"]
+# ==========================================
+# 5. ADMIN PANEL (Visible)
+# ==========================================
+st.markdown("---")
+with st.container():
+    st.subheader("🎯 ADMIN SIGNAL CONTROL")
+    c1, c2, c3, c4, c5 = st.columns(5)
+    s_stk = c1.text_input("Strike", st.session_state.signal["Strike"])
+    s_ent = c2.text_input("Entry", st.session_state.signal["Entry"])
+    s_tgt = c3.text_input("Target", st.session_state.signal["Target"])
+    s_sl = c4.text_input("SL", st.session_state.signal["SL"])
+    if c5.button("📢 UPDATE", use_container_width=True):
+        st.session_state.signal = {"Strike": s_stk, "Entry": s_ent, "Target": s_tgt, "SL": s_sl, "Status": "LIVE 🔥"}
+        st.rerun()
 
-display_df = top10[[
-    "volume_CE",
-    "STRIKE",
-    "TOTAL VOL",
-    "TOTAL VOL %",
-    "volume_PE",
-    "SIGNAL"
-]]
+# ==========================================
+# 6. OPTION CHAIN (OI & VOL % FIXED)
+# ==========================================
+df_ce = pd.DataFrame([vars(x) for x in chain.ce])
+df_pe = pd.DataFrame([vars(x) for x in chain.pe])
+df = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE","_PE")).fillna(0)
+df["STRIKE"] = (df["strike_price"]/100).astype(int)
 
-# =========================
-# STYLE
-# =========================
-def style(row):
-    styles = []
+max_c_oi = df["open_interest_CE"].max() or 1
+max_p_oi = df["open_interest_PE"].max() or 1
+max_c_vo = df["volume_CE"].max() or 1
+max_p_vo = df["volume_PE"].max() or 1
 
-    for col in display_df.columns:
+def fmt(v, m):
+    p = (v/m*100) if m > 0 else 0
+    return f"{v:,.0f}\n({p:.1f}%)"
 
-        if col == "STRIKE":
-            if row[col] == atm:
-                styles.append("background-color:yellow;font-weight:bold")
-            elif row[col] == res:
-                styles.append("background-color:#00cc66;color:white")
-            elif row[col] == sup:
-                styles.append("background-color:#ff3333;color:white")
-            else:
-                styles.append("")
+atm_idx = df.index[df["STRIKE"] >= atm][0]
+display_df = df.iloc[max(atm_idx-8,0): atm_idx+9].copy()
 
-        elif col == "TOTAL VOL %":
-            if "↑" in row[col]:
-                styles.append("background-color:#00cc66;color:white;font-weight:bold")
-            elif "↓" in row[col]:
-                styles.append("background-color:#ff3333;color:white;font-weight:bold")
-            else:
-                styles.append("")
+ui = pd.DataFrame()
+ui["CE OI (%)"] = display_df.apply(lambda r: fmt(r["open_interest_CE"], max_c_oi), axis=1)
+ui["CE VOL (%)"] = display_df.apply(lambda r: fmt(r["volume_CE"], max_c_vo), axis=1)
+ui["STRIKE"] = display_df["STRIKE"]
+ui["PE VOL (%)"] = display_df.apply(lambda r: fmt(r["volume_PE"], max_p_vo), axis=1)
+ui["PE OI (%)"] = display_df.apply(lambda r: fmt(r["open_interest_PE"], max_p_oi), axis=1)
 
-        elif col == "SIGNAL":
-            if "BUY" in row[col]:
-                styles.append("color:green;font-weight:bold")
-            elif "SELL" in row[col]:
-                styles.append("color:red;font-weight:bold")
-            else:
-                styles.append("")
+def apply_institutional_style(row):
+    s = [''] * 5
+    try:
+        c_oi_p = float(row.iloc[0].split('(')[1].replace('%)',''))
+        c_vo_p = float(row.iloc[1].split('(')[1].replace('%)',''))
+        p_vo_p = float(row.iloc[3].split('(')[1].replace('%)',''))
+        p_oi_p = float(row.iloc[4].split('(')[1].replace('%)',''))
 
+        # STRIKE COLOR (Grey / Yellow)
+        if int(row["STRIKE"]) == atm:
+            s[2] = 'background-color: yellow; color: black; font-weight: bold'
         else:
-            styles.append("")
+            s[2] = 'background-color: #D3D3D3; color: black'
 
-    return styles
+        # CE SIDE (Blue & Green)
+        if c_oi_p > 65: s[0] = 'background-color: #00008B !important; color: white !important' 
+        if c_vo_p > 65: s[1] = 'background-color: #006400 !important; color: white !important'
 
-# METRICS
-c1, c2, c3 = st.columns(3)
-c1.metric("ATM", atm)
-c2.metric("Resistance", int(res))
-c3.metric("Support", int(sup))
+        # PE SIDE (Red & Orange)
+        if p_vo_p > 65: s[3] = 'background-color: #8B0000 !important; color: white !important'
+        if p_oi_p > 65: s[4] = 'background-color: #FF8C00 !important; color: white !important'
+    except: pass
+    return s
 
-# TABLE
-st.dataframe(
-    display_df.style.apply(style, axis=1),
-    use_container_width=True,
-    height=600
-)
-
-st.success(f"{symbol} Option Chain Running")
+st.subheader("📊 Institutional Option Chain")
+st.table(ui.style.apply(apply_institutional_style, axis=1))

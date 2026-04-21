@@ -82,15 +82,13 @@ symbol = st.selectbox(
 )
 
 # ================= TRADINGVIEW CHART =================
-st.components.v1.html(f"""
-<iframe
-    src="https://s.tradingview.com/widgetembed/?symbol={symbol.replace(':','%3A')}&interval=5&theme=dark&style=1&hide_side_toolbar=0&allow_symbol_change=0"
-    width="100%"
-    height="550"
-    frameborder="0"
-    scrolling="no">
-</iframe>
-""", height=550)
+st.markdown("## 📊 LIVE CHART")
+
+st.components.v1.iframe(
+    "https://www.tradingview.com/chart/?symbol=NSE:NIFTY",
+    height=600,
+    scrolling=True
+)
 
 # ================= DATAFRAME =================
 df_ce = pd.DataFrame([vars(x) for x in chain.ce])

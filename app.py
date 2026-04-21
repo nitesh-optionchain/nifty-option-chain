@@ -1,6 +1,7 @@
 from nubra_python_sdk.marketdata.market_data import MarketData
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 import streamlit as st
+import streamlit.components.v1 as components # Naya component add kiya
 import pandas as pd
 from streamlit_autorefresh import st_autorefresh
 import json, os
@@ -74,6 +75,31 @@ except:
 
 st.title("🛡️ SMART WEALTH AI 5")
 st.subheader(f"📊 LIVE NIFTY: {spot:,.2f}")
+
+# ================= TRADINGVIEW CHART (ADDED) =================
+tradingview_widget = """
+<div class="tradingview-widget-container" style="height:500px;width:100%">
+  <div id="tradingview_nifty_live"></div>
+  <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+  <script type="text/javascript">
+  new TradingView.widget({
+    "autosize": true,
+    "symbol": "NSE:NIFTY",
+    "interval": "5",
+    "timezone": "Asia/Kolkata",
+    "theme": "dark",
+    "style": "1",
+    "locale": "en",
+    "toolbar_bg": "#f1f3f6",
+    "enable_publishing": false,
+    "hide_side_toolbar": false,
+    "allow_interactive_logic": true,
+    "container_id": "tradingview_nifty_live"
+  });
+  </script>
+</div>
+"""
+components.html(tradingview_widget, height=500)
 
 # ================= DATAFRAME =================
 df_ce = pd.DataFrame([vars(x) for x in chain.ce])

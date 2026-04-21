@@ -77,26 +77,15 @@ st.subheader(f"📊 LIVE NIFTY: {spot:,.2f}")
 
 # ================= 📈 TRADINGVIEW CHART (FIXED) =================
 st.components.v1.html("""
-<div id="tv_chart"></div>
-
-<script src="https://s3.tradingview.com/tv.js"></script>
-
-<script>
-new TradingView.widget({
-  "container_id": "tv_chart",
-  "width": "100%",
-  "height": 550,
-  "symbol": "NSE:NIFTY",
-  "interval": "5",
-  "timezone": "Asia/Kolkata",
-  "theme": "dark",
-  "style": "1",
-  "hide_side_toolbar": false,
-  "allow_symbol_change": false,
-  "save_image": false
-});
-</script>
-""", height=580)
+<iframe
+    src="https://s.tradingview.com/widgetembed/?symbol=NSE%3ANIFTY&interval=5&theme=dark&style=1&hide_side_toolbar=0&allow_symbol_change=0"
+    width="100%"
+    height="550"
+    frameborder="0"
+    scrolling="no"
+    allowtransparency="true">
+</iframe>
+""", height=550)
 
 # ================= DATAFRAME =================
 df_ce = pd.DataFrame([vars(x) for x in chain.ce])

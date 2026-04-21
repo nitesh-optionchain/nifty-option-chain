@@ -15,8 +15,10 @@ DATA_FILE = "admin_data.json"
 
 def load_data():
     if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, "r") as f:
-            return json.load(f)
+        try:
+            with open(DATA_FILE, "r") as f:
+                return json.load(f)
+        except: pass
     return {
         "signal": {"Strike": "-", "Entry": "-", "Target": "-", "SL": "-", "Status": "WAITING"},
         "sr": {"support": "-", "resistance": "-"}
@@ -60,9 +62,10 @@ if "nubra" not in st.session_state:
 nubra = st.session_state.nubra
 market_data = MarketData(nubra)
 
-# ================= DATA =================
+# ================= DATA FETCH =================
 result = market_data.option_chain("NIFTY", exchange="NSE")
 if not result:
+    st.warning("Waiting for Market Data...")
     st.stop()
 
 chain = result.chain
@@ -70,28 +73,30 @@ chain = result.chain
 # ================= LIVE NIFTY & HEADER METRICS =================
 try:
     spot = chain.ce[0].underlying_price / 100
-    atm = int(round(spot / 50) * 50)
-    # Demo Previous Close (Real data ke liye ise update karein)
+    atm_val = int(round(spot / 50) * 50)
+    # Demo Prev Close (Replace with real close if available)
     prev_close = 24500 
     change_pts = spot - prev_close
     change_pct = (change_pts / prev_close) * 100
 except:
     spot = chain.at_the_money_strike / 100
-    atm = int(spot)
+    atm_val = int(spot)
     change_pts, change_pct = 0.0, 0.0
 
 st.title("🛡️ SMART WEALTH AI 5")
 
-# Header Metrics
+# Metrics Header
 h1, h2, h3 = st.columns(3)
-h1.metric(label=f"📊 NIFTY LIVE (ATM: {atm})", value=f"{spot:,.2f}", delta=f"{change_pts:+.2f} ({change_pct:+.2f}%)")
+h1.metric(label="📊 NIFTY LIVE SPOT", value=f"{spot:,.2f}", delta=f"{change_pts:+.2f} ({change_pct:+.2f}%)")
 h2.metric(label="📉 INDIA VIX", value="13.45", delta="-1.1% (Low Vol)")
-h3.metric(label="⚖️ MARKET STATUS", value="BULLISH 🚀" if change_pts > 0 else "BEARISH 📉")
+h3.metric(label="🎯 CURRENT ATM", value=f"{atm_val}")
+
+st.markdown("---")
 
 # ================= TRADINGVIEW CHART =================
 tradingview_widget = """
 <div class="tradingview-widget-container">
-  <div id="tv-chart-nifty"></div>
+  <div id="tv-chart-nifty-final"></div>
   <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
   <script type="text/javascript">
   new TradingView.widget({
@@ -107,28 +112,26 @@ tradingview_widget = """
     "enable_publishing": false,
     "hide_top_toolbar": false,
     "save_image": false,
-    "container_id": "tv-chart-nifty"
+    "container_id": "tv-chart-nifty-final"
   });
   </script>
 </div>
 """
 components.html(tradingview_widget, height=520)
 
-# ================= DATAFRAME =================
+# ================= DATAFRAME PROCESSING =================
 df_ce = pd.DataFrame([vars(x) for x in chain.ce])
 df_pe = pd.DataFrame([vars(x) for x in chain.pe])
 
 df = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE","_PE")).fillna(0)
 df["STRIKE"] = (df["strike_price"]/100).astype(int)
 
-# ================= CHANGE TRACK =================
 if "prev_df" not in st.session_state:
     st.session_state.prev_df = None
 
 if st.session_state.prev_df is not None:
     prev = st.session_state.prev_df.set_index("STRIKE")
     curr = df.set_index("STRIKE")
-
     df["oi_chg_CE"] = df["STRIKE"].map(curr["open_interest_CE"] - prev["open_interest_CE"]).fillna(0)
     df["oi_chg_PE"] = df["STRIKE"].map(curr["open_interest_PE"] - prev["open_interest_PE"]).fillna(0)
     df["prc_chg_CE"] = df["STRIKE"].map(curr["last_traded_price_CE"] - prev["last_traded_price_CE"]).fillna(0)
@@ -140,7 +143,6 @@ st.session_state.prev_df = df.copy()
 
 # ================= ADMIN SIGNAL =================
 st.subheader("🎯 LIVE TRADE SIGNALS")
-
 c1, c2, c3, c4, c5 = st.columns(5)
 
 if is_admin:
@@ -148,42 +150,34 @@ if is_admin:
     s_entry = c2.text_input("Entry", value=data["signal"]["Entry"])
     s_target = c3.text_input("Target", value=data["signal"]["Target"])
     s_sl = c4.text_input("SL", value=data["signal"]["SL"])
-
     if c5.button("📢 UPDATE"):
-        data["signal"] = {
-            "Strike": s_strike,
-            "Entry": s_entry,
-            "Target": s_target,
-            "SL": s_sl,
-            "Status": f"LIVE ({current_admin_name})"
-        }
+        data["signal"] = {"Strike": s_strike, "Entry": s_entry, "Target": s_target, "SL": s_sl, "Status": f"LIVE ({current_admin_name})"}
         save_data(data)
-
+        st.rerun()
 else:
-    c1.info(data["signal"]["Strike"])
-    c2.success(data["signal"]["Entry"])
-    c3.warning(data["signal"]["Target"])
-    c4.error(data["signal"]["SL"])
-    c5.write(data["signal"]["Status"])
+    c1.info(f"STRIKE: {data['signal']['Strike']}")
+    c2.success(f"ENTRY: {data['signal']['Entry']}")
+    c3.warning(f"TARGET: {data['signal']['Target']}")
+    c4.error(f"SL: {data['signal']['SL']}")
+    c5.write(f"**STATUS:** {data['signal']['Status']}")
 
 # ================= SUPPORT RESISTANCE =================
 st.subheader("📊 SUPPORT / RESISTANCE")
-
-s1, s2, s3 = st.columns(3)
+sr1, sr2, sr3 = st.columns(3)
 
 if is_admin:
-    sup = s1.text_input("Support", data["sr"]["support"])
-    res = s2.text_input("Resistance", data["sr"]["resistance"])
-
-    if s3.button("SET"):
+    sup = sr1.text_input("Support", data["sr"]["support"])
+    res = sr2.text_input("Resistance", data["sr"]["resistance"])
+    if sr3.button("SET LEVELS"):
         data["sr"] = {"support": sup, "resistance": res}
         save_data(data)
+        st.rerun()
 
-a, b = st.columns(2)
-a.metric("🟢 SUPPORT", data["sr"]["support"])
-b.metric("🔴 RESISTANCE", data["sr"]["resistance"])
+ma, mb = st.columns(2)
+ma.metric("🟢 SUPPORT", data["sr"]["support"])
+mb.metric("🔴 RESISTANCE", data["sr"]["resistance"])
 
-# ================= OPTION CHAIN =================
+# ================= OPTION CHAIN UI =================
 def format_val(val, delta, m_val):
     p = (val/m_val*100) if m_val > 0 else 0
     return f"{val:,.0f}\n({delta:+,})\n{p:.1f}%"
@@ -206,25 +200,25 @@ ui["PE VOL\n(%)"] = display_df.apply(lambda r: format_val(r["volume_PE"], 0, df[
 ui["PE OI\n(Δ/%)"] = display_df.apply(lambda r: format_val(r["open_interest_PE"], r["oi_chg_PE"], df["open_interest_PE"].max()), axis=1)
 ui["PE BUILDUP"] = display_df.apply(lambda r: get_bup(r["prc_chg_PE"], r["oi_chg_PE"]), axis=1)
 
-# ================= COLOR =================
 def final_style(row):
     styles = [''] * len(row)
     try:
-        ce_oi = float(row.iloc[1].split('\n')[-1].replace('%',''))
-        ce_vol = float(row.iloc[2].split('\n')[-1].replace('%',''))
-        pe_vol = float(row.iloc[4].split('\n')[-1].replace('%',''))
-        pe_oi = float(row.iloc[5].split('\n')[-1].replace('%',''))
+        c_oi = float(row.iloc[1].split('\n')[-1].replace('%',''))
+        c_vol = float(row.iloc[2].split('\n')[-1].replace('%',''))
+        p_vol = float(row.iloc[4].split('\n')[-1].replace('%',''))
+        p_oi = float(row.iloc[5].split('\n')[-1].replace('%',''))
 
-        if ce_oi > 65: styles[1] = 'background-color:#0d47a1;color:white'
-        if ce_vol >= 90: styles[2] = 'background-color:#00c853;color:white'
-        if pe_oi > 65: styles[5] = 'background-color:#ff6f00;color:white'
-        if pe_vol >= 90: styles[4] = 'background-color:#d50000;color:white'
+        if c_oi > 65: styles[1] = 'background-color:#0d47a1;color:white'
+        if c_vol >= 90: styles[2] = 'background-color:#00c853;color:white'
+        if p_oi > 65: styles[5] = 'background-color:#ff6f00;color:white'
+        if p_vol >= 90: styles[4] = 'background-color:#d50000;color:white'
 
         if row.iloc[3] == atm_int:
             styles[3] = 'background-color:yellow;color:black;font-weight:bold'
         else:
-            styles[3] = 'background-color:#eeeeee'
+            styles[3] = 'background-color:#eeeeee;color:black'
     except: pass
     return styles
 
+st.subheader("📊 Institutional Option Chain")
 st.table(ui.style.apply(final_style, axis=1))

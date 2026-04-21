@@ -74,11 +74,11 @@ except:
 
 st.title("🛡️ SMART WEALTH AI 5")
 st.subheader(f"📊 LIVE NIFTY: {spot:,.2f}")
-st.subheader("📊 LIVE NIFTY CHART (Investing.com)")
+st.subheader("📊 LIVE NIFTY CHART")
 
 st.components.v1.html("""
 <iframe
-    src="https://sslcharts.investing.com/index.php?pair_ID=17940&width=100%&height=500&interval=300"
+    src="https://www.tradingview.com/chart/?symbol=NSE:NIFTY"
     width="100%"
     height="550"
     frameborder="0"

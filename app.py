@@ -1,133 +1,161 @@
-import os, json, streamlit as st
-import pandas as pd
-from datetime import datetime
-from streamlit_autorefresh import st_autorefresh
 from nubra_python_sdk.marketdata.market_data import MarketData
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
+import streamlit as st
+import pandas as pd
+from streamlit_autorefresh import st_autorefresh
 
 # ==========================================
-# 1. CONFIG & REFRESH
+# CONFIG
 # ==========================================
-st.set_page_config(page_title="NIFTY PRO - ADMIN PANEL", layout="wide")
-st_autorefresh(interval=5000, key="pro_final_v6")
+st.set_page_config(page_title="SMART WEALTH AI 5", layout="wide")
+st_autorefresh(interval=5000, key="auto")
 
 # ==========================================
-# 2. ADMIN AUTH (Aapka Original Logic)
+# SDK LOGIN
 # ==========================================
-ADMIN_DB = {"9304768496": "Admin Chief", "9822334455": "Amit Kumar"}
-url_id = st.query_params.get("id", None)
-is_admin = url_id in ADMIN_DB
+if "nubra" not in st.session_state:
+    st.session_state.nubra = InitNubraSdk(NubraEnv.UAT, env_creds=True)
 
-if "signal" not in st.session_state:
-    st.session_state.signal = {"Strike": "-", "Entry": "-", "Target": "-", "SL": "-", "Status": "WAITING"}
+nubra = st.session_state.nubra
+market_data = MarketData(nubra)
 
 # ==========================================
-# 3. SDK LOGIN & DATA
+# DATA FETCH
 # ==========================================
-try:
-    if "nubra" not in st.session_state:
-        st.session_state.nubra = InitNubraSdk(NubraEnv.UAT, env_creds=True)
-    
-    nubra = st.session_state.nubra
-    market_data = MarketData(nubra)
-    
-    result = market_data.option_chain("NIFTY", exchange="NSE")
-    chain = result.chain
-    spot = chain.at_the_money_strike / 100
-    atm = int(round(spot / 50) * 50)
-    
-    # Live Nifty Change (Demo prev close: 24500)
-    change_pts = spot - 24500 
-    change_pct = (change_pts / 24500) * 100
-
-except Exception as e:
-    st.error(f"❌ SDK Error: {e}")
+result = market_data.option_chain("NIFTY", exchange="NSE")
+if not result:
     st.stop()
 
-# ==========================================
-# 4. HEADER (Nifty Change, VIX, Spike)
-# ==========================================
-st.title("🛡️ NIFTY LIVE INSTITUTIONAL DASHBOARD")
-m1, m2, m3, m4 = st.columns(4)
-m1.metric("NIFTY SPOT", f"{spot:,.2f}", f"{change_pts:+.2f} ({change_pct:+.2f}%)")
-m2.metric("INDIA VIX", "13.45") 
-m3.metric("VOL SPIKE", "HIGH 🔥" if abs(change_pct) > 0.4 else "NORMAL")
-m4.metric("STATUS", "📈 BULLISH" if change_pts > 0 else "📉 BEARISH")
+chain = result.chain
+spot = chain.at_the_money_strike / 100
+atm = int(spot)
 
-# ==========================================
-# 5. ADMIN SIGNALS
-# ==========================================
-st.markdown("---")
-st.subheader("🎯 LIVE TRADE SIGNALS")
-s1, s2, s3, s4, s5 = st.columns(5)
-if is_admin:
-    with s1: ss_strike = st.text_input("Strike", st.session_state.signal["Strike"])
-    with s2: ss_entry = st.text_input("Entry", st.session_state.signal["Entry"])
-    with s3: ss_target = st.text_input("Target", st.session_state.signal["Target"])
-    with s4: ss_sl = st.text_input("SL", st.session_state.signal["SL"])
-    if s5.button("📢 UPDATE"):
-        st.session_state.signal = {"Strike": ss_strike, "Entry": ss_entry, "Target": ss_target, "SL": ss_sl, "Status": "LIVE"}
-        st.rerun()
-else:
-    s1.info(f"STRIKE: {st.session_state.signal['Strike']}")
-    s2.success(f"ENTRY: {st.session_state.signal['Entry']}")
-    s3.warning(f"TARGET: {st.session_state.signal['Target']}")
-    s4.error(f"SL: {st.session_state.signal['SL']}")
-    s5.write(f"**STATUS:** {st.session_state.signal['Status']}")
-
-# ==========================================
-# 6. OPTION CHAIN (OI & VOL % UPGRADE)
-# ==========================================
 df_ce = pd.DataFrame([vars(x) for x in chain.ce])
 df_pe = pd.DataFrame([vars(x) for x in chain.pe])
-df = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE","_PE")).fillna(0)
+df = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE","_PE"))
+df = df.fillna(0)
 df["STRIKE"] = (df["strike_price"]/100).astype(int)
 
-# Max values for % calculation
-max_c_oi = df["open_interest_CE"].max() or 1
-max_p_oi = df["open_interest_PE"].max() or 1
-max_c_vo = df["volume_CE"].max() or 1
-max_p_vo = df["volume_PE"].max() or 1
+# ==========================================
+# BASIC METRICS
+# ==========================================
+total_ce = df["open_interest_CE"].sum()
+total_pe = df["open_interest_PE"].sum()
+pcr = round(total_pe / total_ce, 2) if total_ce != 0 else 0
 
-def fmt(v, m):
-    p = (v/m*100) if m > 0 else 0
-    return f"{v:,.0f}\n({p:.1f}%)"
+# ==========================================
+# 🔥 SMART SIGNAL LOGIC
+# ==========================================
+signal_text = "WAITING"
+entry = target = sl = "-"
+confidence = "LOW"
+
+try:
+    max_ce_oi_strike = df.loc[df["open_interest_CE"].idxmax()]["STRIKE"]
+    max_pe_oi_strike = df.loc[df["open_interest_PE"].idxmax()]["STRIKE"]
+
+    atm_row = df[df["STRIKE"] == atm].iloc[0]
+
+    ce_price = atm_row["last_traded_price_CE"]
+    pe_price = atm_row["last_traded_price_PE"]
+
+    ce_oi = atm_row["open_interest_CE"]
+    pe_oi = atm_row["open_interest_PE"]
+
+    # 🔥 CE BUY
+    if pcr > 1 and pe_oi > ce_oi:
+        signal_text = f"BUY CE {atm}"
+        entry = round(ce_price, 1)
+        target = round(ce_price * 1.4, 1)
+        sl = round(ce_price * 0.75, 1)
+        confidence = "HIGH"
+
+    # 🔥 PE BUY
+    elif pcr < 0.8 and ce_oi > pe_oi:
+        signal_text = f"BUY PE {atm}"
+        entry = round(pe_price, 1)
+        target = round(pe_price * 1.4, 1)
+        sl = round(pe_price * 0.75, 1)
+        confidence = "HIGH"
+
+except:
+    pass
+
+# ==========================================
+# HEADER
+# ==========================================
+st.title("🛡️ SMART WEALTH AI 5")
+
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("NIFTY SPOT", f"{spot:,.2f}")
+c2.metric("PCR", pcr)
+c3.metric("SMART SIGNAL", signal_text)
+c4.metric("CONFIDENCE", confidence)
+
+# SIGNAL DETAILS
+st.info(f"Entry: {entry} | Target: {target} | SL: {sl}")
+
+# ==========================================
+# OPTION CHAIN UI
+# ==========================================
+max_ce_vol = df["volume_CE"].max()
+max_pe_vol = df["volume_PE"].max()
+max_ce_oi = df["open_interest_CE"].max()
+max_pe_oi = df["open_interest_PE"].max()
+
+def format_val(val, m_val):
+    p = (val/m_val*100) if m_val > 0 else 0
+    return f"{val:,.0f}\n{p:.1f}%"
 
 atm_idx = df.index[df["STRIKE"] >= atm][0]
-display_df = df.iloc[max(atm_idx-8,0): atm_idx+9].copy()
+display_df = df.iloc[max(atm_idx-7,0): atm_idx+8]
 
 ui = pd.DataFrame()
-ui["CE OI (%)"] = display_df.apply(lambda r: fmt(r["open_interest_CE"], max_c_oi), axis=1)
-ui["CE VOL (%)"] = display_df.apply(lambda r: fmt(r["volume_CE"], max_c_vo), axis=1) # Fixed Vol %
+ui["CE OI"] = display_df.apply(lambda r: format_val(r["open_interest_CE"], max_ce_oi), axis=1)
+ui["CE VOL"] = display_df.apply(lambda r: format_val(r["volume_CE"], max_ce_vol), axis=1)
 ui["STRIKE"] = display_df["STRIKE"]
-ui["PE VOL (%)"] = display_df.apply(lambda r: fmt(r["volume_PE"], max_p_vo), axis=1) # Fixed Vol %
-ui["PE OI (%)"] = display_df.apply(lambda r: fmt(r["open_interest_PE"], max_p_oi), axis=1)
+ui["PE VOL"] = display_df.apply(lambda r: format_val(r["volume_PE"], max_pe_vol), axis=1)
+ui["PE OI"] = display_df.apply(lambda r: format_val(r["open_interest_PE"], max_pe_oi), axis=1)
 
-def apply_final_style(row):
-    s = [''] * len(row)
+# ==========================================
+# 🎨 FINAL COLOR LOGIC
+# ==========================================
+def style(row):
+    s = ['']*len(row)
+
     try:
-        # Extract Percentages from all columns
-        c_oi_p = float(row.iloc[0].split('(')[1].replace('%)',''))
-        c_vo_p = float(row.iloc[1].split('(')[1].replace('%)',''))
-        p_vo_p = float(row.iloc[3].split('(')[1].replace('%)',''))
-        p_oi_p = float(row.iloc[4].split('(')[1].replace('%)',''))
+        ce_oi = float(row[0].split('\n')[1].replace('%',''))
+        ce_vol = float(row[1].split('\n')[1].replace('%',''))
+        pe_vol = float(row[3].split('\n')[1].replace('%',''))
+        pe_oi = float(row[4].split('\n')[1].replace('%',''))
 
-        # 1. STRIKE COLUMN (Light Grey & Yellow ATM)
-        if int(row["STRIKE"]) == atm:
-            s[2] = 'background-color: yellow; color: black; font-weight: bold'
-        else:
-            s[2] = 'background-color: #D3D3D3; color: black'
+        # CE BLUE
+        if ce_oi > 65 and ce_vol > 70:
+            s[0] = s[1] = 'background-color: #0d47a1; color:white'
 
-        # 2. CE SIDE COLOURS (65% Rule)
-        if c_oi_p > 65: s[0] = 'background-color: #00008B; color: white' # Deep Blue OI
-        if c_vo_p > 65: s[1] = 'background-color: #006400; color: white' # Deep Green Vol
+        # PE ORANGE
+        if pe_oi > 65 and pe_vol > 70:
+            s[3] = s[4] = 'background-color: #ff6f00; color:white'
 
-        # 3. PE SIDE COLOURS (65% Rule)
-        if p_vo_p > 65: s[3] = 'background-color: #8B0000; color: white' # Deep Red Vol
-        if p_oi_p > 65: s[4] = 'background-color: #FF8C00; color: white' # Deep Orange OI
+        # CE HIGH VOL
+        if ce_vol == 100:
+            s[1] = 'background-color: green; color:white'
 
-    except: pass
+        # PE HIGH VOL
+        if pe_vol == 100:
+            s[3] = 'background-color: red; color:white'
+
+        # ATM
+        if row[2] == atm:
+            s[2] = 'background-color: yellow; color:black; font-weight:bold'
+
+        # NEAR ATM
+        elif abs(row[2] - atm) <= 100:
+            s[2] = 'background-color: #eeeeee'
+
+    except:
+        pass
+
     return s
 
-st.subheader("📊 Institutional Option Chain (OI & VOL %)")
-st.table(ui.style.apply(apply_final_style, axis=1))
+st.table(ui.style.apply(style, axis=1))

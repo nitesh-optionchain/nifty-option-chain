@@ -1,7 +1,6 @@
 from nubra_python_sdk.marketdata.market_data import MarketData
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 import streamlit as st
-import streamlit.components.v1 as components
 import pandas as pd
 from streamlit_autorefresh import st_autorefresh
 import json, os
@@ -30,30 +29,10 @@ def save_data(data):
 
 data = load_data()
 
-# ================= ADMIN =================
-ADMIN_DB = {
-    "9304768496": "Admin Chief", 
-    "9822334455": "Amit Kumar",
-    "9011223344": "Amit Sharma"
-}
-
-query_params = st.query_params
-url_id = query_params.get("id", None)
-
-is_admin = False
-current_admin_name = "Guest"
-
-if url_id in ADMIN_DB:
-    is_admin = True
-    current_admin_name = ADMIN_DB[url_id]
-    st.sidebar.success(f"⚡ {current_admin_name}")
-else:
-    with st.sidebar.expander("🔑 Admin Login"):
-        user_key = st.text_input("Enter Mobile ID:", type="password")
-        if user_key in ADMIN_DB:
-            is_admin = True
-            current_admin_name = ADMIN_DB[user_key]
-            st.sidebar.success(f"✅ {current_admin_name}")
+# ================= ADMIN LOGIN =================
+ADMIN_DB = {"9304768496": "Admin Chief", "9822334455": "Amit Kumar"}
+url_id = st.query_params.get("id", None)
+is_admin = url_id in ADMIN_DB
 
 # ================= SDK =================
 if "nubra" not in st.session_state:
@@ -64,68 +43,43 @@ market_data = MarketData(nubra)
 
 # ================= DATA FETCH =================
 result = market_data.option_chain("NIFTY", exchange="NSE")
-if not result:
-    st.warning("Waiting for Market Data...")
+if not result or not result.chain:
+    st.warning("🔄 Fetching Live Data...")
     st.stop()
 
 chain = result.chain
 
-# ================= LIVE NIFTY & HEADER METRICS =================
+# ================= LIVE NIFTY HEADER =================
 try:
-    spot = chain.ce[0].underlying_price / 100
+    # Nifty Spot and ATM calculation
+    spot = float(chain.ce[0].underlying_price / 100)
     atm_val = int(round(spot / 50) * 50)
-    # Demo Prev Close (Replace with real close if available)
+    
+    # Change calculation (Base: 24500)
     prev_close = 24500 
     change_pts = spot - prev_close
     change_pct = (change_pts / prev_close) * 100
 except:
-    spot = chain.at_the_money_strike / 100
-    atm_val = int(spot)
-    change_pts, change_pct = 0.0, 0.0
+    spot, atm_val, change_pts, change_pct = 0.0, 0, 0.0, 0.0
 
 st.title("🛡️ SMART WEALTH AI 5")
 
-# Metrics Header
-h1, h2, h3 = st.columns(3)
-h1.metric(label="📊 NIFTY LIVE SPOT", value=f"{spot:,.2f}", delta=f"{change_pts:+.2f} ({change_pct:+.2f}%)")
-h2.metric(label="📉 INDIA VIX", value="13.45", delta="-1.1% (Low Vol)")
-h3.metric(label="🎯 CURRENT ATM", value=f"{atm_val}")
+# Header Metrics
+h1, h2, h3, h4 = st.columns(4)
+h1.metric("📊 NIFTY LIVE SPOT", f"{spot:,.2f}", f"{change_pts:+.2f} ({change_pct:+.2f}%)")
+h2.metric("🎯 CURRENT ATM", f"{atm_val}")
+h3.metric("📉 INDIA VIX", "13.45", "-1.1%")
+h4.metric("⚖️ STATUS", "BULLISH 🚀" if change_pts > 0 else "BEARISH 📉")
 
 st.markdown("---")
 
-# ================= TRADINGVIEW CHART =================
-tradingview_widget = """
-<div class="tradingview-widget-container">
-  <div id="tv-chart-nifty-final"></div>
-  <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
-  <script type="text/javascript">
-  new TradingView.widget({
-    "width": "100%",
-    "height": 500,
-    "symbol": "NSE:NIFTY",
-    "interval": "5",
-    "timezone": "Asia/Kolkata",
-    "theme": "dark",
-    "style": "1",
-    "locale": "en",
-    "toolbar_bg": "#f1f3f6",
-    "enable_publishing": false,
-    "hide_top_toolbar": false,
-    "save_image": false,
-    "container_id": "tv-chart-nifty-final"
-  });
-  </script>
-</div>
-"""
-components.html(tradingview_widget, height=520)
-
-# ================= DATAFRAME PROCESSING =================
+# ================= DATAFRAME LOGIC =================
 df_ce = pd.DataFrame([vars(x) for x in chain.ce])
 df_pe = pd.DataFrame([vars(x) for x in chain.pe])
-
 df = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE","_PE")).fillna(0)
 df["STRIKE"] = (df["strike_price"]/100).astype(int)
 
+# Change Tracking for Buildup
 if "prev_df" not in st.session_state:
     st.session_state.prev_df = None
 
@@ -141,17 +95,16 @@ else:
 
 st.session_state.prev_df = df.copy()
 
-# ================= ADMIN SIGNAL =================
+# ================= ADMIN SIGNALS =================
 st.subheader("🎯 LIVE TRADE SIGNALS")
 c1, c2, c3, c4, c5 = st.columns(5)
-
 if is_admin:
     s_strike = c1.text_input("Strike", value=data["signal"]["Strike"])
     s_entry = c2.text_input("Entry", value=data["signal"]["Entry"])
     s_target = c3.text_input("Target", value=data["signal"]["Target"])
     s_sl = c4.text_input("SL", value=data["signal"]["SL"])
     if c5.button("📢 UPDATE"):
-        data["signal"] = {"Strike": s_strike, "Entry": s_entry, "Target": s_target, "SL": s_sl, "Status": f"LIVE ({current_admin_name})"}
+        data["signal"] = {"Strike": s_strike, "Entry": s_entry, "Target": s_target, "SL": s_sl, "Status": "LIVE 🔥"}
         save_data(data)
         st.rerun()
 else:
@@ -160,22 +113,6 @@ else:
     c3.warning(f"TARGET: {data['signal']['Target']}")
     c4.error(f"SL: {data['signal']['SL']}")
     c5.write(f"**STATUS:** {data['signal']['Status']}")
-
-# ================= SUPPORT RESISTANCE =================
-st.subheader("📊 SUPPORT / RESISTANCE")
-sr1, sr2, sr3 = st.columns(3)
-
-if is_admin:
-    sup = sr1.text_input("Support", data["sr"]["support"])
-    res = sr2.text_input("Resistance", data["sr"]["resistance"])
-    if sr3.button("SET LEVELS"):
-        data["sr"] = {"support": sup, "resistance": res}
-        save_data(data)
-        st.rerun()
-
-ma, mb = st.columns(2)
-ma.metric("🟢 SUPPORT", data["sr"]["support"])
-mb.metric("🔴 RESISTANCE", data["sr"]["resistance"])
 
 # ================= OPTION CHAIN UI =================
 def format_val(val, delta, m_val):
@@ -203,17 +140,17 @@ ui["PE BUILDUP"] = display_df.apply(lambda r: get_bup(r["prc_chg_PE"], r["oi_chg
 def final_style(row):
     styles = [''] * len(row)
     try:
-        c_oi = float(row.iloc[1].split('\n')[-1].replace('%',''))
-        c_vol = float(row.iloc[2].split('\n')[-1].replace('%',''))
-        p_vol = float(row.iloc[4].split('\n')[-1].replace('%',''))
-        p_oi = float(row.iloc[5].split('\n')[-1].replace('%',''))
+        ce_oi_p = float(row.iloc[1].split('\n')[-1].replace('%',''))
+        ce_vo_p = float(row.iloc[2].split('\n')[-1].replace('%',''))
+        pe_vo_p = float(row.iloc[4].split('\n')[-1].replace('%',''))
+        pe_oi_p = float(row.iloc[5].split('\n')[-1].replace('%',''))
 
-        if c_oi > 65: styles[1] = 'background-color:#0d47a1;color:white'
-        if c_vol >= 90: styles[2] = 'background-color:#00c853;color:white'
-        if p_oi > 65: styles[5] = 'background-color:#ff6f00;color:white'
-        if p_vol >= 90: styles[4] = 'background-color:#d50000;color:white'
+        if ce_oi_p > 65: styles[1] = 'background-color:#0d47a1;color:white'
+        if ce_vo_p >= 90: styles[2] = 'background-color:#00c853;color:white'
+        if pe_oi_p > 65: styles[5] = 'background-color:#ff6f00;color:white'
+        if pe_vo_p >= 90: styles[4] = 'background-color:#d50000;color:white'
 
-        if row.iloc[3] == atm_int:
+        if row["STRIKE"] == atm_val:
             styles[3] = 'background-color:yellow;color:black;font-weight:bold'
         else:
             styles[3] = 'background-color:#eeeeee;color:black'

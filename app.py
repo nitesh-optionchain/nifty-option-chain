@@ -81,15 +81,14 @@ symbol = st.selectbox(
     ["NSE:NIFTY", "NSE:BANKNIFTY", "BSE:SENSEX"]
 )
 
-# ================= 📈 TRADINGVIEW CHART (FIXED) =================
-st.components.v1.html("""
+# ================= TRADINGVIEW CHART =================
+st.components.v1.html(f"""
 <iframe
-    src="https://s.tradingview.com/widgetembed/?symbol=NSE%3ANIFTY&interval=5&theme=dark&style=1&hide_side_toolbar=0&allow_symbol_change=0"
+    src="https://s.tradingview.com/widgetembed/?symbol={symbol.replace(':','%3A')}&interval=5&theme=dark&style=1&hide_side_toolbar=0&allow_symbol_change=0"
     width="100%"
     height="550"
     frameborder="0"
-    scrolling="no"
-    allowtransparency="true">
+    scrolling="no">
 </iframe>
 """, height=550)
 

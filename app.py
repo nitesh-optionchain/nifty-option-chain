@@ -74,25 +74,17 @@ except:
 
 st.title("🛡️ SMART WEALTH AI 5")
 st.subheader(f"📊 LIVE NIFTY: {spot:,.2f}")
+st.subheader("📊 LIVE NIFTY CHART (Investing.com)")
 
-st.subheader(f"📊 LIVE NIFTY: {spot:,.2f}")
-
-# ================= STABLE CHART (NO TRADINGVIEW) =================
-import plotly.graph_objects as go
-
-st.subheader("📊 LIVE NIFTY CHART (STABLE)")
-
-fig = go.Figure()
-
-fig.add_trace(go.Scatter(
-    x=[0,1,2,3,4],
-    y=[spot-10, spot-5, spot, spot+5, spot+10],
-    mode="lines+markers"
-))
-
-fig.update_layout(height=500)
-
-st.plotly_chart(fig, use_container_width=True)
+st.components.v1.html("""
+<iframe
+    src="https://sslcharts.investing.com/index.php?pair_ID=17940&width=100%&height=500&interval=300"
+    width="100%"
+    height="550"
+    frameborder="0"
+    scrolling="no">
+</iframe>
+""", height=550)
 
 # ================= DATAFRAME =================
 df_ce = pd.DataFrame([vars(x) for x in chain.ce])

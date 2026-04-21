@@ -75,6 +75,21 @@ except:
 st.title("🛡️ SMART WEALTH AI 5")
 st.subheader(f"📊 LIVE NIFTY: {spot:,.2f}")
 
+# ================= 📈 TRADINGVIEW CHART (ONLY ADDITION) =================
+st.markdown(
+    """
+    <iframe
+        src="https://www.tradingview.com/widgetembed/?symbol=NSE:NIFTY&interval=5&theme=dark"
+        width="100%"
+        height="500"
+        frameborder="0"
+        allowtransparency="true"
+        scrolling="no">
+    </iframe>
+    """,
+    unsafe_allow_html=True
+)
+
 # ================= DATAFRAME =================
 df_ce = pd.DataFrame([vars(x) for x in chain.ce])
 df_pe = pd.DataFrame([vars(x) for x in chain.pe])

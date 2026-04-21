@@ -75,6 +75,12 @@ except:
 st.title("🛡️ SMART WEALTH AI 5")
 st.subheader(f"📊 LIVE NIFTY: {spot:,.2f}")
 
+# ================= SYMBOL SELECTOR (STEP 1) =================
+symbol = st.selectbox(
+    "📊 Select Index",
+    ["NSE:NIFTY", "NSE:BANKNIFTY", "BSE:SENSEX"]
+)
+
 # ================= 📈 TRADINGVIEW CHART (FIXED) =================
 st.components.v1.html("""
 <iframe

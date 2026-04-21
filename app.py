@@ -9,67 +9,48 @@ import json, os
 st.set_page_config(page_title="SMART WEALTH AI 5", layout="wide")
 st_autorefresh(interval=5000, key="refresh")
 
-# ================= USER DB =================
-USER_FILE = "users.json"
+# ================= FILE STORAGE =================
+DATA_FILE = "admin_data.json"
 
-def load_users():
-    if os.path.exists(USER_FILE):
-        with open(USER_FILE, "r") as f:
+def load_data():
+    if os.path.exists(DATA_FILE):
+        with open(DATA_FILE, "r") as f:
             return json.load(f)
     return {
-        "admin": {"pass": "1234", "role": "admin"}
+        "signal": {"Strike": "-", "Entry": "-", "Target": "-", "SL": "-", "Status": "WAITING"},
+        "sr": {"support": "-", "resistance": "-"}
     }
 
-users = load_users()
+def save_data(data):
+    with open(DATA_FILE, "w") as f:
+        json.dump(data, f)
 
-# ================= LOGIN =================
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
+data = load_data()
 
-def login_page():
-    st.title("🔐 Secure Login")
+# ================= ADMIN =================
+ADMIN_DB = {
+    "9304768496": "Admin Chief", 
+    "9822334455": "Amit Kumar",
+    "9011223344": "Amit Sharma"
+}
 
-    u = st.text_input("Username")
-    p = st.text_input("Password", type="password")
+query_params = st.query_params
+url_id = query_params.get("id", None)
 
-    if st.button("Login"):
-        if u in users and users[u]["pass"] == p:
-            st.session_state.logged_in = True
-            st.session_state.user = u
-            st.session_state.role = users[u]["role"]
-            st.rerun()
-        else:
-            st.error("Access Denied")
+is_admin = False
+current_admin_name = "Guest"
 
-if not st.session_state.logged_in:
-    login_page()
-    st.stop()
-
-# ================= ADMIN PANEL (ONLY ADD/DELETE USERS) =================
-if st.session_state.role == "admin":
-    st.sidebar.subheader("👨‍💼 Admin Panel")
-
-    new_user = st.sidebar.text_input("New Username")
-    new_pass = st.sidebar.text_input("Password", type="password")
-
-    if st.sidebar.button("Add User"):
-        users[new_user] = {"pass": new_pass, "role": "user"}
-        with open(USER_FILE, "w") as f:
-            json.dump(users, f)
-        st.sidebar.success("User Added")
-
-    del_user = st.sidebar.selectbox("Delete User", list(users.keys()))
-    if st.sidebar.button("Delete"):
-        if del_user != "admin":
-            users.pop(del_user)
-            with open(USER_FILE, "w") as f:
-                json.dump(users, f)
-            st.sidebar.success("User Deleted")
-
-# ================= LOGOUT =================
-if st.sidebar.button("Logout"):
-    st.session_state.logged_in = False
-    st.rerun()
+if url_id in ADMIN_DB:
+    is_admin = True
+    current_admin_name = ADMIN_DB[url_id]
+    st.sidebar.success(f"⚡ {current_admin_name}")
+else:
+    with st.sidebar.expander("🔑 Admin Login"):
+        user_key = st.text_input("Enter Mobile ID:", type="password")
+        if user_key in ADMIN_DB:
+            is_admin = True
+            current_admin_name = ADMIN_DB[user_key]
+            st.sidebar.success(f"✅ {current_admin_name}")
 
 # ================= SDK =================
 if "nubra" not in st.session_state:
@@ -85,39 +66,23 @@ if not result:
 
 chain = result.chain
 
+# ================= LIVE NIFTY =================
 try:
-    nifty_live = chain.ce[0].underlying_price / 100
+    spot = chain.ce[0].underlying_price / 100
 except:
-    nifty_live = chain.at_the_money_strike / 100
+    spot = chain.at_the_money_strike / 100
 
-# ================= HEADER =================
 st.title("🛡️ SMART WEALTH AI 5")
+st.subheader(f"📊 LIVE NIFTY: {spot:,.2f}")
 
-# 🔥 ONLY CHANGE: TradingView link added
-chart_url = "https://www.tradingview.com/chart/?symbol=NSE:NIFTY"
-
-col1, col2 = st.columns([3,1])
-
-with col1:
-    st.subheader(f"📊 LIVE NIFTY: {nifty_live:,.2f}")
-
-with col2:
-    st.markdown(f"""
-    <a href="{chart_url}" target="_blank">
-        <button style="width:100%;background:#2962ff;color:white;padding:10px;border:none;border-radius:6px;">
-        📈 Open TradingView Chart
-        </button>
-    </a>
-    """, unsafe_allow_html=True)
-
-# ================= OPTION CHAIN (UNCHANGED EXACTLY) =================
+# ================= DATAFRAME =================
 df_ce = pd.DataFrame([vars(x) for x in chain.ce])
 df_pe = pd.DataFrame([vars(x) for x in chain.pe])
 
 df = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE","_PE")).fillna(0)
 df["STRIKE"] = (df["strike_price"]/100).astype(int)
 
-# ================= CHANGE TRACK (UNCHANGED) =================
+# ================= CHANGE TRACK =================
 if "prev_df" not in st.session_state:
     st.session_state.prev_df = None
 
@@ -125,25 +90,113 @@ if st.session_state.prev_df is not None:
     prev = st.session_state.prev_df.set_index("STRIKE")
     curr = df.set_index("STRIKE")
 
-    df["oi_chg_CE"] = curr["open_interest_CE"].sub(prev["open_interest_CE"], fill_value=0).values
-    df["oi_chg_PE"] = curr["open_interest_PE"].sub(prev["open_interest_PE"], fill_value=0).values
+    df["oi_chg_CE"] = df["STRIKE"].map(curr["open_interest_CE"] - prev["open_interest_CE"]).fillna(0)
+    df["oi_chg_PE"] = df["STRIKE"].map(curr["open_interest_PE"] - prev["open_interest_PE"]).fillna(0)
+    df["prc_chg_CE"] = df["STRIKE"].map(curr["last_traded_price_CE"] - prev["last_traded_price_CE"]).fillna(0)
+    df["prc_chg_PE"] = df["STRIKE"].map(curr["last_traded_price_PE"] - prev["last_traded_price_PE"]).fillna(0)
 else:
-    df["oi_chg_CE"] = df["oi_chg_PE"] = 0
+    df["oi_chg_CE"] = df["oi_chg_PE"] = df["prc_chg_CE"] = df["prc_chg_PE"] = 0
 
 st.session_state.prev_df = df.copy()
 
-# ================= TABLE (UNCHANGED) =================
-def format_val(val, delta, m):
-    p = (val/m*100) if m>0 else 0
+# ================= ADMIN SIGNAL =================
+st.subheader("🎯 LIVE TRADE SIGNALS")
+
+c1, c2, c3, c4, c5 = st.columns(5)
+
+if is_admin:
+    s_strike = c1.text_input("Strike", value=data["signal"]["Strike"])
+    s_entry = c2.text_input("Entry", value=data["signal"]["Entry"])
+    s_target = c3.text_input("Target", value=data["signal"]["Target"])
+    s_sl = c4.text_input("SL", value=data["signal"]["SL"])
+
+    if c5.button("📢 UPDATE"):
+        data["signal"] = {
+            "Strike": s_strike,
+            "Entry": s_entry,
+            "Target": s_target,
+            "SL": s_sl,
+            "Status": f"LIVE ({current_admin_name})"
+        }
+        save_data(data)
+
+else:
+    c1.info(data["signal"]["Strike"])
+    c2.success(data["signal"]["Entry"])
+    c3.warning(data["signal"]["Target"])
+    c4.error(data["signal"]["SL"])
+    c5.write(data["signal"]["Status"])
+
+# ================= SUPPORT RESISTANCE =================
+st.subheader("📊 SUPPORT / RESISTANCE")
+
+s1, s2, s3 = st.columns(3)
+
+if is_admin:
+    sup = s1.text_input("Support", data["sr"]["support"])
+    res = s2.text_input("Resistance", data["sr"]["resistance"])
+
+    if s3.button("SET"):
+        data["sr"] = {"support": sup, "resistance": res}
+        save_data(data)
+
+a, b = st.columns(2)
+a.metric("🟢 SUPPORT", data["sr"]["support"])
+b.metric("🔴 RESISTANCE", data["sr"]["resistance"])
+
+# ================= OPTION CHAIN =================
+def format_val(val, delta, m_val):
+    p = (val/m_val*100) if m_val > 0 else 0
     return f"{val:,.0f}\n({delta:+,})\n{p:.1f}%"
 
-atm = int(nifty_live)
+def get_bup(p, o):
+    if p > 0 and o > 0: return "🟢 LONG"
+    if p < 0 and o > 0: return "🔴 SHORT"
+    return "⚪ -"
+
+atm = int(spot)
 atm_idx = df.index[df["STRIKE"] >= atm][0]
-d = df.iloc[max(atm_idx-7,0): atm_idx+8]
+display_df = df.iloc[max(atm_idx-7,0): atm_idx+8].copy()
 
 ui = pd.DataFrame()
-ui["CE OI"] = d.apply(lambda r: format_val(r["open_interest_CE"], r["oi_chg_CE"], df["open_interest_CE"].max()), axis=1)
-ui["STRIKE"] = d["STRIKE"]
-ui["PE OI"] = d.apply(lambda r: format_val(r["open_interest_PE"], r["oi_chg_PE"], df["open_interest_PE"].max()), axis=1)
+ui["CE BUILDUP"] = display_df.apply(lambda r: get_bup(r["prc_chg_CE"], r["oi_chg_CE"]), axis=1)
+ui["CE OI\n(Δ/%)"] = display_df.apply(lambda r: format_val(r["open_interest_CE"], r["oi_chg_CE"], df["open_interest_CE"].max()), axis=1)
+ui["CE VOL\n(%)"] = display_df.apply(lambda r: format_val(r["volume_CE"], 0, df["volume_CE"].max()), axis=1)
+ui["STRIKE"] = display_df["STRIKE"]
+ui["PE VOL\n(%)"] = display_df.apply(lambda r: format_val(r["volume_PE"], 0, df["volume_PE"].max()), axis=1)
+ui["PE OI\n(Δ/%)"] = display_df.apply(lambda r: format_val(r["open_interest_PE"], r["oi_chg_PE"], df["open_interest_PE"].max()), axis=1)
+ui["PE BUILDUP"] = display_df.apply(lambda r: get_bup(r["prc_chg_PE"], r["oi_chg_PE"]), axis=1)
 
-st.table(ui)
+# ================= COLOR =================
+def final_style(row):
+    styles = [''] * len(row)
+
+    try:
+        ce_oi = float(row.iloc[1].split('\n')[-1].replace('%',''))
+        ce_vol = float(row.iloc[2].split('\n')[-1].replace('%',''))
+        pe_vol = float(row.iloc[4].split('\n')[-1].replace('%',''))
+        pe_oi = float(row.iloc[5].split('\n')[-1].replace('%',''))
+
+        if ce_oi > 65:
+            styles[1] = 'background-color:#0d47a1;color:white'
+
+        if ce_vol >= 90:
+            styles[2] = 'background-color:#00c853;color:white'
+
+        if pe_oi > 65:
+            styles[5] = 'background-color:#ff6f00;color:white'
+
+        if pe_vol >= 90:
+            styles[4] = 'background-color:#d50000;color:white'
+
+        if row.iloc[3] == atm:
+            styles[3] = 'background-color:yellow;color:black;font-weight:bold'
+        else:
+            styles[3] = 'background-color:#eeeeee'
+
+    except:
+        pass
+
+    return styles
+
+st.table(ui.style.apply(final_style, axis=1))

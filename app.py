@@ -31,7 +31,7 @@ data = load_data()
 # ================= ADMIN =================
 ADMIN_DB = {
     "9304768496": "Admin Chief", 
-    "9822334455": "Amit Kumar",
+    "7982046438": "Admin 1",
     "9011223344": "Amit Sharma"
 }
 

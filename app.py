@@ -76,15 +76,14 @@ except:
 st.title("🛡️ SMART WEALTH AI 5")
 st.subheader(f"📊 LIVE NIFTY: {spot:,.2f}")
 
-# ================= TRADINGVIEW CHART (NIFTY FIX) =================
+# ================= TRADINGVIEW CHART (ADDED) =================
 tradingview_widget = """
-<div class="tradingview-widget-container">
-  <div id="tv-chart-nifty"></div>
+<div class="tradingview-widget-container" style="height:500px;width:100%">
+  <div id="tradingview_nifty_live"></div>
   <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
   <script type="text/javascript">
   new TradingView.widget({
-    "width": "100%",
-    "height": 500,
+    "autosize": true,
     "symbol": "NSE:NIFTY",
     "interval": "5",
     "timezone": "Asia/Kolkata",
@@ -93,14 +92,14 @@ tradingview_widget = """
     "locale": "en",
     "toolbar_bg": "#f1f3f6",
     "enable_publishing": false,
-    "hide_top_toolbar": false,
-    "save_image": false,
-    "container_id": "tv-chart-nifty"
+    "hide_side_toolbar": false,
+    "allow_interactive_logic": true,
+    "container_id": "tradingview_nifty_live"
   });
   </script>
 </div>
 """
-components.html(tradingview_widget, height=520)
+components.html(tradingview_widget, height=500)
 
 # ================= DATAFRAME =================
 df_ce = pd.DataFrame([vars(x) for x in chain.ce])

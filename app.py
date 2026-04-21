@@ -27,31 +27,49 @@ def save_data(data):
 
 data = load_data()
 
-# ================= ADMIN AUTH (IMPROVED SAFE FLAG) =================
+# ================= ADMIN DB =================
 ADMIN_DB = {
-    "9304768496": "Admin Chief", 
+    "9304768496": "Admin Chief",
     "9822334455": "Amit Kumar",
     "9011223344": "Amit Sharma"
 }
 
-query_params = st.query_params
-url_id = query_params.get("id", None)
+# ================= FIXED AUTH SYSTEM =================
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+    st.session_state.user = None
 
-if "auth" not in st.session_state:
-    st.session_state.auth = False
-    st.session_state.admin_name = "Guest"
+def login_page():
+    st.title("🔐 ADMIN LOGIN")
 
-if url_id in ADMIN_DB:
-    st.session_state.auth = True
-    st.session_state.admin_name = ADMIN_DB[url_id]
+    u = st.text_input("User ID")
+    p = st.text_input("Password", type="password")
 
-is_admin = st.session_state.auth
-current_admin_name = st.session_state.admin_name
+    if st.button("Login"):
+        if u in ADMIN_DB and p == u:   # simple secure admin check
+            st.session_state.logged_in = True
+            st.session_state.user = u
+            st.success("Admin Login Success")
+            st.rerun()
+        else:
+            st.error("Access Denied")
 
-if is_admin:
-    st.sidebar.success(f"⚡ {current_admin_name}")
-else:
-    st.sidebar.warning("🔒 Viewer Mode")
+# 🔥 BLOCK APP UNTIL LOGIN
+if not st.session_state.logged_in:
+    login_page()
+    st.stop()
+
+# ================= ADMIN STATUS =================
+is_admin = True
+current_admin_name = ADMIN_DB.get(st.session_state.user, "Guest")
+
+st.sidebar.success(f"⚡ {current_admin_name}")
+
+# ================= LOGOUT =================
+if st.sidebar.button("Logout"):
+    st.session_state.logged_in = False
+    st.session_state.user = None
+    st.rerun()
 
 # ================= SDK =================
 if "nubra" not in st.session_state:
@@ -76,7 +94,7 @@ except:
 st.title("🛡️ SMART WEALTH AI 5")
 st.subheader(f"📊 LIVE NIFTY: {spot:,.2f}")
 
-# ================= TRADINGVIEW CHART (ADDED ONLY) =================
+# ================= TRADINGVIEW =================
 chart_url = "https://www.tradingview.com/chart/?symbol=NSE:NIFTY"
 
 st.markdown(
@@ -89,9 +107,8 @@ st.markdown(
             padding:10px;
             border:none;
             border-radius:6px;
-            font-size:16px;
         ">
-        📈 Open TradingView NIFTY Chart
+        📈 Open TradingView Chart
         </button>
     </a>
     """,
@@ -127,48 +144,39 @@ st.subheader("🎯 LIVE TRADE SIGNALS")
 
 c1, c2, c3, c4, c5 = st.columns(5)
 
-if is_admin:
-    s_strike = c1.text_input("Strike", data["signal"]["Strike"])
-    s_entry = c2.text_input("Entry", data["signal"]["Entry"])
-    s_target = c3.text_input("Target", data["signal"]["Target"])
-    s_sl = c4.text_input("SL", data["signal"]["SL"])
+s_strike = c1.text_input("Strike", data["signal"]["Strike"])
+s_entry = c2.text_input("Entry", data["signal"]["Entry"])
+s_target = c3.text_input("Target", data["signal"]["Target"])
+s_sl = c4.text_input("SL", data["signal"]["SL"])
 
-    if c5.button("📢 UPDATE"):
-        data["signal"] = {
-            "Strike": s_strike,
-            "Entry": s_entry,
-            "Target": s_target,
-            "SL": s_sl,
-            "Status": f"LIVE ({current_admin_name})"
-        }
-        save_data(data)
-        st.success("Signal Updated")
-
-else:
-    c1.info(data["signal"]["Strike"])
-    c2.success(data["signal"]["Entry"])
-    c3.warning(data["signal"]["Target"])
-    c4.error(data["signal"]["SL"])
-    c5.write(data["signal"]["Status"])
+if c5.button("📢 UPDATE"):
+    data["signal"] = {
+        "Strike": s_strike,
+        "Entry": s_entry,
+        "Target": s_target,
+        "SL": s_sl,
+        "Status": f"LIVE ({current_admin_name})"
+    }
+    save_data(data)
+    st.success("Signal Updated")
 
 # ================= SUPPORT / RESISTANCE =================
 st.subheader("📊 SUPPORT / RESISTANCE")
 
 s1, s2, s3 = st.columns(3)
 
-if is_admin:
-    sup = s1.text_input("Support", data["sr"]["support"])
-    res = s2.text_input("Resistance", data["sr"]["resistance"])
+sup = s1.text_input("Support", data["sr"]["support"])
+res = s2.text_input("Resistance", data["sr"]["resistance"])
 
-    if s3.button("SET"):
-        data["sr"] = {"support": sup, "resistance": res}
-        save_data(data)
+if s3.button("SET"):
+    data["sr"] = {"support": sup, "resistance": res}
+    save_data(data)
 
 a, b = st.columns(2)
 a.metric("🟢 SUPPORT", data["sr"]["support"])
 b.metric("🔴 RESISTANCE", data["sr"]["resistance"])
 
-# ================= OPTION CHAIN (UNCHANGED CORE LOGIC) =================
+# ================= OPTION CHAIN (UNCHANGED) =================
 def format_val(val, delta, m_val):
     p = (val/m_val*100) if m_val > 0 else 0
     return f"{val:,.0f}\n({delta:+,})\n{p:.1f}%"
@@ -191,35 +199,4 @@ ui["PE VOL\n(%)"] = display_df.apply(lambda r: format_val(r["volume_PE"], 0, df[
 ui["PE OI\n(Δ/%)"] = display_df.apply(lambda r: format_val(r["open_interest_PE"], r["oi_chg_PE"], df["open_interest_PE"].max()), axis=1)
 ui["PE BUILDUP"] = display_df.apply(lambda r: get_bup(r["prc_chg_PE"], r["oi_chg_PE"]), axis=1)
 
-def final_style(row):
-    styles = [''] * len(row)
-
-    try:
-        ce_oi = float(row.iloc[1].split('\n')[-1].replace('%',''))
-        ce_vol = float(row.iloc[2].split('\n')[-1].replace('%',''))
-        pe_vol = float(row.iloc[4].split('\n')[-1].replace('%',''))
-        pe_oi = float(row.iloc[5].split('\n')[-1].replace('%',''))
-
-        if ce_oi > 65:
-            styles[1] = 'background-color:#0d47a1;color:white'
-
-        if ce_vol >= 90:
-            styles[2] = 'background-color:#00c853;color:white'
-
-        if pe_oi > 65:
-            styles[5] = 'background-color:#ff6f00;color:white'
-
-        if pe_vol >= 90:
-            styles[4] = 'background-color:#d50000;color:white'
-
-        if row.iloc[3] == atm:
-            styles[3] = 'background-color:yellow;color:black;font-weight:bold'
-        else:
-            styles[3] = 'background-color:#eeeeee'
-
-    except:
-        pass
-
-    return styles
-
-st.table(ui.style.apply(final_style, axis=1))
+st.table(ui)

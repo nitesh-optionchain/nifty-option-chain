@@ -27,7 +27,7 @@ def save_data(data):
 
 data = load_data()
 
-# ================= ADMIN =================
+# ================= ADMIN AUTH (IMPROVED SAFE FLAG) =================
 ADMIN_DB = {
     "9304768496": "Admin Chief", 
     "9822334455": "Amit Kumar",
@@ -37,20 +37,21 @@ ADMIN_DB = {
 query_params = st.query_params
 url_id = query_params.get("id", None)
 
-is_admin = False
-current_admin_name = "Guest"
+if "auth" not in st.session_state:
+    st.session_state.auth = False
+    st.session_state.admin_name = "Guest"
 
 if url_id in ADMIN_DB:
-    is_admin = True
-    current_admin_name = ADMIN_DB[url_id]
+    st.session_state.auth = True
+    st.session_state.admin_name = ADMIN_DB[url_id]
+
+is_admin = st.session_state.auth
+current_admin_name = st.session_state.admin_name
+
+if is_admin:
     st.sidebar.success(f"⚡ {current_admin_name}")
 else:
-    with st.sidebar.expander("🔑 Admin Login"):
-        user_key = st.text_input("Enter Mobile ID:", type="password")
-        if user_key in ADMIN_DB:
-            is_admin = True
-            current_admin_name = ADMIN_DB[user_key]
-            st.sidebar.success(f"✅ {current_admin_name}")
+    st.sidebar.warning("🔒 Viewer Mode")
 
 # ================= SDK =================
 if "nubra" not in st.session_state:
@@ -74,6 +75,28 @@ except:
 
 st.title("🛡️ SMART WEALTH AI 5")
 st.subheader(f"📊 LIVE NIFTY: {spot:,.2f}")
+
+# ================= TRADINGVIEW CHART (ADDED ONLY) =================
+chart_url = "https://www.tradingview.com/chart/?symbol=NSE:NIFTY"
+
+st.markdown(
+    f"""
+    <a href="{chart_url}" target="_blank">
+        <button style="
+            width:100%;
+            background:#2962ff;
+            color:white;
+            padding:10px;
+            border:none;
+            border-radius:6px;
+            font-size:16px;
+        ">
+        📈 Open TradingView NIFTY Chart
+        </button>
+    </a>
+    """,
+    unsafe_allow_html=True
+)
 
 # ================= DATAFRAME =================
 df_ce = pd.DataFrame([vars(x) for x in chain.ce])
@@ -105,10 +128,10 @@ st.subheader("🎯 LIVE TRADE SIGNALS")
 c1, c2, c3, c4, c5 = st.columns(5)
 
 if is_admin:
-    s_strike = c1.text_input("Strike", value=data["signal"]["Strike"])
-    s_entry = c2.text_input("Entry", value=data["signal"]["Entry"])
-    s_target = c3.text_input("Target", value=data["signal"]["Target"])
-    s_sl = c4.text_input("SL", value=data["signal"]["SL"])
+    s_strike = c1.text_input("Strike", data["signal"]["Strike"])
+    s_entry = c2.text_input("Entry", data["signal"]["Entry"])
+    s_target = c3.text_input("Target", data["signal"]["Target"])
+    s_sl = c4.text_input("SL", data["signal"]["SL"])
 
     if c5.button("📢 UPDATE"):
         data["signal"] = {
@@ -119,6 +142,7 @@ if is_admin:
             "Status": f"LIVE ({current_admin_name})"
         }
         save_data(data)
+        st.success("Signal Updated")
 
 else:
     c1.info(data["signal"]["Strike"])
@@ -127,7 +151,7 @@ else:
     c4.error(data["signal"]["SL"])
     c5.write(data["signal"]["Status"])
 
-# ================= SUPPORT RESISTANCE =================
+# ================= SUPPORT / RESISTANCE =================
 st.subheader("📊 SUPPORT / RESISTANCE")
 
 s1, s2, s3 = st.columns(3)
@@ -144,7 +168,7 @@ a, b = st.columns(2)
 a.metric("🟢 SUPPORT", data["sr"]["support"])
 b.metric("🔴 RESISTANCE", data["sr"]["resistance"])
 
-# ================= OPTION CHAIN =================
+# ================= OPTION CHAIN (UNCHANGED CORE LOGIC) =================
 def format_val(val, delta, m_val):
     p = (val/m_val*100) if m_val > 0 else 0
     return f"{val:,.0f}\n({delta:+,})\n{p:.1f}%"
@@ -167,7 +191,6 @@ ui["PE VOL\n(%)"] = display_df.apply(lambda r: format_val(r["volume_PE"], 0, df[
 ui["PE OI\n(Δ/%)"] = display_df.apply(lambda r: format_val(r["open_interest_PE"], r["oi_chg_PE"], df["open_interest_PE"].max()), axis=1)
 ui["PE BUILDUP"] = display_df.apply(lambda r: get_bup(r["prc_chg_PE"], r["oi_chg_PE"]), axis=1)
 
-# ================= COLOR =================
 def final_style(row):
     styles = [''] * len(row)
 

@@ -4,8 +4,6 @@ import streamlit as st
 import pandas as pd
 from streamlit_autorefresh import st_autorefresh
 import json, os
-import plotly.graph_objects as go
-import datetime
 
 # ================= CONFIG =================
 st.set_page_config(page_title="SMART WEALTH AI 5", layout="wide")
@@ -31,7 +29,7 @@ data = load_data()
 
 # ================= ADMIN =================
 ADMIN_DB = {
-    "9304768496": "Admin Chief",
+    "9304768496": "Admin Chief", 
     "9822334455": "Amit Kumar",
     "9011223344": "Amit Sharma"
 }
@@ -77,62 +75,29 @@ except:
 st.title("🛡️ SMART WEALTH AI 5")
 st.subheader(f"📊 LIVE NIFTY: {spot:,.2f}")
 
-# ================= REAL TIME CANDLESTICK =================
-if "candles" not in st.session_state:
-    st.session_state.candles = []
-    st.session_state.last_price = spot
-
-current_time = datetime.datetime.now().strftime("%H:%M:%S")
-
-prev_price = st.session_state.last_price
-
-if len(st.session_state.candles) == 0:
-    st.session_state.candles.append({
-        "time": current_time,
-        "open": spot,
-        "high": spot,
-        "low": spot,
-        "close": spot
-    })
-else:
-    last = st.session_state.candles[-1]
-
-    last["high"] = max(last["high"], spot)
-    last["low"] = min(last["low"], spot)
-    last["close"] = spot
-
-    st.session_state.candles.append({
-        "time": current_time,
-        "open": prev_price,
-        "high": spot,
-        "low": spot,
-        "close": spot
-    })
-
-st.session_state.candles = st.session_state.candles[-30:]
-st.session_state.last_price = spot
-
-df_candle = pd.DataFrame(st.session_state.candles)
-
-st.subheader("📊 LIVE NIFTY CANDLESTICK")
-
-fig = go.Figure(data=[go.Candlestick(
-    x=df_candle["time"],
-    open=df_candle["open"],
-    high=df_candle["high"],
-    low=df_candle["low"],
-    close=df_candle["close"]
-)])
-
-fig.update_layout(height=600, xaxis_rangeslider_visible=False)
-st.plotly_chart(fig, use_container_width=True)
-
 # ================= DATAFRAME =================
 df_ce = pd.DataFrame([vars(x) for x in chain.ce])
 df_pe = pd.DataFrame([vars(x) for x in chain.pe])
 
 df = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE","_PE")).fillna(0)
 df["STRIKE"] = (df["strike_price"]/100).astype(int)
+
+# ================= CHANGE TRACK =================
+if "prev_df" not in st.session_state:
+    st.session_state.prev_df = None
+
+if st.session_state.prev_df is not None:
+    prev = st.session_state.prev_df.set_index("STRIKE")
+    curr = df.set_index("STRIKE")
+
+    df["oi_chg_CE"] = df["STRIKE"].map(curr["open_interest_CE"] - prev["open_interest_CE"]).fillna(0)
+    df["oi_chg_PE"] = df["STRIKE"].map(curr["open_interest_PE"] - prev["open_interest_PE"]).fillna(0)
+    df["prc_chg_CE"] = df["STRIKE"].map(curr["last_traded_price_CE"] - prev["last_traded_price_CE"]).fillna(0)
+    df["prc_chg_PE"] = df["STRIKE"].map(curr["last_traded_price_PE"] - prev["last_traded_price_PE"]).fillna(0)
+else:
+    df["oi_chg_CE"] = df["oi_chg_PE"] = df["prc_chg_CE"] = df["prc_chg_PE"] = 0
+
+st.session_state.prev_df = df.copy()
 
 # ================= ADMIN SIGNAL =================
 st.subheader("🎯 LIVE TRADE SIGNALS")
@@ -180,6 +145,58 @@ a.metric("🟢 SUPPORT", data["sr"]["support"])
 b.metric("🔴 RESISTANCE", data["sr"]["resistance"])
 
 # ================= OPTION CHAIN =================
-st.subheader("📊 OPTION CHAIN")
+def format_val(val, delta, m_val):
+    p = (val/m_val*100) if m_val > 0 else 0
+    return f"{val:,.0f}\n({delta:+,})\n{p:.1f}%"
 
-st.dataframe(df.head(20))
+def get_bup(p, o):
+    if p > 0 and o > 0: return "🟢 LONG"
+    if p < 0 and o > 0: return "🔴 SHORT"
+    return "⚪ -"
+
+atm = int(spot)
+atm_idx = df.index[df["STRIKE"] >= atm][0]
+display_df = df.iloc[max(atm_idx-7,0): atm_idx+8].copy()
+
+ui = pd.DataFrame()
+ui["CE BUILDUP"] = display_df.apply(lambda r: get_bup(r["prc_chg_CE"], r["oi_chg_CE"]), axis=1)
+ui["CE OI\n(Δ/%)"] = display_df.apply(lambda r: format_val(r["open_interest_CE"], r["oi_chg_CE"], df["open_interest_CE"].max()), axis=1)
+ui["CE VOL\n(%)"] = display_df.apply(lambda r: format_val(r["volume_CE"], 0, df["volume_CE"].max()), axis=1)
+ui["STRIKE"] = display_df["STRIKE"]
+ui["PE VOL\n(%)"] = display_df.apply(lambda r: format_val(r["volume_PE"], 0, df["volume_PE"].max()), axis=1)
+ui["PE OI\n(Δ/%)"] = display_df.apply(lambda r: format_val(r["open_interest_PE"], r["oi_chg_PE"], df["open_interest_PE"].max()), axis=1)
+ui["PE BUILDUP"] = display_df.apply(lambda r: get_bup(r["prc_chg_PE"], r["oi_chg_PE"]), axis=1)
+
+# ================= COLOR =================
+def final_style(row):
+    styles = [''] * len(row)
+
+    try:
+        ce_oi = float(row.iloc[1].split('\n')[-1].replace('%',''))
+        ce_vol = float(row.iloc[2].split('\n')[-1].replace('%',''))
+        pe_vol = float(row.iloc[4].split('\n')[-1].replace('%',''))
+        pe_oi = float(row.iloc[5].split('\n')[-1].replace('%',''))
+
+        if ce_oi > 65:
+            styles[1] = 'background-color:#0d47a1;color:white'
+
+        if ce_vol >= 90:
+            styles[2] = 'background-color:#00c853;color:white'
+
+        if pe_oi > 65:
+            styles[5] = 'background-color:#ff6f00;color:white'
+
+        if pe_vol >= 90:
+            styles[4] = 'background-color:#d50000;color:white'
+
+        if row.iloc[3] == atm:
+            styles[3] = 'background-color:yellow;color:black;font-weight:bold'
+        else:
+            styles[3] = 'background-color:#eeeeee'
+
+    except:
+        pass
+
+    return styles
+
+st.table(ui.style.apply(final_style, axis=1))

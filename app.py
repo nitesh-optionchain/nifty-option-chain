@@ -30,7 +30,7 @@ data = load_data()
 # ================= ADMIN =================
 ADMIN_DB = {
     "9304768496": "Admin Chief", 
-    "7982046438": "Admin 1",
+    "7982046438": "admin 1",
     "9011223344": "Amit Sharma"
 }
 
@@ -75,20 +75,17 @@ except:
 st.title("🛡️ SMART WEALTH AI 5")
 st.subheader(f"📊 LIVE NIFTY: {spot:,.2f}")
 
-# ================= 📈 TRADINGVIEW CHART (ONLY ADDITION) =================
-st.markdown(
-    """
-    <iframe
-        src="https://www.tradingview.com/widgetembed/?symbol=NSE:NIFTY&interval=5&theme=dark"
-        width="100%"
-        height="500"
-        frameborder="0"
-        allowtransparency="true"
-        scrolling="no">
-    </iframe>
-    """,
-    unsafe_allow_html=True
-)
+# ================= 📈 FIXED TRADINGVIEW CHART =================
+st.components.v1.html("""
+<iframe
+    src="https://www.tradingview.com/widgetembed/?frameElementId=tradingview_nifty&symbol=NSE%3ANIFTY&interval=5&hidesidetoolbar=1&symboledit=1&saveimage=0&toolbarbg=F1F3F6&studies=[]&theme=dark"
+    width="100%"
+    height="500"
+    frameborder="0"
+    allowtransparency="true"
+    scrolling="no">
+</iframe>
+""", height=520)
 
 # ================= DATAFRAME =================
 df_ce = pd.DataFrame([vars(x) for x in chain.ce])

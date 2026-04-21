@@ -75,16 +75,31 @@ except:
 st.title("🛡️ SMART WEALTH AI 5")
 st.subheader(f"📊 LIVE NIFTY: {spot:,.2f}")
 
-# ================= 📈 FIXED TRADINGVIEW CHART =================
+# ================= 📈 TRADINGVIEW CHART (FIXED) =================
 st.components.v1.html("""
-<iframe
-    src="https://www.tradingview.com/widgetembed/?frameElementId=tradingview_nifty&symbol=NSE%3ANIFTY&interval=5&hidesidetoolbar=1&symboledit=1&saveimage=0&toolbarbg=F1F3F6&studies=[]&theme=dark"
-    width="100%"
-    height="500"
-    frameborder="0"
-    allowtransparency="true"
-    scrolling="no">
-</iframe>
+<div class="tradingview-widget-container">
+  <div id="tradingview_nifty"></div>
+
+  <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+
+  <script type="text/javascript">
+    new TradingView.widget({
+      "width": "100%",
+      "height": 500,
+      "symbol": "NSE:NIFTY",
+      "interval": "5",
+      "timezone": "Asia/Kolkata",
+      "theme": "dark",
+      "style": "1",
+      "locale": "en",
+      "toolbar_bg": "#f1f3f6",
+      "enable_publishing": false,
+      "hide_side_toolbar": false,
+      "allow_symbol_change": false,
+      "container_id": "tradingview_nifty"
+    });
+  </script>
+</div>
 """, height=520)
 
 # ================= DATAFRAME =================

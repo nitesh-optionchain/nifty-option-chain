@@ -75,7 +75,7 @@ except:
 st.title("🛡️ SMART WEALTH AI 5")
 st.subheader(f"📊 LIVE NIFTY: {spot:,.2f}")
 
-st.subheader("📊 LIVE NIFTY CHART (Investing.com)")
+st.subheader("📊 LIVE NIFTY CHART")
 
 st.components.v1.html("""
 <iframe

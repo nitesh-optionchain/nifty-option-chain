@@ -27,7 +27,7 @@ if url_id in ADMIN_DB:
     st.sidebar.success(f"⚡ {current_admin_name}")
 else:
     with st.sidebar.expander("🔑 Admin Login"):
-        user_key = st.text_input("Enter ID", type="password")
+        user_key = st.text_input("Enter Mobile ID:", type="password")
         if user_key in ADMIN_DB:
             is_admin = True
             current_admin_name = ADMIN_DB[user_key]
@@ -57,34 +57,21 @@ if not result:
 
 chain = result.chain
 
-# ===== LIVE NIFTY =====
+# ================= LIVE NIFTY =================
 spot = getattr(chain, "underlying_value", None)
 prev_close = getattr(chain, "previous_close", None)
 
-if spot and prev_close:
-    change = round(spot - prev_close, 2)
-    change_pct = round((change / prev_close) * 100, 2)
-    nifty_text = f"{spot:,.2f} ({change:+} | {change_pct:+}%)"
-    color = "#00ff00" if change > 0 else "#ff5252"
-else:
-    spot = chain.at_the_money_strike / 100
-    nifty_text = f"{spot:,.2f}"
-    color = "#00ffcc"
-
-vix = getattr(chain, "vix", "N/A")
-
-# ================= HEADER =================
 st.title("🛡️ SMART WEALTH AI 5")
 
-st.markdown(
-    f"""
-    <div style="background:#111;padding:15px;border-radius:10px;text-align:center">
-        <h2 style="color:white;">📊 NIFTY LIVE</h2>
-        <h1 style="color:{color};">{nifty_text}</h1>
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+c1, c2 = st.columns(2)
+
+if spot is not None and prev_close:
+    change = spot - prev_close
+    change_pct = (change / prev_close) * 100
+    c1.metric("📊 NIFTY LIVE", f"{spot:,.2f}", f"{change:+.2f} ({change_pct:+.2f}%)")
+else:
+    spot = chain.at_the_money_strike / 100
+    c1.metric("📊 NIFTY (Fallback)", f"{spot:,.2f}")
 
 # ================= DATAFRAME =================
 df_ce = pd.DataFrame([vars(x) for x in chain.ce])
@@ -93,39 +80,38 @@ df_pe = pd.DataFrame([vars(x) for x in chain.pe])
 df = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE","_PE")).fillna(0)
 df["STRIKE"] = (df["strike_price"]/100).astype(int)
 
-max_ce_vol = df["volume_CE"].max()
-max_pe_vol = df["volume_PE"].max()
-max_ce_oi = df["open_interest_CE"].max()
-max_pe_oi = df["open_interest_PE"].max()
+# ================= CHANGE TRACK =================
+if st.session_state.prev_df is not None:
+    prev = st.session_state.prev_df.set_index("STRIKE")
+    curr = df.set_index("STRIKE")
 
-total_ce = df["open_interest_CE"].sum()
-total_pe = df["open_interest_PE"].sum()
-pcr = round(total_pe / total_ce, 2) if total_ce else 0
+    df["oi_chg_CE"] = df["STRIKE"].map(curr["open_interest_CE"] - prev["open_interest_CE"]).fillna(0)
+    df["oi_chg_PE"] = df["STRIKE"].map(curr["open_interest_PE"] - prev["open_interest_PE"]).fillna(0)
+    df["prc_chg_CE"] = df["STRIKE"].map(curr["last_traded_price_CE"] - prev["last_traded_price_CE"]).fillna(0)
+    df["prc_chg_PE"] = df["STRIKE"].map(curr["last_traded_price_PE"] - prev["last_traded_price_PE"]).fillna(0)
+else:
+    df["oi_chg_CE"] = df["oi_chg_PE"] = df["prc_chg_CE"] = df["prc_chg_PE"] = 0
 
-# ================= METRICS =================
-m1, m2, m3 = st.columns(3)
-m1.metric("PCR", pcr)
-m2.metric("VIX", vix)
-m3.metric("STATUS", "📈 NORMAL" if pcr > 0.8 else "📉 BEARISH")
+st.session_state.prev_df = df.copy()
 
 # ================= ADMIN SIGNAL =================
-st.subheader("🎯 TRADE SIGNAL")
+st.subheader("🎯 LIVE TRADE SIGNALS")
 
 c1, c2, c3, c4, c5 = st.columns(5)
 
 if is_admin:
-    s1 = c1.text_input("Strike", value=st.session_state.signal["Strike"], key="strike")
-    s2 = c2.text_input("Entry", value=st.session_state.signal["Entry"], key="entry")
-    s3 = c3.text_input("Target", value=st.session_state.signal["Target"], key="target")
-    s4 = c4.text_input("SL", value=st.session_state.signal["SL"], key="sl")
+    s_strike = c1.text_input("Strike", value=st.session_state.signal["Strike"], key="strike")
+    s_entry = c2.text_input("Entry", value=st.session_state.signal["Entry"], key="entry")
+    s_target = c3.text_input("Target", value=st.session_state.signal["Target"], key="target")
+    s_sl = c4.text_input("SL", value=st.session_state.signal["SL"], key="sl")
 
-    if c5.button("UPDATE SIGNAL"):
-        st.session_state.signal["Strike"] = s1
-        st.session_state.signal["Entry"] = s2
-        st.session_state.signal["Target"] = s3
-        st.session_state.signal["SL"] = s4
+    if c5.button("📢 UPDATE"):
+        st.session_state.signal["Strike"] = s_strike
+        st.session_state.signal["Entry"] = s_entry
+        st.session_state.signal["Target"] = s_target
+        st.session_state.signal["SL"] = s_sl
         st.session_state.signal["Status"] = f"LIVE ({current_admin_name})"
-        st.rerun()
+
 else:
     c1.info(st.session_state.signal["Strike"])
     c2.success(st.session_state.signal["Entry"])
@@ -133,7 +119,7 @@ else:
     c4.error(st.session_state.signal["SL"])
     c5.write(st.session_state.signal["Status"])
 
-# ================= SUPPORT / RESISTANCE =================
+# ================= SUPPORT RESISTANCE =================
 st.subheader("📊 SUPPORT / RESISTANCE")
 
 s1, s2, s3 = st.columns(3)
@@ -154,45 +140,54 @@ def format_val(val, delta, m_val):
     p = (val/m_val*100) if m_val > 0 else 0
     return f"{val:,.0f}\n({delta:+,})\n{p:.1f}%"
 
+def get_bup(p, o):
+    if p > 0 and o > 0: return "🟢 LONG"
+    if p < 0 and o > 0: return "🔴 SHORT"
+    return "⚪ -"
+
 atm = int(spot)
 atm_idx = df.index[df["STRIKE"] >= atm][0]
-display_df = df.iloc[max(atm_idx-7,0): atm_idx+8]
+display_df = df.iloc[max(atm_idx-7,0): atm_idx+8].copy()
 
 ui = pd.DataFrame()
-ui["CE OI"] = display_df.apply(lambda r: format_val(r["open_interest_CE"], 0, max_ce_oi), axis=1)
-ui["CE VOL"] = display_df.apply(lambda r: format_val(r["volume_CE"], 0, max_ce_vol), axis=1)
+ui["CE BUILDUP"] = display_df.apply(lambda r: get_bup(r["prc_chg_CE"], r["oi_chg_CE"]), axis=1)
+ui["CE OI\n(Δ/%)"] = display_df.apply(lambda r: format_val(r["open_interest_CE"], r["oi_chg_CE"], df["open_interest_CE"].max()), axis=1)
+ui["CE VOL\n(%)"] = display_df.apply(lambda r: format_val(r["volume_CE"], 0, df["volume_CE"].max()), axis=1)
 ui["STRIKE"] = display_df["STRIKE"]
-ui["PE VOL"] = display_df.apply(lambda r: format_val(r["volume_PE"], 0, max_pe_vol), axis=1)
-ui["PE OI"] = display_df.apply(lambda r: format_val(r["open_interest_PE"], 0, max_pe_oi), axis=1)
+ui["PE VOL\n(%)"] = display_df.apply(lambda r: format_val(r["volume_PE"], 0, df["volume_PE"].max()), axis=1)
+ui["PE OI\n(Δ/%)"] = display_df.apply(lambda r: format_val(r["open_interest_PE"], r["oi_chg_PE"], df["open_interest_PE"].max()), axis=1)
+ui["PE BUILDUP"] = display_df.apply(lambda r: get_bup(r["prc_chg_PE"], r["oi_chg_PE"]), axis=1)
 
-def style(row):
+# ================= COLOR =================
+def final_style(row):
     styles = [''] * len(row)
 
     try:
-        ce_vol = float(str(row.iloc[1]).split('\n')[-1].replace('%',''))
-        pe_vol = float(str(row.iloc[3]).split('\n')[-1].replace('%',''))
+        ce_oi = float(row.iloc[1].split('\n')[-1].replace('%',''))
+        ce_vol = float(row.iloc[2].split('\n')[-1].replace('%',''))
+        pe_vol = float(row.iloc[4].split('\n')[-1].replace('%',''))
+        pe_oi = float(row.iloc[5].split('\n')[-1].replace('%',''))
 
-        # CE
-        if ce_vol > 70:
+        if ce_oi > 65:
             styles[1] = 'background-color:#0d47a1;color:white'
-        if ce_vol == 100:
-            styles[1] = 'background-color:#00c853;color:white'
 
-        # PE
-        if pe_vol > 70:
-            styles[3] = 'background-color:#ff6f00;color:white'
-        if pe_vol == 100:
-            styles[3] = 'background-color:#d50000;color:white'
+        if ce_vol >= 90:
+            styles[2] = 'background-color:#00c853;color:white'
 
-        # ATM
-        if row.iloc[2] == atm:
-            styles[2] = 'background-color:yellow;color:black'
+        if pe_oi > 65:
+            styles[5] = 'background-color:#ff6f00;color:white'
+
+        if pe_vol >= 90:
+            styles[4] = 'background-color:#d50000;color:white'
+
+        if row.iloc[3] == atm:
+            styles[3] = 'background-color:yellow;color:black;font-weight:bold'
         else:
-            styles[2] = 'background-color:#eeeeee'
+            styles[3] = 'background-color:#eeeeee'
 
     except:
         pass
 
     return styles
 
-st.table(ui.style.apply(style, axis=1))
+st.table(ui.style.apply(final_style, axis=1))

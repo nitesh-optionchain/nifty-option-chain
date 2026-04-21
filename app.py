@@ -27,40 +27,34 @@ def save_data(data):
 
 data = load_data()
 
-# ================= ADMIN DB (UNCHANGED) =================
+# ================= SECURE ADMIN SYSTEM =================
 ADMIN_DB = {
     "9304768496": "Admin Chief", 
     "9822334455": "Amit Kumar",
     "9011223344": "Amit Sharma"
 }
 
-query_params = st.query_params
-url_id = query_params.get("id", None)
-
-# ================= FIXED ADMIN AUTH (SESSION BASED) =================
-if "is_admin" not in st.session_state:
-    st.session_state.is_admin = False
+# ================= SESSION AUTH (SECURE) =================
+if "auth" not in st.session_state:
+    st.session_state.auth = False
+if "admin_name" not in st.session_state:
     st.session_state.admin_name = "Guest"
 
-# URL LOGIN
-if url_id in ADMIN_DB:
-    st.session_state.is_admin = True
-    st.session_state.admin_name = ADMIN_DB[url_id]
+# ================= LOGIN (NO URL BYPASS) =================
+if not st.session_state.auth:
+    st.sidebar.markdown("## 🔐 Admin Login")
 
-# SIDEBAR LOGIN
-if not st.session_state.is_admin:
-    with st.sidebar.expander("🔑 Admin Login"):
-        user_key = st.text_input("Enter Mobile ID:", type="password")
+    user_key = st.sidebar.text_input("Enter Admin ID", type="password")
 
-        if st.button("Login"):
-            if user_key in ADMIN_DB:
-                st.session_state.is_admin = True
-                st.session_state.admin_name = ADMIN_DB[user_key]
-                st.rerun()
-            else:
-                st.error("Invalid Admin ID")
+    if st.sidebar.button("Login"):
+        if user_key in ADMIN_DB:
+            st.session_state.auth = True
+            st.session_state.admin_name = ADMIN_DB[user_key]
+            st.rerun()
+        else:
+            st.sidebar.error("Invalid Admin ID")
 
-is_admin = st.session_state.is_admin
+is_admin = st.session_state.auth
 current_admin_name = st.session_state.admin_name
 
 st.sidebar.success(f"⚡ {current_admin_name}")
@@ -68,7 +62,7 @@ st.sidebar.success(f"⚡ {current_admin_name}")
 # ================= LOGOUT =================
 if is_admin:
     if st.sidebar.button("Logout"):
-        st.session_state.is_admin = False
+        st.session_state.auth = False
         st.session_state.admin_name = "Guest"
         st.rerun()
 
@@ -95,7 +89,7 @@ except:
 st.title("🛡️ SMART WEALTH AI 5")
 st.subheader(f"📊 LIVE NIFTY: {spot:,.2f}")
 
-# ================= TRADINGVIEW (ADDED ONLY) =================
+# ================= TRADINGVIEW =================
 st.markdown(
     """
     <a href="https://www.tradingview.com/chart/?symbol=NSE:NIFTY" target="_blank">
@@ -106,9 +100,8 @@ st.markdown(
             padding:10px;
             border:none;
             border-radius:6px;
-            font-size:16px;
-        ">
-        📈 Open TradingView Chart
+            font-size:16px;">
+        📈 TradingView Chart
         </button>
     </a>
     """,
@@ -167,7 +160,7 @@ else:
     c4.error(data["signal"]["SL"])
     c5.write(data["signal"]["Status"])
 
-# ================= SUPPORT RESISTANCE =================
+# ================= SUPPORT / RESISTANCE =================
 st.subheader("📊 SUPPORT / RESISTANCE")
 
 s1, s2, s3 = st.columns(3)
@@ -200,43 +193,11 @@ display_df = df.iloc[max(atm_idx-7,0): atm_idx+8].copy()
 
 ui = pd.DataFrame()
 ui["CE BUILDUP"] = display_df.apply(lambda r: get_bup(r["prc_chg_CE"], r["oi_chg_CE"]), axis=1)
-ui["CE OI\n(Δ/%)"] = display_df.apply(lambda r: format_val(r["open_interest_CE"], r["oi_chg_CE"], df["open_interest_CE"].max()), axis=1)
-ui["CE VOL\n(%)"] = display_df.apply(lambda r: format_val(r["volume_CE"], 0, df["volume_CE"].max()), axis=1)
+ui["CE OI"] = display_df["open_interest_CE"]
+ui["CE VOL"] = display_df["volume_CE"]
 ui["STRIKE"] = display_df["STRIKE"]
-ui["PE VOL\n(%)"] = display_df.apply(lambda r: format_val(r["volume_PE"], 0, df["volume_PE"].max()), axis=1)
-ui["PE OI\n(Δ/%)"] = display_df.apply(lambda r: format_val(r["open_interest_PE"], r["oi_chg_PE"], df["open_interest_PE"].max()), axis=1)
+ui["PE VOL"] = display_df["volume_PE"]
+ui["PE OI"] = display_df["open_interest_PE"]
 ui["PE BUILDUP"] = display_df.apply(lambda r: get_bup(r["prc_chg_PE"], r["oi_chg_PE"]), axis=1)
 
-# ================= COLOR =================
-def final_style(row):
-    styles = [''] * len(row)
-
-    try:
-        ce_oi = float(row.iloc[1].split('\n')[-1].replace('%',''))
-        ce_vol = float(row.iloc[2].split('\n')[-1].replace('%',''))
-        pe_vol = float(row.iloc[4].split('\n')[-1].replace('%',''))
-        pe_oi = float(row.iloc[5].split('\n')[-1].replace('%',''))
-
-        if ce_oi > 65:
-            styles[1] = 'background-color:#0d47a1;color:white'
-
-        if ce_vol >= 90:
-            styles[2] = 'background-color:#00c853;color:white'
-
-        if pe_oi > 65:
-            styles[5] = 'background-color:#ff6f00;color:white'
-
-        if pe_vol >= 90:
-            styles[4] = 'background-color:#d50000;color:white'
-
-        if row.iloc[3] == atm:
-            styles[3] = 'background-color:yellow;color:black;font-weight:bold'
-        else:
-            styles[3] = 'background-color:#eeeeee'
-
-    except:
-        pass
-
-    return styles
-
-st.table(ui.style.apply(final_style, axis=1))
+st.table(ui)

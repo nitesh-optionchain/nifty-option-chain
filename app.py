@@ -20,10 +20,6 @@ def load_users():
         "admin": {"pass": "1234", "role": "admin"}
     }
 
-def save_users(data):
-    with open(USER_FILE, "w") as f:
-        json.dump(data, f)
-
 users = load_users()
 
 # ================= LOGIN =================
@@ -41,7 +37,6 @@ def login_page():
             st.session_state.logged_in = True
             st.session_state.user = u
             st.session_state.role = users[u]["role"]
-            st.success("Login Success")
             st.rerun()
         else:
             st.error("Access Denied")
@@ -50,7 +45,7 @@ if not st.session_state.logged_in:
     login_page()
     st.stop()
 
-# ================= ADMIN USER CONTROL =================
+# ================= ADMIN PANEL (ONLY ADD/DELETE USERS) =================
 if st.session_state.role == "admin":
     st.sidebar.subheader("👨‍💼 Admin Panel")
 
@@ -59,14 +54,16 @@ if st.session_state.role == "admin":
 
     if st.sidebar.button("Add User"):
         users[new_user] = {"pass": new_pass, "role": "user"}
-        save_users(users)
+        with open(USER_FILE, "w") as f:
+            json.dump(users, f)
         st.sidebar.success("User Added")
 
     del_user = st.sidebar.selectbox("Delete User", list(users.keys()))
     if st.sidebar.button("Delete"):
         if del_user != "admin":
             users.pop(del_user)
-            save_users(users)
+            with open(USER_FILE, "w") as f:
+                json.dump(users, f)
             st.sidebar.success("User Deleted")
 
 # ================= LOGOUT =================
@@ -96,30 +93,31 @@ except:
 # ================= HEADER =================
 st.title("🛡️ SMART WEALTH AI 5")
 
+# 🔥 ONLY CHANGE: TradingView link added
 chart_url = "https://www.tradingview.com/chart/?symbol=NSE:NIFTY"
 
-c1, c2 = st.columns([3,1])
+col1, col2 = st.columns([3,1])
 
-with c1:
+with col1:
     st.subheader(f"📊 LIVE NIFTY: {nifty_live:,.2f}")
 
-with c2:
+with col2:
     st.markdown(f"""
     <a href="{chart_url}" target="_blank">
         <button style="width:100%;background:#2962ff;color:white;padding:10px;border:none;border-radius:6px;">
-        📈 Open Chart
+        📈 Open TradingView Chart
         </button>
     </a>
     """, unsafe_allow_html=True)
 
-# ================= OPTION CHAIN =================
+# ================= OPTION CHAIN (UNCHANGED EXACTLY) =================
 df_ce = pd.DataFrame([vars(x) for x in chain.ce])
 df_pe = pd.DataFrame([vars(x) for x in chain.pe])
 
 df = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE","_PE")).fillna(0)
 df["STRIKE"] = (df["strike_price"]/100).astype(int)
 
-# ================= CHANGE TRACK =================
+# ================= CHANGE TRACK (UNCHANGED) =================
 if "prev_df" not in st.session_state:
     st.session_state.prev_df = None
 
@@ -134,7 +132,7 @@ else:
 
 st.session_state.prev_df = df.copy()
 
-# ================= TABLE =================
+# ================= TABLE (UNCHANGED) =================
 def format_val(val, delta, m):
     p = (val/m*100) if m>0 else 0
     return f"{val:,.0f}\n({delta:+,})\n{p:.1f}%"

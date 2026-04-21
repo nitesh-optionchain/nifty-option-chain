@@ -3,15 +3,34 @@ from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 import streamlit as st
 import pandas as pd
 from streamlit_autorefresh import st_autorefresh
+import json, os
 
 # ================= CONFIG =================
 st.set_page_config(page_title="SMART WEALTH AI 5", layout="wide")
 st_autorefresh(interval=5000, key="refresh")
 
+# ================= FILE STORAGE =================
+DATA_FILE = "admin_data.json"
+
+def load_data():
+    if os.path.exists(DATA_FILE):
+        with open(DATA_FILE, "r") as f:
+            return json.load(f)
+    return {
+        "signal": {"Strike": "-", "Entry": "-", "Target": "-", "SL": "-", "Status": "WAITING"},
+        "sr": {"support": "-", "resistance": "-"}
+    }
+
+def save_data(data):
+    with open(DATA_FILE, "w") as f:
+        json.dump(data, f)
+
+data = load_data()
+
 # ================= ADMIN =================
 ADMIN_DB = {
     "9304768496": "Admin Chief", 
-    "7982046438": "Rupesh Kumar",
+    "9822334455": "Amit Kumar",
     "9011223344": "Amit Sharma"
 }
 
@@ -33,16 +52,6 @@ else:
             current_admin_name = ADMIN_DB[user_key]
             st.sidebar.success(f"✅ {current_admin_name}")
 
-# ================= SESSION =================
-if "prev_df" not in st.session_state:
-    st.session_state.prev_df = None
-
-if "signal" not in st.session_state:
-    st.session_state.signal = {"Strike": "-", "Entry": "-", "Target": "-", "SL": "-", "Status": "WAITING"}
-
-if "sr" not in st.session_state:
-    st.session_state.sr = {"support": "-", "resistance": "-"}
-
 # ================= SDK =================
 if "nubra" not in st.session_state:
     st.session_state.nubra = InitNubraSdk(NubraEnv.UAT, env_creds=True)
@@ -58,20 +67,13 @@ if not result:
 chain = result.chain
 
 # ================= LIVE NIFTY =================
-spot = getattr(chain, "underlying_value", None)
-prev_close = getattr(chain, "previous_close", None)
+try:
+    spot = chain.ce[0].underlying_price / 100
+except:
+    spot = chain.at_the_money_strike / 100
 
 st.title("🛡️ SMART WEALTH AI 5")
-
-c1, c2 = st.columns(2)
-
-if spot is not None and prev_close:
-    change = spot - prev_close
-    change_pct = (change / prev_close) * 100
-    c1.metric("📊 NIFTY LIVE", f"{spot:,.2f}", f"{change:+.2f} ({change_pct:+.2f}%)")
-else:
-    spot = chain.at_the_money_strike / 100
-    c1.metric("📊 NIFTY (Fallback)", f"{spot:,.2f}")
+st.subheader(f"📊 LIVE NIFTY: {spot:,.2f}")
 
 # ================= DATAFRAME =================
 df_ce = pd.DataFrame([vars(x) for x in chain.ce])
@@ -81,6 +83,9 @@ df = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE","_PE")).fillna(0)
 df["STRIKE"] = (df["strike_price"]/100).astype(int)
 
 # ================= CHANGE TRACK =================
+if "prev_df" not in st.session_state:
+    st.session_state.prev_df = None
+
 if st.session_state.prev_df is not None:
     prev = st.session_state.prev_df.set_index("STRIKE")
     curr = df.set_index("STRIKE")
@@ -100,24 +105,27 @@ st.subheader("🎯 LIVE TRADE SIGNALS")
 c1, c2, c3, c4, c5 = st.columns(5)
 
 if is_admin:
-    s_strike = c1.text_input("Strike", value=st.session_state.signal["Strike"], key="strike")
-    s_entry = c2.text_input("Entry", value=st.session_state.signal["Entry"], key="entry")
-    s_target = c3.text_input("Target", value=st.session_state.signal["Target"], key="target")
-    s_sl = c4.text_input("SL", value=st.session_state.signal["SL"], key="sl")
+    s_strike = c1.text_input("Strike", value=data["signal"]["Strike"])
+    s_entry = c2.text_input("Entry", value=data["signal"]["Entry"])
+    s_target = c3.text_input("Target", value=data["signal"]["Target"])
+    s_sl = c4.text_input("SL", value=data["signal"]["SL"])
 
     if c5.button("📢 UPDATE"):
-        st.session_state.signal["Strike"] = s_strike
-        st.session_state.signal["Entry"] = s_entry
-        st.session_state.signal["Target"] = s_target
-        st.session_state.signal["SL"] = s_sl
-        st.session_state.signal["Status"] = f"LIVE ({current_admin_name})"
+        data["signal"] = {
+            "Strike": s_strike,
+            "Entry": s_entry,
+            "Target": s_target,
+            "SL": s_sl,
+            "Status": f"LIVE ({current_admin_name})"
+        }
+        save_data(data)
 
 else:
-    c1.info(st.session_state.signal["Strike"])
-    c2.success(st.session_state.signal["Entry"])
-    c3.warning(st.session_state.signal["Target"])
-    c4.error(st.session_state.signal["SL"])
-    c5.write(st.session_state.signal["Status"])
+    c1.info(data["signal"]["Strike"])
+    c2.success(data["signal"]["Entry"])
+    c3.warning(data["signal"]["Target"])
+    c4.error(data["signal"]["SL"])
+    c5.write(data["signal"]["Status"])
 
 # ================= SUPPORT RESISTANCE =================
 st.subheader("📊 SUPPORT / RESISTANCE")
@@ -125,15 +133,16 @@ st.subheader("📊 SUPPORT / RESISTANCE")
 s1, s2, s3 = st.columns(3)
 
 if is_admin:
-    sup = s1.text_input("Support", st.session_state.sr["support"])
-    res = s2.text_input("Resistance", st.session_state.sr["resistance"])
+    sup = s1.text_input("Support", data["sr"]["support"])
+    res = s2.text_input("Resistance", data["sr"]["resistance"])
 
     if s3.button("SET"):
-        st.session_state.sr = {"support": sup, "resistance": res}
+        data["sr"] = {"support": sup, "resistance": res}
+        save_data(data)
 
 a, b = st.columns(2)
-a.metric("🟢 SUPPORT", st.session_state.sr["support"])
-b.metric("🔴 RESISTANCE", st.session_state.sr["resistance"])
+a.metric("🟢 SUPPORT", data["sr"]["support"])
+b.metric("🔴 RESISTANCE", data["sr"]["resistance"])
 
 # ================= OPTION CHAIN =================
 def format_val(val, delta, m_val):

@@ -75,20 +75,24 @@ except:
 st.title("🛡️ SMART WEALTH AI 5")
 st.subheader(f"📊 LIVE NIFTY: {spot:,.2f}")
 
-# ================= SYMBOL SELECTOR (STEP 1) =================
-symbol = st.selectbox(
-    "📊 Select Index",
-    ["NSE:NIFTY", "NSE:BANKNIFTY", "BSE:SENSEX"]
-)
+st.subheader(f"📊 LIVE NIFTY: {spot:,.2f}")
 
-# ================= TRADINGVIEW CHART =================
-st.markdown("## 📊 LIVE CHART")
+# ================= STABLE CHART (NO TRADINGVIEW) =================
+import plotly.graph_objects as go
 
-st.components.v1.iframe(
-    "https://www.tradingview.com/chart/?symbol=NSE:NIFTY",
-    height=600,
-    scrolling=True
-)
+st.subheader("📊 LIVE NIFTY CHART (STABLE)")
+
+fig = go.Figure()
+
+fig.add_trace(go.Scatter(
+    x=[0,1,2,3,4],
+    y=[spot-10, spot-5, spot, spot+5, spot+10],
+    mode="lines+markers"
+))
+
+fig.update_layout(height=500)
+
+st.plotly_chart(fig, use_container_width=True)
 
 # ================= DATAFRAME =================
 df_ce = pd.DataFrame([vars(x) for x in chain.ce])

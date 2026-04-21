@@ -76,32 +76,11 @@ st.title("🛡️ SMART WEALTH AI 5")
 st.subheader(f"📊 LIVE NIFTY: {spot:,.2f}")
 
 # ================= 📈 TRADINGVIEW CHART (FIXED) =================
-st.components.v1.html("""
-<div class="tradingview-widget-container">
-  <div id="tradingview_nifty"></div>
-
-  <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
-
-  <script type="text/javascript">
-    new TradingView.widget({
-      "width": "100%",
-      "height": 500,
-      "symbol": "NSE:NIFTY",
-      "interval": "5",
-      "timezone": "Asia/Kolkata",
-      "theme": "dark",
-      "style": "1",
-      "locale": "en",
-      "toolbar_bg": "#f1f3f6",
-      "enable_publishing": false,
-      "hide_side_toolbar": false,
-      "allow_symbol_change": false,
-      "container_id": "tradingview_nifty"
-    });
-  </script>
-</div>
-""", height=520)
-
+st.components.v1.iframe(
+    "https://www.tradingview.com/chart/?symbol=NSE:NIFTY",
+    height=550,
+    scrolling=True
+)
 # ================= DATAFRAME =================
 df_ce = pd.DataFrame([vars(x) for x in chain.ce])
 df_pe = pd.DataFrame([vars(x) for x in chain.pe])

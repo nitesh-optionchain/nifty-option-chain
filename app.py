@@ -28,7 +28,7 @@ def save_users(data):
 
 users = load_users()
 
-# ================= LOGIN SYSTEM =================
+# ================= LOGIN =================
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.user = None
@@ -52,7 +52,7 @@ if not st.session_state.logged_in:
     login_page()
     st.stop()
 
-# ================= ADMIN CHECK =================
+# ================= ADMIN =================
 is_admin = st.session_state.user in users
 admin_name = users.get(st.session_state.user, "Guest")
 
@@ -60,16 +60,15 @@ st.sidebar.success(f"⚡ {admin_name}")
 
 # ================= ADMIN PANEL =================
 if is_admin:
-    st.sidebar.markdown("## 👨‍💼 Admin Panel")
+    st.sidebar.subheader("👨‍💼 Admin Panel")
 
     new_user = st.sidebar.text_input("New User ID")
     new_name = st.sidebar.text_input("User Name")
 
     if st.sidebar.button("Add User"):
-        if new_user and new_name:
-            users[new_user] = new_name
-            save_users(users)
-            st.sidebar.success("User Added")
+        users[new_user] = new_name
+        save_users(users)
+        st.sidebar.success("User Added")
 
     del_user = st.sidebar.selectbox("Delete User", list(users.keys()))
 
@@ -85,7 +84,7 @@ if st.sidebar.button("Logout"):
     st.session_state.user = None
     st.rerun()
 
-# ================= SDK INIT =================
+# ================= SDK =================
 if "nubra" not in st.session_state:
     st.session_state.nubra = InitNubraSdk(NubraEnv.UAT, env_creds=True)
 
@@ -108,7 +107,7 @@ except:
 st.title("🛡️ SMART WEALTH AI 5")
 st.subheader(f"📊 LIVE NIFTY: {spot:,.2f}")
 
-# ================= TRADINGVIEW CHART =================
+# ================= TRADINGVIEW =================
 chart_url = "https://www.tradingview.com/chart/?symbol=NSE:NIFTY"
 
 st.markdown(
@@ -121,7 +120,6 @@ st.markdown(
             padding:10px;
             border:none;
             border-radius:6px;
-            font-size:16px;
         ">
         📈 Open TradingView Chart
         </button>
@@ -154,29 +152,7 @@ else:
 
 st.session_state.prev_df = df.copy()
 
-# ================= TRADE SIGNAL =================
-st.subheader("🎯 LIVE TRADE SIGNALS")
-
-c1, c2, c3, c4 = st.columns(4)
-
-strike = c1.text_input("Strike", "")
-entry = c2.text_input("Entry", "")
-target = c3.text_input("Target", "")
-sl = c4.text_input("SL", "")
-
-st.write(f"STRIKE: {strike} | ENTRY: {entry} | TARGET: {target} | SL: {sl}")
-
-# ================= SUPPORT / RESISTANCE =================
-st.subheader("📊 SUPPORT / RESISTANCE")
-
-s1, s2 = st.columns(2)
-
-support = s1.text_input("Support", "")
-resistance = s2.text_input("Resistance", "")
-
-st.write(f"SUPPORT: {support} | RESISTANCE: {resistance}")
-
-# ================= OPTION CHAIN =================
+# ================= OPTION CHAIN (FULL RESTORED) =================
 def format_val(val, delta, m_val):
     p = (val/m_val*100) if m_val > 0 else 0
     return f"{val:,.0f}\n({delta:+,})\n{p:.1f}%"
@@ -191,10 +167,15 @@ atm_idx = df.index[df["STRIKE"] >= atm][0]
 display_df = df.iloc[max(atm_idx-7,0): atm_idx+8].copy()
 
 ui = pd.DataFrame()
+
 ui["CE BUILDUP"] = display_df.apply(lambda r: get_bup(r["prc_chg_CE"], r["oi_chg_CE"]), axis=1)
-ui["CE OI"] = display_df["open_interest_CE"]
+ui["CE OI (Δ/%)"] = display_df.apply(lambda r: format_val(r["open_interest_CE"], r["oi_chg_CE"], df["open_interest_CE"].max()), axis=1)
+ui["CE VOL (%)"] = display_df.apply(lambda r: format_val(r["volume_CE"], 0, df["volume_CE"].max()), axis=1)
+
 ui["STRIKE"] = display_df["STRIKE"]
-ui["PE OI"] = display_df["open_interest_PE"]
+
+ui["PE VOL (%)"] = display_df.apply(lambda r: format_val(r["volume_PE"], 0, df["volume_PE"].max()), axis=1)
+ui["PE OI (Δ/%)"] = display_df.apply(lambda r: format_val(r["open_interest_PE"], r["oi_chg_PE"], df["open_interest_PE"].max()), axis=1)
 ui["PE BUILDUP"] = display_df.apply(lambda r: get_bup(r["prc_chg_PE"], r["oi_chg_PE"]), axis=1)
 
 st.table(ui)

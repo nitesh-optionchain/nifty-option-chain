@@ -53,6 +53,13 @@ if not st.session_state.is_auth:
 st_autorefresh(interval=5000, key="refresh")
 st.sidebar.markdown(f"### 👤 User: **{st.session_state.admin_name}**")
 
+# --- LOGOUT ADDED HERE ---
+if st.sidebar.button("🔒 LOGOUT"):
+    st.session_state.is_auth = False
+    st.rerun()
+
+st.sidebar.markdown("---")
+
 if st.session_state.is_super_admin:
     with st.sidebar.expander("➕ Add New User"):
         n_name = st.text_input("Name")
@@ -101,8 +108,8 @@ if result and result.chain:
     if "prev_df" not in st.session_state: st.session_state.prev_df = None
     if st.session_state.prev_df is not None:
         p, c = st.session_state.prev_df.set_index("STRIKE"), df.set_index("STRIKE")
-        df["oi_chg_CE"] = df["STRIKE"].map(c["open_interest_CE"] - p["open_interest_CE"]).fillna(0)
-        df["oi_chg_PE"] = df["STRIKE"].map(c["open_interest_PE"] - p["open_interest_PE"]).fillna(0)
+        df["oi_chg_CE"] = df["STRIKE"].map(lambda x: c.loc[x, "open_interest_CE"] - p.loc[x, "open_interest_CE"] if x in p.index else 0).fillna(0)
+        df["oi_chg_PE"] = df["STRIKE"].map(lambda x: c.loc[x, "open_interest_PE"] - p.loc[x, "open_interest_PE"] if x in p.index else 0).fillna(0)
     else:
         df["oi_chg_CE"] = df["oi_chg_PE"] = 0
     st.session_state.prev_df = df.copy()
@@ -141,7 +148,7 @@ if result and result.chain:
     ma.metric("🟢 SUPPORT", current_data["sr"]["support"])
     mb.metric("🔴 RESISTANCE", current_data["sr"]["resistance"])
 
-    # ================= 7. TABLE STYLING (70% + MAX LOGIC) =================
+    # ================= 7. TABLE STYLING =================
     def format_ui(val, delta, m_val):
         pct = (val/m_val*100) if m_val > 0 else 0
         return f"{val:,.0f}\n({delta:+,})\n{pct:.1f}%"
@@ -160,27 +167,21 @@ if result and result.chain:
     def final_style(row):
         styles = [''] * len(row)
         try:
-            # Extract Percentages
             ce_oi_pct = float(row.iloc[0].split('\n')[-1].replace('%',''))
             ce_vol_pct = float(row.iloc[1].split('\n')[-1].replace('%',''))
             pe_vol_pct = float(row.iloc[3].split('\n')[-1].replace('%',''))
             pe_oi_pct = float(row.iloc[4].split('\n')[-1].replace('%',''))
 
-            # OI Logic
             if ce_oi_pct >= 100: styles[0] = 'background-color:#0d47a1;color:white;font-weight:bold'
             elif ce_oi_pct >= 70: styles[0] = 'background-color:#1976d2;color:white'
-            
             if pe_oi_pct >= 100: styles[4] = 'background-color:#e65100;color:white;font-weight:bold'
             elif pe_oi_pct >= 70: styles[4] = 'background-color:#fb8c00;color:white'
 
-            # VOLUME Logic (FIXED: Max = Deep, 70%+ = Normal)
             if ce_vol_pct >= 100: styles[1] = 'background-color:#1b5e20;color:white;font-weight:bold'
             elif ce_vol_pct >= 70: styles[1] = 'background-color:#4caf50;color:white'
-
             if pe_vol_pct >= 100: styles[3] = 'background-color:#b71c1c;color:white;font-weight:bold'
             elif pe_vol_pct >= 70: styles[3] = 'background-color:#f44336;color:white'
             
-            # ATM Strike
             if row.iloc[2] == atm: styles[2] = 'background-color:yellow;color:black;font-weight:bold'
             else: styles[2] = 'background-color:#eeeeee'
         except: pass

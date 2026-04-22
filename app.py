@@ -89,11 +89,17 @@ if result and result.chain:
         spot = raw_spot / 100 if raw_spot > 50000 else raw_spot
     except: spot = 0
 
-    # Live Header Box
+    # Live Header Box with Change Logic
+    prev_close = 22450 # Example, should ideally come from SDK
+    day_chg = spot - prev_close
+    chg_pct = (day_chg / prev_close) * 100
+    color = "#50fa7b" if day_chg >= 0 else "#ff5555"
+    icon = "▲" if day_chg >= 0 else "▼"
+
     st.markdown(f"""
-        <div style="background-color:#1e1e2e; padding:15px; border-radius:15px; text-align:center; border: 2px solid #50fa7b; margin-bottom: 20px;">
+        <div style="background-color:#1e1e2e; padding:15px; border-radius:15px; text-align:center; border: 2px solid {color}; margin-bottom: 20px;">
             <p style="color:#a9adc1; margin:0; font-size:16px;">NIFTY 50 INDEX</p>
-            <h1 style="color:#50fa7b; margin:0; font-size:42px;">₹ {spot:,.2f}</h1>
+            <h1 style="color:{color}; margin:0; font-size:42px;">₹ {spot:,.2f} <span style="font-size:20px;">{icon} {day_chg:+.2f} ({chg_pct:+.2f}%)</span></h1>
         </div>
     """, unsafe_allow_html=True)
 
@@ -102,21 +108,20 @@ if result and result.chain:
     df = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE","_PE")).fillna(0)
     df["STRIKE"] = (df["strike_price"]/100).astype(int)
 
-    # Change tracking for OI
+    # OI Change tracking
     if "prev_df" not in st.session_state: st.session_state.prev_df = None
     if st.session_state.prev_df is not None:
         p, c = st.session_state.prev_df.set_index("STRIKE"), df.set_index("STRIKE")
-        df["oi_chg_CE"] = df["STRIKE"].map(c["open_interest_CE"] - p["open_interest_CE"]).fillna(0)
-        df["oi_chg_PE"] = df["STRIKE"].map(c["open_interest_PE"] - p["open_interest_PE"]).fillna(0)
+        df["oi_chg_CE"] = df["STRIKE"].map(lambda x: c.loc[x, "open_interest_CE"] - p.loc[x, "open_interest_CE"] if x in p.index else 0)
+        df["oi_chg_PE"] = df["STRIKE"].map(lambda x: c.loc[x, "open_interest_PE"] - p.loc[x, "open_interest_PE"] if x in p.index else 0)
     else:
         df["oi_chg_CE"] = df["oi_chg_PE"] = 0
     st.session_state.prev_df = df.copy()
 
-    # Max values for percentages
-    max_oichg_ce = df["oi_chg_CE"].max()
-    max_oichg_pe = df["oi_chg_PE"].max()
-    max_vol_ce = df["volume_CE"].max()
-    max_vol_pe = df["volume_PE"].max()
+    # Max values for logic
+    max_oi_ce, max_oi_pe = df["open_interest_CE"].max(), df["open_interest_PE"].max()
+    max_vol_ce, max_vol_pe = df["volume_CE"].max(), df["volume_PE"].max()
+    max_chg_ce, max_chg_pe = df["oi_chg_CE"].abs().max(), df["oi_chg_PE"].abs().max()
 
     # ================= 6. ADMIN/SIGNALS =================
     if st.session_state.is_super_admin:
@@ -127,7 +132,7 @@ if result and result.chain:
         s_tgt = c3.text_input("Target", value=current_data["signal"]["Target"])
         s_sl = c4.text_input("SL", value=current_data["signal"]["SL"])
         if c5.button("📢 UPDATE"):
-            current_data["signal"] = {"Strike": s_stk, "Entry": s_ent, "Target": s_tgt, "SL": s_sl, "Status": f"LIVE"}
+            current_data["signal"] = {"Strike": s_stk, "Entry": s_ent, "Target": s_tgt, "SL": s_sl, "Status": "LIVE"}
             save_json(DATA_FILE, current_data)
             st.rerun()
 
@@ -135,40 +140,45 @@ if result and result.chain:
     ma.metric("🟢 SUPPORT", current_data["sr"]["support"])
     mb.metric("🔴 RESISTANCE", current_data["sr"]["resistance"])
 
-    # ================= 7. TABLE LOGIC =================
-    def format_val(val, delta, m_val):
-        pct = (delta/m_val*100) if m_val > 0 else 0
-        return f"{val:,.0f}\n({delta:+,})\n{pct:.1f}%"
+    # ================= 7. TABLE FORMATTING =================
+    def fmt(val, delta, m_val):
+        p = (delta/m_val*100) if m_val > 0 else 0
+        return f"{val:,.0f}\n({delta:+,})\n{p:.1f}%"
 
     atm = int(spot)
     atm_idx = df.index[df["STRIKE"] >= atm][0]
     display_df = df.iloc[max(atm_idx-7,0): atm_idx+8].copy()
 
     ui = pd.DataFrame()
-    ui["CE OI CHG\n(%)"] = display_df.apply(lambda r: format_val(r["open_interest_CE"], r["oi_chg_CE"], max_oichg_ce), axis=1)
-    ui["CE VOL\n(%)"] = display_df.apply(lambda r: f"{r['volume_CE']:,.0f}\n{(r['volume_CE']/max_vol_ce*100):.1f}%", axis=1)
+    ui["CE OI\n(Δ/%)"] = display_df.apply(lambda r: fmt(r["open_interest_CE"], r["oi_chg_CE"], max_chg_ce), axis=1)
+    ui["CE VOL\n(%)"] = display_df.apply(lambda r: f"{r['volume_CE']:,.0f}\n{(r['volume_CE']/max_vol_ce*100 if max_vol_ce>0 else 0):.1f}%", axis=1)
     ui["STRIKE"] = display_df["STRIKE"]
-    ui["PE VOL\n(%)"] = display_df.apply(lambda r: f"{r['volume_PE']:,.0f}\n{(r['volume_PE']/max_vol_pe*100):.1f}%", axis=1)
-    ui["PE OI CHG\n(%)"] = display_df.apply(lambda r: format_val(r["open_interest_PE"], r["oi_chg_PE"], max_oichg_pe), axis=1)
+    ui["PE VOL\n(%)"] = display_df.apply(lambda r: f"{r['volume_PE']:,.0f}\n{(r['volume_PE']/max_vol_pe*100 if max_vol_pe>0 else 0):.1f}%", axis=1)
+    ui["PE OI\n(Δ/%)"] = display_df.apply(lambda r: fmt(r["open_interest_PE"], r["oi_chg_PE"], max_chg_pe), axis=1)
 
-    def style_logic(row):
+    def final_style(row):
         styles = [''] * len(row)
         try:
-            ce_oi_pct = float(row.iloc[0].split('\n')[-1].replace('%',''))
-            pe_oi_pct = float(row.iloc[4].split('\n')[-1].replace('%',''))
+            c_oi_p = float(row.iloc[0].split('\n')[-1].replace('%',''))
+            c_vo_p = float(row.iloc[1].split('\n')[-1].replace('%',''))
+            p_vo_p = float(row.iloc[3].split('\n')[-1].replace('%',''))
+            p_oi_p = float(row.iloc[4].split('\n')[-1].replace('%',''))
 
-            # CE OI Change Colouring
-            if ce_oi_pct >= 100: styles[0] = 'background-color:#1b5e20;color:white;font-weight:bold' # Deep Green
-            elif ce_oi_pct >= 70: styles[0] = 'background-color:#4caf50;color:white' # Light Green
+            # CE Side: Green
+            if c_oi_p >= 100: styles[0] = 'background-color:#1b5e20;color:white;font-weight:bold'
+            elif c_oi_p >= 70: styles[0] = 'background-color:#4caf50;color:white'
+            if c_vo_p >= 100: styles[1] = 'background-color:#1b5e20;color:white;font-weight:bold'
+            elif c_vo_p >= 70: styles[1] = 'background-color:#4caf50;color:white'
 
-            # PE OI Change Colouring
-            if pe_oi_pct >= 100: styles[4] = 'background-color:#b71c1c;color:white;font-weight:bold' # Deep Red
-            elif pe_oi_pct >= 70: styles[4] = 'background-color:#f44336;color:white' # Light Red
-            
-            # Strike Price Highlight
-            if row.iloc[2] >= atm and row.iloc[2] < atm + 50: styles[2] = 'background-color:yellow;color:black'
+            # PE Side: Red
+            if p_oi_p >= 100: styles[4] = 'background-color:#b71c1c;color:white;font-weight:bold'
+            elif p_oi_p >= 70: styles[4] = 'background-color:#f44336;color:white'
+            if p_vo_p >= 100: styles[3] = 'background-color:#b71c1c;color:white;font-weight:bold'
+            elif p_vo_p >= 70: styles[3] = 'background-color:#f44336;color:white'
+
+            if row.iloc[2] >= atm and row.iloc[2] < atm+50: styles[2] = 'background-color:yellow;color:black'
         except: pass
         return styles
 
-    st.subheader("📊 Institutional Option Chain (OI Change Logic)")
-    st.table(ui.style.apply(style_logic, axis=1))
+    st.subheader("📊 Institutional Option Chain")
+    st.table(ui.style.apply(final_style, axis=1))

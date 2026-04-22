@@ -53,7 +53,6 @@ if not st.session_state.is_auth:
 st_autorefresh(interval=5000, key="refresh")
 st.sidebar.markdown(f"### 👤 User: **{st.session_state.admin_name}**")
 
-# --- LOGOUT ADDED HERE ---
 if st.sidebar.button("🔒 LOGOUT"):
     st.session_state.is_auth = False
     st.rerun()
@@ -114,6 +113,10 @@ if result and result.chain:
         df["oi_chg_CE"] = df["oi_chg_PE"] = 0
     st.session_state.prev_df = df.copy()
 
+    # Max Change Values for Relative % Colour Logic
+    max_chg_ce = df["oi_chg_CE"].abs().max() if df["oi_chg_CE"].abs().max() > 0 else 1
+    max_chg_pe = df["oi_chg_PE"].abs().max() if df["oi_chg_PE"].abs().max() > 0 else 1
+
     # ================= 6. ADMIN/VIEWER PANEL =================
     st.markdown("---")
     if st.session_state.is_super_admin:
@@ -149,41 +152,60 @@ if result and result.chain:
     mb.metric("🔴 RESISTANCE", current_data["sr"]["resistance"])
 
     # ================= 7. TABLE STYLING =================
-    def format_ui(val, delta, m_val):
+    def format_ui(val, m_val):
         pct = (val/m_val*100) if m_val > 0 else 0
-        return f"{val:,.0f}\n({delta:+,})\n{pct:.1f}%"
+        return f"{val:,.0f}\n{pct:.1f}%"
 
     atm = int(spot)
     atm_idx = df.index[df["STRIKE"] >= atm][0]
     display_df = df.iloc[max(atm_idx-7,0): atm_idx+8].copy()
 
     ui = pd.DataFrame()
-    ui["CE OI\n(Δ/%)"] = display_df.apply(lambda r: format_ui(r["open_interest_CE"], r["oi_chg_CE"], max_oi_ce), axis=1)
-    ui["CE VOL\n(%)"] = display_df.apply(lambda r: format_ui(r["volume_CE"], 0, max_vol_ce), axis=1)
+    # CE Side
+    ui["CE OI\n(%)"] = display_df.apply(lambda r: format_ui(r["open_interest_CE"], max_oi_ce), axis=1)
+    ui["CE OI CHG\n(%)"] = display_df.apply(lambda r: format_ui(r["oi_chg_CE"], max_chg_ce), axis=1)
+    ui["CE VOL\n(%)"] = display_df.apply(lambda r: format_ui(r["volume_CE"], max_vol_ce), axis=1)
+    # Middle
     ui["STRIKE"] = display_df["STRIKE"]
-    ui["PE VOL\n(%)"] = display_df.apply(lambda r: format_ui(r["volume_PE"], 0, max_vol_pe), axis=1)
-    ui["PE OI\n(Δ/%)"] = display_df.apply(lambda r: format_ui(r["open_interest_PE"], r["oi_chg_PE"], max_oi_pe), axis=1)
+    # PE Side
+    ui["PE VOL\n(%)"] = display_df.apply(lambda r: format_ui(r["volume_PE"], max_vol_pe), axis=1)
+    ui["PE OI CHG\n(%)"] = display_df.apply(lambda r: format_ui(r["oi_chg_PE"], max_chg_pe), axis=1)
+    ui["PE OI\n(%)"] = display_df.apply(lambda r: format_ui(r["open_interest_PE"], max_oi_pe), axis=1)
 
     def final_style(row):
         styles = [''] * len(row)
         try:
-            ce_oi_pct = float(row.iloc[0].split('\n')[-1].replace('%',''))
-            ce_vol_pct = float(row.iloc[1].split('\n')[-1].replace('%',''))
-            pe_vol_pct = float(row.iloc[3].split('\n')[-1].replace('%',''))
-            pe_oi_pct = float(row.iloc[4].split('\n')[-1].replace('%',''))
+            # Pct Extraction for all columns
+            c_oi_p = float(row.iloc[0].split('\n')[-1].replace('%',''))
+            c_ch_p = float(row.iloc[1].split('\n')[-1].replace('%',''))
+            c_vo_p = float(row.iloc[2].split('\n')[-1].replace('%',''))
+            p_vo_p = float(row.iloc[4].split('\n')[-1].replace('%',''))
+            p_ch_p = float(row.iloc[5].split('\n')[-1].replace('%',''))
+            p_oi_p = float(row.iloc[6].split('\n')[-1].replace('%',''))
 
-            if ce_oi_pct >= 100: styles[0] = 'background-color:#0d47a1;color:white;font-weight:bold'
-            elif ce_oi_pct >= 70: styles[0] = 'background-color:#1976d2;color:white'
-            if pe_oi_pct >= 100: styles[4] = 'background-color:#e65100;color:white;font-weight:bold'
-            elif pe_oi_pct >= 70: styles[4] = 'background-color:#fb8c00;color:white'
-
-            if ce_vol_pct >= 100: styles[1] = 'background-color:#1b5e20;color:white;font-weight:bold'
-            elif ce_vol_pct >= 70: styles[1] = 'background-color:#4caf50;color:white'
-            if pe_vol_pct >= 100: styles[3] = 'background-color:#b71c1c;color:white;font-weight:bold'
-            elif pe_vol_pct >= 70: styles[3] = 'background-color:#f44336;color:white'
+            # CE Colours (Blue/Green)
+            if c_oi_p >= 100: styles[0] = 'background-color:#0d47a1;color:white;font-weight:bold'
+            elif c_oi_p >= 70: styles[0] = 'background-color:#1976d2;color:white'
             
-            if row.iloc[2] == atm: styles[2] = 'background-color:yellow;color:black;font-weight:bold'
-            else: styles[2] = 'background-color:#eeeeee'
+            if c_ch_p >= 100: styles[1] = 'background-color:#1b5e20;color:white;font-weight:bold'
+            elif c_ch_p >= 70: styles[1] = 'background-color:#4caf50;color:white'
+            
+            if c_vo_p >= 100: styles[2] = 'background-color:#1b5e20;color:white;font-weight:bold'
+            elif c_vo_p >= 70: styles[2] = 'background-color:#4caf50;color:white'
+
+            # PE Colours (Red/Orange)
+            if p_vo_p >= 100: styles[4] = 'background-color:#b71c1c;color:white;font-weight:bold'
+            elif p_vo_p >= 70: styles[4] = 'background-color:#f44336;color:white'
+            
+            if p_ch_p >= 100: styles[5] = 'background-color:#b71c1c;color:white;font-weight:bold'
+            elif p_ch_p >= 70: styles[5] = 'background-color:#f44336;color:white'
+
+            if p_oi_p >= 100: styles[6] = 'background-color:#e65100;color:white;font-weight:bold'
+            elif p_oi_p >= 70: styles[6] = 'background-color:#fb8c00;color:white'
+            
+            # Strike Price
+            if row.iloc[3] == atm: styles[3] = 'background-color:yellow;color:black;font-weight:bold'
+            else: styles[3] = 'background-color:#eeeeee'
         except: pass
         return styles
 

@@ -76,27 +76,20 @@ with st.sidebar.expander("👤 Admin: Add New User"):
             save_users(ADMIN_DB)
             st.sidebar.success(f"Added!")
 
-# --- TradingView Ticker Widget (FIXED VALUES) ---
-ticker_html = """
-<div class="tradingview-widget-container">
-  <div class="tradingview-widget-container__widget"></div>
-  <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-tickers.js" async>
-  {
-  "symbols": [
-    { "proName": "NSE:NIFTY", "title": "NIFTY 50" },
-    { "proName": "NSE:BANKNIFTY", "title": "BANK NIFTY" },
-    { "proName": "NSE:INDIAVIX", "title": "INDIA VIX" },
-    { "proName": "NSE:FINNIFTY", "title": "FIN NIFTY" }
-  ],
-  "colorTheme": "dark",
-  "isTransparent": false,
-  "showSymbolLogo": true,
-  "locale": "en"
-  }
-  </script>
+# --- Investing.com Ticker Widget (Alternative to TradingView) ---
+investing_ticker = """
+<div style="width: 100%; border: 1px solid #333; border-radius: 5px; overflow: hidden;">
+    <iframe src="https://sslecal2.investing.com?columns=exc_flags,exc_actual,exc_prev,exc_forecast&category=_main,5,2,1,10,3,7,1&importance=1,2,3&features=datepicker,timezone&countries=14&calType=day&timeZone=44&lang=56" 
+    width="100%" height="250" frameborder="0" allowtransparency="true" marginwidth="0" marginheight="0"></iframe>
 </div>
 """
-components.html(ticker_html, height=100)
+
+# Agar aapko sirf rates chahiye (Ticker Style), toh ye use karein:
+ticker_style_html = """
+<iframe src="https://www.widgets.investing.com/top-indices?theme=darkTheme&pairs=179,953086,172,166" 
+width="100%" height="150" frameborder="0" allowtransparency="true" marginwidth="0" marginheight="0"></iframe>
+"""
+components.html(ticker_style_html, height=180)
 
 # SDK & Data Fetch
 if "nubra" not in st.session_state:
@@ -113,7 +106,7 @@ except:
     spot = chain.at_the_money_strike / 100
 
 st.title("🛡️ SMART WEALTH AI 5")
-st.subheader(f"📊 LIVE NIFTY: {spot:,.2f}")
+st.subheader(f"📊 LIVE NIFTY (From SDK): {spot:,.2f}")
 
 # Option Chain Data Preparation
 df_ce = pd.DataFrame([vars(x) for x in chain.ce])

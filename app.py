@@ -31,7 +31,7 @@ def save_json(file_path, data_to_save):
     except: pass
 
 ADMIN_DB = load_json(USER_FILE, {"9304768496": "Admin Chief", "7982046438": "Admin x"})
-SUPER_ADMIN_IDS = ["9304768496", "9822334455"]
+SUPER_ADMIN_IDS = ["9304768496", "7982046438"]
 
 # ================= 3. LOGIN FIREWALL =================
 if not st.session_state.is_auth:

@@ -32,7 +32,7 @@ def save_data(data):
     with open(DATA_FILE, "w") as f: json.dump(data, f)
 
 def load_users():
-    default_admins = {"9304768496": "Admin Chief", "9822334455": "Amit Kumar", "9011223344": "Amit Sharma"}
+    default_admins = {"9304768496": "Admin Chief", "9822334455": "Amit Kumar"}
     if os.path.exists(USER_FILE):
         try:
             with open(USER_FILE, "r") as f: return json.load(f)
@@ -54,32 +54,39 @@ if url_id and url_id in ADMIN_DB and not st.session_state.auth:
     st.session_state.admin_name = ADMIN_DB[url_id]
 
 if not st.session_state.auth:
-    st.markdown("<h1 style='text-align: center;'>🛡️ SMART WEALTH AI 5</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center; color: #00ff00;'>🛡️ SMART WEALTH AI 5</h1>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1,1,1])
     with col2:
-        with st.form("Login_Safe"):
+        with st.form("Secure_Login"):
             user_key = st.text_input("Enter Mobile ID:", type="password")
-            if st.form_submit_button("LOGIN"):
+            if st.form_submit_button("LOGIN TO DASHBOARD"):
                 if user_key in ADMIN_DB:
                     st.session_state.auth = True
                     st.session_state.admin_name = ADMIN_DB[user_key]
                     st.query_params.clear()
                     st.rerun()
                 else:
-                    st.error("Access Denied")
+                    st.error("Invalid Access ID")
     st.stop()
 
-# ================= 4. DASHBOARD HEADER (TICKER) =================
+# ================= 4. HEADER TICKER (TradingView) =================
 st_autorefresh(interval=5000, key="refresh")
 
-# Investing.com Ticker (Fixed Header Style)
-ticker_html = """
-<div style="width: 100%; height: 50px; background-color: #121212; overflow: hidden; border-bottom: 1px solid #333;">
-    <iframe src="https://www.widgets.investing.com/live-indices-ticker?theme=darkTheme&pairs=179,953086,172,166" 
-    width="100%" height="100%" frameborder="0" allowtransparency="true" marginwidth="0" marginheight="0"></iframe>
+ticker_js = """
+<div class="tradingview-widget-container">
+  <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js" async>
+  {
+  "symbols": [
+    {"proName": "NSE:NIFTY", "title": "NIFTY 50"},
+    {"proName": "NSE:BANKNIFTY", "title": "BANK NIFTY"},
+    {"proName": "NSE:INDIAVIX", "title": "INDIA VIX"}
+  ],
+  "showSymbolLogo": true, "colorTheme": "dark", "isTransparent": false, "displayMode": "adaptive", "locale": "en"
+  }
+  </script>
 </div>
 """
-components.html(ticker_html, height=60)
+components.html(ticker_js, height=50)
 
 # Sidebar
 with st.sidebar.expander("👤 Admin: User Management"):
@@ -91,14 +98,32 @@ with st.sidebar.expander("👤 Admin: User Management"):
             save_users(ADMIN_DB)
             st.sidebar.success(f"Added {u_n}")
 
-# ================= 5. DATA FETCH (SDK) =================
+# ================= 5. LIVE CHART (ADVANCED) =================
+st.subheader("📈 Real-Time Technical Analysis")
+chart_js = """
+<div class="tradingview-widget-container" style="height:450px">
+  <div id="tv_chart_container"></div>
+  <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+  <script type="text/javascript">
+  new TradingView.widget({
+    "autosize": true, "symbol": "NSE:NIFTY", "interval": "5", "timezone": "Asia/Kolkata",
+    "theme": "dark", "style": "1", "locale": "en", "toolbar_bg": "#f1f3f6",
+    "enable_publishing": false, "hide_side_toolbar": false, "allow_symbol_change": true,
+    "container_id": "tv_chart_container"
+  });
+  </script>
+</div>
+"""
+components.html(chart_js, height=450)
+
+# ================= 6. DATA FETCH & SIGNALS =================
 if "nubra" not in st.session_state:
     st.session_state.nubra = InitNubraSdk(NubraEnv.UAT, env_creds=True)
 
 market_data = MarketData(st.session_state.nubra)
 result = market_data.option_chain("NIFTY", exchange="NSE")
 if not result:
-    st.warning("🔄 Fetching Market Data...")
+    st.warning("🔄 Waiting for SDK Data...")
     st.stop()
 
 chain = result.chain
@@ -107,15 +132,15 @@ try:
 except:
     spot = chain.at_the_money_strike / 100
 
-st.title("🛡️ SMART WEALTH AI 5")
-st.subheader(f"📊 LIVE NIFTY: {spot:,.2f}")
+st.title(f"🛡️ SMART WEALTH AI 5 | SPOT: {spot:,.2f}")
 
-# ================= 6. DATA PROCESSING =================
+# Data Prep
 df_ce = pd.DataFrame([vars(x) for x in chain.ce])
 df_pe = pd.DataFrame([vars(x) for x in chain.pe])
 df = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE","_PE")).fillna(0)
 df["STRIKE"] = (df["strike_price"]/100).astype(int)
 
+# Change Calculation
 if "prev_df" not in st.session_state: st.session_state.prev_df = None
 if st.session_state.prev_df is not None:
     prev = st.session_state.prev_df.set_index("STRIKE")
@@ -128,34 +153,29 @@ else:
     df["oi_chg_CE"] = df["oi_chg_PE"] = df["prc_chg_CE"] = df["prc_chg_PE"] = 0
 st.session_state.prev_df = df.copy()
 
-# ================= 7. ADMIN UPDATES =================
+# Signals
 st.markdown("---")
 st.subheader("🎯 LIVE TRADE SIGNALS")
-c1, c2, c3, c4, c5 = st.columns(5)
-s_st = c1.text_input("Strike", value=data["signal"]["Strike"])
-s_en = c2.text_input("Entry", value=data["signal"]["Entry"])
-s_tg = c3.text_input("Target", value=data["signal"]["Target"])
-s_sl = c4.text_input("SL", value=data["signal"]["SL"])
-if c5.button("📢 UPDATE SIGNAL"):
-    data["signal"] = {"Strike": s_st, "Entry": s_en, "Target": s_tg, "SL": s_sl, "Status": f"LIVE ({st.session_state.admin_name})"}
+sc1, sc2, sc3, sc4, sc5 = st.columns(5)
+s_stk = sc1.text_input("Strike", value=data["signal"]["Strike"])
+s_ent = sc2.text_input("Entry", value=data["signal"]["Entry"])
+s_tgt = sc3.text_input("Target", value=data["signal"]["Target"])
+s_slp = sc4.text_input("SL", value=data["signal"]["SL"])
+if sc5.button("📢 UPDATE"):
+    data["signal"] = {"Strike": s_stk, "Entry": s_ent, "Target": s_tgt, "SL": s_slp, "Status": f"LIVE ({st.session_state.admin_name})"}
     save_data(data)
     st.rerun()
 
-st.markdown("---")
 st.subheader("📊 SUPPORT / RESISTANCE")
-sr1, sr2, sr3 = st.columns(3)
-sup_in = sr1.text_input("Support", data["sr"]["support"])
-res_in = sr2.text_input("Resistance", data["sr"]["resistance"])
-if sr3.button("📝 SET S/R"):
-    data["sr"] = {"support": sup_in, "resistance": res_in}
+sr_a, sr_b, sr_c = st.columns(3)
+sup = sr_a.text_input("Support", data["sr"]["support"])
+res = sr_b.text_input("Resistance", data["sr"]["resistance"])
+if sr_c.button("SET S/R"):
+    data["sr"] = {"support": sup, "resistance": res}
     save_data(data)
     st.rerun()
 
-m1, m2 = st.columns(2)
-m1.metric("🟢 SUPPORT", data["sr"]["support"])
-m2.metric("🔴 RESISTANCE", data["sr"]["resistance"])
-
-# ================= 8. OPTION CHAIN UI =================
+# Table UI Formatting
 def format_val(val, delta, m_val):
     p = (val/m_val*100) if m_val > 0 else 0
     return f"{val:,.0f}\n({delta:+,})\n{p:.1f}%"

@@ -9,7 +9,6 @@ import json, os
 # ================= 1. CONFIG & SESSION =================
 st.set_page_config(page_title="SMART WEALTH AI 5", layout="wide")
 
-# Session state for Authentication
 if "auth" not in st.session_state:
     st.session_state.auth = False
     st.session_state.admin_name = "Guest"
@@ -41,9 +40,7 @@ def save_users(users):
 data = load_data()
 ADMIN_DB = load_users()
 
-# ================= 3. LOGIN FIREWALL (CRITICAL) =================
-
-# 1. URL ID Check
+# ================= 3. LOGIN FIREWALL =================
 query_params = st.query_params
 url_id = query_params.get("id", None)
 
@@ -51,34 +48,25 @@ if url_id in ADMIN_DB:
     st.session_state.auth = True
     st.session_state.admin_name = ADMIN_DB[url_id]
 
-# 2. Login Screen (Agar authenticated nahi hai toh)
 if not st.session_state.auth:
     st.markdown("<h1 style='text-align: center;'>🛡️ SMART WEALTH AI 5</h1>", unsafe_allow_html=True)
-    st.markdown("<h3 style='text-align: center;'>Please Login to Access Dashboard</h3>", unsafe_allow_html=True)
-    
     col1, col2, col3 = st.columns([1,1,1])
     with col2:
         with st.form("Login Form"):
             user_key = st.text_input("Enter Mobile ID:", type="password")
-            submit = st.form_submit_button("LOGIN")
-            if submit:
+            if st.form_submit_button("LOGIN"):
                 if user_key in ADMIN_DB:
                     st.session_state.auth = True
                     st.session_state.admin_name = ADMIN_DB[user_key]
                     st.rerun()
-                else:
-                    st.error("Invalid ID. Access Denied.")
-    
-    st.stop() # Dashboard ko load hone se rokh dega
+                else: st.error("Invalid ID")
+    st.stop()
 
-# ================= 4. DASHBOARD (SIRF LOGIN KE BAAD) =================
+# ================= 4. DASHBOARD (LOGIN ONLY) =================
 st_autorefresh(interval=5000, key="refresh")
-is_admin = True # Yahan tak wahi pahunchega jo authenticated hai
 current_admin_name = st.session_state.admin_name
 
-st.sidebar.success(f"⚡ Logged in as: {current_admin_name}")
-
-# Add User Option (Sidebar)
+# Sidebar Control
 with st.sidebar.expander("👤 Admin: Add New User"):
     new_name = st.text_input("User Name")
     new_mobile = st.text_input("User Mobile")
@@ -86,13 +74,31 @@ with st.sidebar.expander("👤 Admin: Add New User"):
         if new_mobile and new_name:
             ADMIN_DB[new_mobile] = new_name
             save_users(ADMIN_DB)
-            st.sidebar.success(f"Added: {new_name}")
+            st.sidebar.success(f"Added!")
 
-# Ticker
-ticker_html = """<div class="tradingview-widget-container"><script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-tickers.js" async>{"symbols": [{"proName": "NSE:NIFTY", "title": "NIFTY 50"},{"proName": "NSE:BANKNIFTY", "title": "BANK NIFTY"},{"proName": "NSE:INDIAVIX", "title": "INDIA VIX"}],"colorTheme": "dark","isTransparent": true,"locale": "en"}</script></div>"""
-components.html(ticker_html, height=80)
+# --- TradingView Ticker Widget (FIXED VALUES) ---
+ticker_html = """
+<div class="tradingview-widget-container">
+  <div class="tradingview-widget-container__widget"></div>
+  <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-tickers.js" async>
+  {
+  "symbols": [
+    { "proName": "NSE:NIFTY", "title": "NIFTY 50" },
+    { "proName": "NSE:BANKNIFTY", "title": "BANK NIFTY" },
+    { "proName": "NSE:INDIAVIX", "title": "INDIA VIX" },
+    { "proName": "NSE:FINNIFTY", "title": "FIN NIFTY" }
+  ],
+  "colorTheme": "dark",
+  "isTransparent": false,
+  "showSymbolLogo": true,
+  "locale": "en"
+  }
+  </script>
+</div>
+"""
+components.html(ticker_html, height=100)
 
-# SDK & Data
+# SDK & Data Fetch
 if "nubra" not in st.session_state:
     st.session_state.nubra = InitNubraSdk(NubraEnv.UAT, env_creds=True)
 market_data = MarketData(st.session_state.nubra)
@@ -100,7 +106,7 @@ result = market_data.option_chain("NIFTY", exchange="NSE")
 if not result: st.stop()
 chain = result.chain
 
-# Header
+# Spot Calculation
 try:
     spot = chain.ce[0].underlying_price / 100
 except:
@@ -109,13 +115,13 @@ except:
 st.title("🛡️ SMART WEALTH AI 5")
 st.subheader(f"📊 LIVE NIFTY: {spot:,.2f}")
 
-# Dataframes
+# Option Chain Data Preparation
 df_ce = pd.DataFrame([vars(x) for x in chain.ce])
 df_pe = pd.DataFrame([vars(x) for x in chain.pe])
 df = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE","_PE")).fillna(0)
 df["STRIKE"] = (df["strike_price"]/100).astype(int)
 
-# Change Track
+# Change Calculation
 if "prev_df" not in st.session_state: st.session_state.prev_df = None
 if st.session_state.prev_df is not None:
     prev = st.session_state.prev_df.set_index("STRIKE")
@@ -128,28 +134,33 @@ else:
     df["oi_chg_CE"] = df["oi_chg_PE"] = df["prc_chg_CE"] = df["prc_chg_PE"] = 0
 st.session_state.prev_df = df.copy()
 
-# Signals & SR (Admin Section)
+# Admin Update Tables
 st.subheader("🎯 LIVE TRADE SIGNALS")
 c1, c2, c3, c4, c5 = st.columns(5)
-s_strike = c1.text_input("Strike", value=data["signal"]["Strike"])
-s_entry = c2.text_input("Entry", value=data["signal"]["Entry"])
-s_target = c3.text_input("Target", value=data["signal"]["Target"])
-s_sl = c4.text_input("SL", value=data["signal"]["SL"])
+s_stk = c1.text_input("Strike", value=data["signal"]["Strike"])
+s_ent = c2.text_input("Entry", value=data["signal"]["Entry"])
+s_tgt = c3.text_input("Target", value=data["signal"]["Target"])
+s_slp = c4.text_input("SL", value=data["signal"]["SL"])
 if c5.button("📢 UPDATE"):
-    data["signal"] = {"Strike": s_strike, "Entry": s_entry, "Target": s_target, "SL": s_sl, "Status": f"LIVE ({current_admin_name})"}
+    data["signal"] = {"Strike": s_stk, "Entry": s_ent, "Target": s_tgt, "SL": s_slp, "Status": f"LIVE ({current_admin_name})"}
     save_data(data)
     st.rerun()
 
 st.subheader("📊 SUPPORT / RESISTANCE")
-sr_1, sr_2, sr_3 = st.columns(3)
-sup = sr_1.text_input("Support", data["sr"]["support"])
-res = sr_2.text_input("Resistance", data["sr"]["resistance"])
-if sr_3.button("SET"):
+sr_a, sr_b, sr_c = st.columns(3)
+sup = sr_a.text_input("Support", data["sr"]["support"])
+res = sr_b.text_input("Resistance", data["sr"]["resistance"])
+if sr_c.button("SET"):
     data["sr"] = {"support": sup, "resistance": res}
     save_data(data)
     st.rerun()
 
-# Table UI & Formatting (As per original)
+# Display S/R Metrics
+m1, m2 = st.columns(2)
+m1.metric("🟢 SUPPORT", data["sr"]["support"])
+m2.metric("🔴 RESISTANCE", data["sr"]["resistance"])
+
+# Table Display & Styling (Original Logic)
 def format_val(val, delta, m_val):
     p = (val/m_val*100) if m_val > 0 else 0
     return f"{val:,.0f}\n({delta:+,})\n{p:.1f}%"
@@ -188,4 +199,5 @@ def final_style(row):
     except: pass
     return styles
 
+st.subheader("📊 Institutional Option Chain")
 st.table(ui.style.apply(final_style, axis=1))

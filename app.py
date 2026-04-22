@@ -7,149 +7,139 @@ from streamlit_autorefresh import st_autorefresh
 import json, os
 
 # ================= 1. CONFIG & SESSION =================
-st.set_page_config(page_title="SMART WEALTH AI 5 - SECURE", layout="wide")
+st.set_page_config(page_title="SMART WEALTH AI 5", layout="wide")
 
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
-# ================= 2. FILE & DATA STORAGE =================
-DATA_FILE = "admin_data.json"
+# ================= 2. USER & DATA STORAGE =================
 USER_FILE = "authorized_users.json"
+DATA_FILE = "admin_data.json"
 
 def load_json(file, default):
     if os.path.exists(file):
         try:
-            with open(file, "r") as f:
-                return json.load(f)
+            with open(file, "r") as f: return json.load(f)
         except: pass
     return default
 
 def save_json(file, data):
-    with open(file, "w") as f:
-        json.dump(data, f)
+    with open(file, "w") as f: json.dump(data, f)
 
-# Master Admin setup
-MASTER_ADMIN = "9304768496"
-auth_users = load_json(USER_FILE, {MASTER_ADMIN: "Admin Chief"})
+# --- ADMIN PANEL ACCESS LIST ---
+ADMIN_NUMBERS = ["9304768496", "98XXXXXXXX", "99XXXXXXXX"] 
+
+auth_users = load_json(USER_FILE, {num: "Admin" for num in ADMIN_NUMBERS})
+# Original Data Structure with SR
 data = load_json(DATA_FILE, {
     "signal": {"Strike": "-", "Entry": "-", "Target": "-", "SL": "-", "Status": "WAITING"},
-    "sr": {"support": "-", "resistance": "-"}
+    "sr": {"s1": "-", "s2": "-", "r1": "-", "r2": "-"}
 })
 
-# ================= 3. LOGIN INTERFACE =================
+# ================= 3. LOGIN SCREEN =================
 if not st.session_state.authenticated:
     st.markdown("<h1 style='text-align: center;'>🛡️ SMART WEALTH AI 5</h1>", unsafe_allow_html=True)
-    st.markdown("<h3 style='text-align: center;'>Security Login Required</h3>", unsafe_allow_html=True)
-    
     col1, col2, col3 = st.columns([1,1.5,1])
     with col2:
         with st.form("Login"):
-            mobile = st.text_input("Enter Registered Mobile Number", type="password")
-            submit = st.form_submit_button("UNSEAL DASHBOARD")
-            
-            if submit:
+            mobile = st.text_input("Mobile Number", type="password")
+            if st.form_submit_button("LOGIN"):
                 if mobile in auth_users:
                     st.session_state.authenticated = True
-                    st.session_state.user_name = auth_users[mobile]
                     st.session_state.mobile = mobile
+                    st.session_state.user_name = auth_users[mobile]
                     st.rerun()
-                else:
-                    st.error("🚫 Access Denied! Your number is not registered.")
+                else: st.error("Not Authorized")
     st.stop()
 
-# ================= 4. DASHBOARD LOGIC (POST-LOGIN) =================
+# ================= 4. DASHBOARD LOGIC =================
 st_autorefresh(interval=5000, key="refresh")
-is_admin = (st.session_state.mobile == MASTER_ADMIN)
+is_admin = (st.session_state.mobile in ADMIN_NUMBERS)
 
-# Sidebar
-st.sidebar.title(f"👤 {st.session_state.user_name}")
-if st.sidebar.button("Logout"):
-    st.session_state.authenticated = False
-    st.rerun()
-
+# Admin Sidebar
 if is_admin:
-    with st.sidebar.expander("➕ ADD NEW USER"):
-        u_name = st.text_input("User Name")
-        u_mob = st.text_input("User Mobile")
-        if st.button("Authorize User"):
-            if u_name and u_mob:
-                auth_users[u_mob] = u_name
-                save_json(USER_FILE, auth_users)
-                st.success(f"Registered: {u_name}")
-            else: st.warning("Fill all details")
-    
-    st.sidebar.write("Registered Users:", list(auth_users.values()))
+    with st.sidebar.expander("👤 Admin: Add User"):
+        u_n = st.text_input("Name")
+        u_m = st.text_input("Mobile")
+        if st.button("Add"):
+            auth_users[u_m] = u_n
+            save_json(USER_FILE, auth_users)
+            st.success("User Added!")
 
-# ================= 5. SDK & DATA FETCH =================
+# Ticker Widget
+ticker_html = """<div class="tradingview-widget-container"><script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-tickers.js" async>{"symbols": [{"proName": "NSE:NIFTY", "title": "NIFTY 50"},{"proName": "NSE:BANKNIFTY", "title": "BANK NIFTY"},{"proName": "BSE:SENSEX", "title": "SENSEX"},{"proName": "NSE:INDIAVIX", "title": "INDIA VIX"}],"colorTheme": "dark","isTransparent": true,"locale": "en"}</script></div>"""
+components.html(ticker_html, height=80)
+
+# SDK & Fetch
 if "nubra" not in st.session_state:
     st.session_state.nubra = InitNubraSdk(NubraEnv.UAT, env_creds=True)
-
-nubra = st.session_state.nubra
-market_data = MarketData(nubra)
+market_data = MarketData(st.session_state.nubra)
 result = market_data.option_chain("NIFTY", exchange="NSE")
-
-if not result or not result.chain:
-    st.info("🔄 Connecting to NSE Live Stream...")
-    st.stop()
-
+if not result: st.stop()
 chain = result.chain
 
-# Calculations
+# Header Metrics
 try:
-    spot = float(chain.ce[0].underlying_price / 100)
+    spot = chain.ce[0].underlying_price / 100
     atm_val = int(round(spot / 50) * 50)
     prev_close = 24500 
     change_pts = spot - prev_close
     change_pct = (change_pts / prev_close) * 100
-except:
-    spot, atm_val, change_pts, change_pct = 0.0, 0, 0.0, 0.0
+except: spot, atm_val, change_pts, change_pct = 0.0, 0, 0.0, 0.0
 
-# ================= 6. HEADER & TICKER =================
-ticker_html = """
-<div class="tradingview-widget-container">
-  <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-tickers.js" async>
-  {"symbols": [{"proName": "NSE:NIFTY", "title": "NIFTY 50"},{"proName": "NSE:BANKNIFTY", "title": "BANK NIFTY"},{"proName": "BSE:SENSEX", "title": "SENSEX"},{"proName": "NSE:INDIAVIX", "title": "INDIA VIX"}],
-  "colorTheme": "dark", "isTransparent": true, "locale": "en"}
-  </script>
-</div>
-"""
-components.html(ticker_html, height=80)
+st.title("🛡️ SMART WEALTH AI 5")
+h1, h2, h3 = st.columns(3)
+h1.metric("📊 NIFTY LIVE SPOT", f"{spot:,.2f}", f"{change_pts:+.2f} ({change_pct:+.2f}%)")
+h2.metric("📉 INDIA VIX", "13.45", "-1.1%")
+h3.metric("🎯 CURRENT ATM", f"{atm_val}")
+st.markdown("---")
 
-h1, h2, h3, h4 = st.columns(4)
-h1.metric("📊 NIFTY LIVE", f"{spot:,.2f}", f"{change_pts:+.2f} ({change_pct:+.2f}%)")
-h2.metric("🎯 CURRENT ATM", f"{atm_val}")
-h3.metric("📉 INDIA VIX", "13.45", "-1.1%")
-h4.metric("⚖️ STATUS", "BULLISH 🚀" if change_pts > 0 else "BEARISH 📉")
+# ================= 5. SUPPORT & RESISTANCE TABLE (RESTORED) =================
+st.subheader("📉 Support & Resistance Levels")
+sr1, sr2, sr3, sr4, sr5 = st.columns(5)
+
+if is_admin:
+    r2 = sr1.text_input("R2", value=data["sr"]["r2"])
+    r1 = sr2.text_input("R1", value=data["sr"]["r1"])
+    s1 = sr3.text_input("S1", value=data["sr"]["s1"])
+    s2 = sr4.text_input("S2", value=data["sr"]["s2"])
+    if sr5.button("📌 UPDATE S/R"):
+        data["sr"] = {"s1": s1, "s2": s2, "r1": r1, "r2": r2}
+        save_json(DATA_FILE, data)
+        st.rerun()
+else:
+    sr1.error(f"RESISTANCE 2: {data['sr']['r2']}")
+    sr2.error(f"RESISTANCE 1: {data['sr']['r1']}")
+    sr3.success(f"SUPPORT 1: {data['sr']['s1']}")
+    sr4.success(f"SUPPORT 2: {data['sr']['s2']}")
 
 st.markdown("---")
 
-# ================= 7. ADMIN SIGNALS =================
+# ================= 6. LIVE TRADE SIGNALS =================
 st.subheader("🎯 LIVE TRADE SIGNALS")
 c1, c2, c3, c4, c5 = st.columns(5)
-
 if is_admin:
     s_strike = c1.text_input("Strike", value=data["signal"]["Strike"])
     s_entry = c2.text_input("Entry", value=data["signal"]["Entry"])
     s_target = c3.text_input("Target", value=data["signal"]["Target"])
     s_sl = c4.text_input("SL", value=data["signal"]["SL"])
-    if c5.button("📢 BROADCAST"):
-        data["signal"] = {"Strike": s_strike, "Entry": s_entry, "Target": s_target, "SL": s_sl, "Status": "LIVE 🔥"}
+    if c5.button("📢 UPDATE SIGNAL"):
+        data["signal"] = {"Strike": s_strike, "Entry": s_entry, "Target": s_target, "SL": s_sl, "Status": "LIVE"}
         save_json(DATA_FILE, data)
-        st.success("Signal Updated!")
+        st.rerun()
 else:
     c1.info(f"STRIKE: {data['signal']['Strike']}")
     c2.success(f"ENTRY: {data['signal']['Entry']}")
     c3.warning(f"TARGET: {data['signal']['Target']}")
     c4.error(f"SL: {data['signal']['SL']}")
-    c5.write(f"**Status:** {data['signal']['Status']}")
+    c5.write(f"**STATUS:** {data['signal']['Status']}")
 
-# ================= 8. OPTION CHAIN (PRO LOGIC) =================
+# ================= 7. OPTION CHAIN (ORIGINAL LOGIC) =================
 df_ce = pd.DataFrame([vars(x) for x in chain.ce])
 df_pe = pd.DataFrame([vars(x) for x in chain.pe])
 df = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE","_PE")).fillna(0)
 df["STRIKE"] = (df["strike_price"]/100).astype(int)
 
-# Buildup tracking
 if "prev_df" not in st.session_state: st.session_state.prev_df = None
 if st.session_state.prev_df is not None:
     prev = st.session_state.prev_df.set_index("STRIKE")
@@ -164,7 +154,7 @@ st.session_state.prev_df = df.copy()
 
 def format_val(val, delta, m_val):
     p = (val/m_val*100) if m_val > 0 else 0
-    return f"{val:,.0f}\n({delta:+.0f})\n{p:.1f}%"
+    return f"{val:,.0f}\n({delta:+,})\n{p:.1f}%"
 
 def get_bup(p, o):
     if p > 0 and o > 0: return "🟢 LONG"

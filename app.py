@@ -12,7 +12,7 @@ if "auth" not in st.session_state:
     st.session_state.auth = False
     st.session_state.admin_name = "Guest"
 
-# ================= 2. FILE STORAGE (DATA PERSISTENCE) =================
+# ================= 2. FILE STORAGE =================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_FILE = os.path.join(BASE_DIR, "admin_data.json")
 USER_FILE = os.path.join(BASE_DIR, "authorized_users.json")
@@ -57,9 +57,9 @@ if not st.session_state.auth:
     st.stop()
 
 # ================= 4. DASHBOARD REFRESH =================
-st_autorefresh(interval=5000, key="refresh") # 5 seconds auto-update
+st_autorefresh(interval=5000, key="refresh") 
 
-# ================= 5. DATA FETCH & CALCULATION =================
+# ================= 5. DATA FETCH & CALCULATION (FIXED) =================
 try:
     if "nubra" not in st.session_state:
         st.session_state.nubra = InitNubraSdk(NubraEnv.UAT, env_creds=True)
@@ -67,23 +67,31 @@ try:
     market_data = MarketData(st.session_state.nubra)
     result = market_data.option_chain("NIFTY", exchange="NSE")
 
-    if result:
+    if result and result.chain:
         chain = result.chain
-        spot = (chain.ce[0].underlying_price / 100) if chain.ce else chain.at_the_money_strike / 100
+        
+        # --- FIXED ATTRIBUTE FETCHING ---
+        try:
+            # underlying_price ki jagah alternate attributes check kar rahe hain
+            raw_spot = getattr(chain.ce[0], 'underlying_price', 
+                       getattr(chain, 'underlying_price', 
+                       getattr(chain, 'at_the_money_strike', 0)))
+            spot = raw_spot / 100 if raw_spot > 50000 else raw_spot # Handling multiplier
+        except:
+            spot = 0
         
         st.title(f"🛡️ LIVE NIFTY: {spot:,.2f}")
 
-        # DataFrames processing
+        # DataFrames
         df_ce = pd.DataFrame([vars(x) for x in chain.ce])
         df_pe = pd.DataFrame([vars(x) for x in chain.pe])
         df = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE","_PE")).fillna(0)
         df["STRIKE"] = (df["strike_price"]/100).astype(int)
 
-        # OI & Price Change Logic
+        # Delta Calculation
         if "prev_df" not in st.session_state: st.session_state.prev_df = None
         if st.session_state.prev_df is not None:
-            p = st.session_state.prev_df.set_index("STRIKE")
-            c = df.set_index("STRIKE")
+            p, c = st.session_state.prev_df.set_index("STRIKE"), df.set_index("STRIKE")
             df["oi_chg_CE"] = df["STRIKE"].map(c["open_interest_CE"] - p["open_interest_CE"]).fillna(0)
             df["oi_chg_PE"] = df["STRIKE"].map(c["open_interest_PE"] - p["open_interest_PE"]).fillna(0)
             df["prc_chg_CE"] = df["STRIKE"].map(c["last_traded_price_CE"] - p["last_traded_price_CE"]).fillna(0)
@@ -92,54 +100,50 @@ try:
             df["oi_chg_CE"] = df["oi_chg_PE"] = df["prc_chg_CE"] = df["prc_chg_PE"] = 0
         st.session_state.prev_df = df.copy()
 
-        # ================= 6. MANUAL ENTRY (SIGNALS & S/R) =================
+        # ================= 6. UI ELEMENTS =================
         st.markdown("---")
-        col_sig, col_sr = st.columns([2, 1])
-        
-        with col_sig:
-            st.subheader("🎯 SIGNAL PANEL")
+        c_sig, c_sr = st.columns([2, 1])
+        with c_sig:
+            st.subheader("🎯 SIGNALS")
             sc1, sc2, sc3, sc4, sc5 = st.columns(5)
             m_stk = sc1.text_input("Strike", value=data["signal"]["Strike"])
             m_ent = sc2.text_input("Entry", value=data["signal"]["Entry"])
-            m_tgt = sc3.text_input("Target", value=data["signal"]["Target"])
-            m_sl  = sc4.text_input("SL", value=data["signal"]["SL"])
-            if sc5.button("UPDATE SIGNAL"):
-                data["signal"] = {"Strike": m_stk, "Entry": m_ent, "Target": m_tgt, "SL": m_sl, "Status": "LIVE"}
+            if sc5.button("UPDATE"):
+                data["signal"].update({"Strike": m_stk, "Entry": m_ent, "Status": "LIVE"})
                 save_data(data)
                 st.rerun()
 
-        with col_sr:
-            st.subheader("📊 S/R PANEL")
+        with c_sr:
+            st.subheader("📊 S/R")
             sr1, sr2, sr3 = st.columns(3)
             m_sup = sr1.text_input("Sup", value=data["sr"]["support"])
-            m_res = sr2.text_input("Res", value=data["sr"]["resistance"])
-            if sr3.button("SET LEVELS"):
-                data["sr"] = {"support": m_sup, "resistance": m_res}
+            if sr3.button("SET"):
+                data["sr"]["support"] = m_sup
                 save_data(data)
                 st.rerun()
 
-        # Display Metrics
-        st.markdown("### ⚡ Live Metrics")
+        # Metrics
+        st.markdown("### ⚡ Metrics")
         m_c1, m_c2, m_c3, m_c4 = st.columns(4)
         m_c1.metric("🟢 SUPPORT", data["sr"]["support"])
         m_c2.metric("🔴 RESISTANCE", data["sr"]["resistance"])
-        m_c3.metric("🎯 ENTRY STRIKE", data["signal"]["Strike"])
-        m_c4.metric("📊 SIGNAL STATUS", data["signal"]["Status"])
+        m_c3.metric("🎯 ENTRY", data["signal"]["Strike"])
+        m_c4.metric("📊 STATUS", data["signal"]["Status"])
 
-        # ================= 7. TABLE STYLING (ORIGINAL) =================
+        # ================= 7. TABLE (ORIGINAL STYLING) =================
         def format_ui(val, delta, m_val):
             pct = (val/m_val*100) if m_val > 0 else 0
             return f"{val:,.0f}\n({delta:+,})\n{pct:.1f}%"
 
         def get_buildup(p, o):
-            if p > 0 and o > 0: return "🟢 LONG"
-            if p < 0 and o > 0: return "🔴 SHORT"
-            return "⚪ -"
+            return "🟢 LONG" if p > 0 and o > 0 else "🔴 SHORT" if p < 0 and o > 0 else "⚪ -"
 
         atm = int(spot)
-        # Finding the closest strike for ATM highlighting
-        atm_idx = df.index[df["STRIKE"] >= atm][0]
-        display_df = df.iloc[max(atm_idx-8,0): atm_idx+9].copy()
+        try:
+            atm_idx = df.index[df["STRIKE"] >= atm][0]
+            display_df = df.iloc[max(atm_idx-8,0): atm_idx+9].copy()
+        except:
+            display_df = df.head(15).copy()
 
         ui = pd.DataFrame()
         ui["CE BUILDUP"] = display_df.apply(lambda r: get_buildup(r["prc_chg_CE"], r["oi_chg_CE"]), axis=1)
@@ -155,12 +159,9 @@ try:
             try:
                 ce_oi_pct = float(row.iloc[1].split('\n')[-1].replace('%',''))
                 pe_oi_pct = float(row.iloc[5].split('\n')[-1].replace('%',''))
-                # Original CE OI Deep Blue
                 if ce_oi_pct > 65: styles[1] = 'background-color:#0d47a1;color:white;font-weight:bold'
-                # Original PE OI Orange
                 if pe_oi_pct > 65: styles[5] = 'background-color:#e65100;color:white;font-weight:bold'
-                # Original ATM Yellow
-                if row.iloc[3] == atm: styles[3] = 'background-color:yellow;color:black;font-weight:bold;border:1px solid black'
+                if row.iloc[3] == atm: styles[3] = 'background-color:yellow;color:black;font-weight:bold'
                 else: styles[3] = 'background-color:#f5f5f5'
             except: pass
             return styles
@@ -169,7 +170,7 @@ try:
         st.table(ui.style.apply(apply_original_style, axis=1))
 
     else:
-        st.warning("🔄 Fetching Data from SDK...")
+        st.warning("🔄 Fetching Data...")
 
 except Exception as e:
-    st.error(f"Error: {e}")
+    st.error(f"Error encountered: {e}")

@@ -49,7 +49,7 @@ if not st.session_state.is_auth:
                 else: st.error("❌ Invalid Access ID")
     st.stop()
 
-# ================= 4. SIDEBAR & DATA LOAD =================
+# ================= 4. SIDEBAR & LOGOUT =================
 st_autorefresh(interval=5000, key="refresh")
 st.sidebar.markdown(f"### 👤 User: **{st.session_state.admin_name}**")
 
@@ -62,6 +62,14 @@ if st.session_state.is_super_admin:
                 ADMIN_DB[n_mob] = n_name
                 save_json(USER_FILE, ADMIN_DB)
                 st.sidebar.success("Added!")
+
+# --- Logout Button Added Here ---
+st.sidebar.markdown("---")
+if st.sidebar.button("🔒 LOGOUT"):
+    st.session_state.is_auth = False
+    st.session_state.admin_name = "Guest"
+    st.session_state.is_super_admin = False
+    st.rerun()
 
 current_data = load_json(DATA_FILE, {
     "signal": {"Strike": "-", "Entry": "-", "Target": "-", "SL": "-", "Status": "WAITING"},
@@ -84,7 +92,13 @@ if result and result.chain:
         spot = raw_spot / 100 if raw_spot > 50000 else raw_spot
     except: spot = 0
 
-    st.title(f"🛡️ SMART WEALTH AI 5 | NIFTY: {spot:,.2f}")
+    # --- Live Nifty Box Logic ---
+    st.markdown(f"""
+        <div style="background-color:#1e1e2e; padding:15px; border-radius:15px; text-align:center; border: 2px solid #50fa7b; margin-bottom: 20px;">
+            <p style="color:#a9adc1; margin:0; font-size:16px; font-weight:bold;">LIVE NIFTY 50 INDEX</p>
+            <h1 style="color:#50fa7b; margin:0; font-size:42px;">₹ {spot:,.2f}</h1>
+        </div>
+    """, unsafe_allow_html=True)
 
     df_ce = pd.DataFrame([vars(x) for x in chain.ce])
     df_pe = pd.DataFrame([vars(x) for x in chain.pe])
@@ -108,7 +122,6 @@ if result and result.chain:
     st.session_state.prev_df = df.copy()
 
     # ================= 6. ADMIN/VIEWER PANEL =================
-    st.markdown("---")
     if st.session_state.is_super_admin:
         st.subheader("🎯 UPDATE SIGNALS")
         c1, c2, c3, c4, c5 = st.columns(5)
@@ -141,13 +154,18 @@ if result and result.chain:
     ma.metric("🟢 SUPPORT", current_data["sr"]["support"])
     mb.metric("🔴 RESISTANCE", current_data["sr"]["resistance"])
 
-    # ================= 7. TABLE STYLING (70% + MAX LOGIC) =================
+    # ================= 7. TABLE STYLING =================
     def format_ui(val, delta, m_val):
         pct = (val/m_val*100) if m_val > 0 else 0
         return f"{val:,.0f}\n({delta:+,})\n{pct:.1f}%"
 
     atm = int(spot)
-    atm_idx = df.index[df["STRIKE"] >= atm][0]
+    # Find nearest strike
+    try:
+        atm_idx = df.index[df["STRIKE"] >= atm][0]
+    except:
+        atm_idx = len(df) // 2
+
     display_df = df.iloc[max(atm_idx-7,0): atm_idx+8].copy()
 
     ui = pd.DataFrame()
@@ -160,28 +178,26 @@ if result and result.chain:
     def final_style(row):
         styles = [''] * len(row)
         try:
-            # Extract Percentages
             ce_oi_pct = float(row.iloc[0].split('\n')[-1].replace('%',''))
             ce_vol_pct = float(row.iloc[1].split('\n')[-1].replace('%',''))
             pe_vol_pct = float(row.iloc[3].split('\n')[-1].replace('%',''))
             pe_oi_pct = float(row.iloc[4].split('\n')[-1].replace('%',''))
 
-            # OI Logic
             if ce_oi_pct >= 100: styles[0] = 'background-color:#0d47a1;color:white;font-weight:bold'
             elif ce_oi_pct >= 70: styles[0] = 'background-color:#1976d2;color:white'
             
             if pe_oi_pct >= 100: styles[4] = 'background-color:#e65100;color:white;font-weight:bold'
             elif pe_oi_pct >= 70: styles[4] = 'background-color:#fb8c00;color:white'
 
-            # VOLUME Logic (FIXED: Max = Deep, 70%+ = Normal)
             if ce_vol_pct >= 100: styles[1] = 'background-color:#1b5e20;color:white;font-weight:bold'
             elif ce_vol_pct >= 70: styles[1] = 'background-color:#4caf50;color:white'
 
             if pe_vol_pct >= 100: styles[3] = 'background-color:#b71c1c;color:white;font-weight:bold'
             elif pe_vol_pct >= 70: styles[3] = 'background-color:#f44336;color:white'
             
-            # ATM Strike
-            if row.iloc[2] == atm: styles[2] = 'background-color:yellow;color:black;font-weight:bold'
+            # Strike highlight logic
+            if row.iloc[2] >= atm and row.iloc[2] < atm + 50:
+                 styles[2] = 'background-color:yellow;color:black;font-weight:bold'
             else: styles[2] = 'background-color:#eeeeee'
         except: pass
         return styles

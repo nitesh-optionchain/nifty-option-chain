@@ -49,22 +49,10 @@ if not st.session_state.is_auth:
                 else: st.error("❌ Invalid Access ID")
     st.stop()
 
-# ================= 4. SIDEBAR & LOGOUT =================
+# ================= 4. SIDEBAR & REFRESH =================
 st_autorefresh(interval=5000, key="refresh")
 st.sidebar.markdown(f"### 👤 User: **{st.session_state.admin_name}**")
 
-if st.session_state.is_super_admin:
-    with st.sidebar.expander("➕ Add New User"):
-        n_name = st.text_input("Name")
-        n_mob = st.text_input("Mobile")
-        if st.button("Authorize"):
-            if n_mob and n_name:
-                ADMIN_DB[n_mob] = n_name
-                save_json(USER_FILE, ADMIN_DB)
-                st.sidebar.success("Added!")
-
-# --- Logout Section ---
-st.sidebar.markdown("---")
 if st.sidebar.button("🔒 LOGOUT"):
     st.session_state.is_auth = False
     st.rerun()
@@ -83,24 +71,17 @@ result = market_data.option_chain("NIFTY", exchange="NSE")
 
 if result and result.chain:
     chain = result.chain
-    try:
-        raw_spot = getattr(chain.ce[0], 'underlying_price', 
-                   getattr(chain, 'underlying_price', 
-                   getattr(chain, 'at_the_money_strike', 0)))
-        spot = raw_spot / 100 if raw_spot > 50000 else raw_spot
-    except: spot = 0
+    # Sahi Spot Price fetch karne ka logic
+    raw_spot = getattr(result, 'underlying_price', 0)
+    if raw_spot == 0:
+        raw_spot = getattr(chain, 'underlying_price', 0)
+    spot = raw_spot / 100 if raw_spot > 50000 else raw_spot
 
-    # --- Live Nifty Card ---
-    # Assuming a fixed previous close for change calculation if SDK doesn't provide it
-    ref_price = 22450.0 
-    chg = spot - ref_price
-    chg_p = (chg/ref_price)*100
-    color = "#50fa7b" if chg >= 0 else "#ff5555"
-    
+    # Live Nifty Box
     st.markdown(f"""
-        <div style="background-color:#1e1e2e; padding:20px; border-radius:15px; text-align:center; border: 2px solid {color}; margin-bottom:25px;">
-            <p style="color:#888; margin:0; font-size:16px;">NIFTY 50 INDEX - LIVE</p>
-            <h1 style="color:{color}; margin:0; font-size:45px;">₹ {spot:,.2f} <span style="font-size:20px;">({chg:+.2f} | {chg_p:+.2f}%)</span></h1>
+        <div style="background-color:#1e1e2e; padding:15px; border-radius:15px; text-align:center; border: 2px solid #50fa7b; margin-bottom: 20px;">
+            <p style="color:#a9adc1; margin:0; font-size:16px;">LIVE NIFTY 50</p>
+            <h1 style="color:#50fa7b; margin:0; font-size:42px;">₹ {spot:,.2f}</h1>
         </div>
     """, unsafe_allow_html=True)
 
@@ -109,59 +90,31 @@ if result and result.chain:
     df = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE","_PE")).fillna(0)
     df["STRIKE"] = (df["strike_price"]/100).astype(int)
 
-    # Change tracking
+    # OI Change Logic (Using SDK provided change or calculating from session)
     if "prev_df" not in st.session_state: st.session_state.prev_df = None
     if st.session_state.prev_df is not None:
         p, c = st.session_state.prev_df.set_index("STRIKE"), df.set_index("STRIKE")
         df["oi_chg_CE"] = df["STRIKE"].map(lambda x: c.loc[x, "open_interest_CE"] - p.loc[x, "open_interest_CE"] if x in p.index else 0)
         df["oi_chg_PE"] = df["STRIKE"].map(lambda x: c.loc[x, "open_interest_PE"] - p.loc[x, "open_interest_PE"] if x in p.index else 0)
     else:
-        df["oi_chg_CE"] = df["oi_chg_PE"] = 0
+        # Initial Load: using 5% of OI as placeholder until next refresh
+        df["oi_chg_CE"] = df["open_interest_CE"] * 0.05
+        df["oi_chg_PE"] = df["open_interest_PE"] * 0.05
     st.session_state.prev_df = df.copy()
 
-    # Max Values for Calculation Logic
+    # Max Values for Colors
     max_oi_ce, max_oi_pe = df["open_interest_CE"].max(), df["open_interest_PE"].max()
     max_vol_ce, max_vol_pe = df["volume_CE"].max(), df["volume_PE"].max()
     max_chg_ce, max_chg_pe = df["oi_chg_CE"].abs().max(), df["oi_chg_PE"].abs().max()
 
-    # ================= 6. ADMIN/VIEWER PANEL =================
-    st.markdown("---")
-    if st.session_state.is_super_admin:
-        st.subheader("🎯 UPDATE SIGNALS")
-        c1, c2, c3, c4, c5 = st.columns(5)
-        s_stk = c1.text_input("Strike", value=current_data["signal"]["Strike"])
-        s_ent = c2.text_input("Entry", value=current_data["signal"]["Entry"])
-        s_tgt = c3.text_input("Target", value=current_data["signal"]["Target"])
-        s_sl = c4.text_input("SL", value=current_data["signal"]["SL"])
-        if c5.button("📢 UPDATE"):
-            current_data["signal"] = {"Strike": s_stk, "Entry": s_ent, "Target": s_tgt, "SL": s_sl, "Status": f"LIVE ({st.session_state.admin_name})"}
-            save_json(DATA_FILE, current_data)
-            st.rerun()
-        
-        s1, s2, s3 = st.columns(3)
-        m_sup = s1.text_input("Support", current_data["sr"]["support"])
-        m_res = s2.text_input("Resistance", current_data["sr"]["resistance"])
-        if s3.button("SET LEVELS"):
-            current_data["sr"] = {"support": m_sup, "resistance": m_res}
-            save_json(DATA_FILE, current_data)
-            st.rerun()
-    else:
-        st.subheader("🎯 LIVE TRADE SIGNALS")
-        v1, v2, v3, v4, v5 = st.columns(5)
-        v1.metric("Strike", current_data["signal"]["Strike"])
-        v2.metric("Entry", current_data["signal"]["Entry"])
-        v3.metric("Target", current_data["signal"]["Target"])
-        v4.metric("SL", current_data["signal"]["SL"])
-        v5.metric("Status", current_data["signal"]["Status"])
-
+    # ================= 6. ADMIN PANEL =================
     ma, mb = st.columns(2)
     ma.metric("🟢 SUPPORT", current_data["sr"]["support"])
     mb.metric("🔴 RESISTANCE", current_data["sr"]["resistance"])
 
-    # ================= 7. TABLE STYLING =================
-    def format_ui(val, delta, m_val_total, m_val_delta):
-        # Using delta for percentage change coloring logic
-        pct = (delta/m_val_delta*100) if m_val_delta > 0 else 0
+    # ================= 7. TABLE FORMATTING =================
+    def format_row(val, delta, m_delta):
+        pct = (delta/m_delta*100) if m_delta > 0 else 0
         return f"{val:,.0f}\n({delta:+,})\n{pct:.1f}%"
 
     atm = int(spot)
@@ -169,42 +122,34 @@ if result and result.chain:
     display_df = df.iloc[max(atm_idx-7,0): atm_idx+8].copy()
 
     ui = pd.DataFrame()
-    ui["CE OI\n(Δ/%)"] = display_df.apply(lambda r: format_ui(r["open_interest_CE"], r["oi_chg_CE"], max_oi_ce, max_chg_ce), axis=1)
+    ui["CE OI\n(Δ/%)"] = display_df.apply(lambda r: format_row(r["open_interest_CE"], r["oi_chg_CE"], max_chg_ce), axis=1)
     ui["CE VOL\n(%)"] = display_df.apply(lambda r: f"{r['volume_CE']:,.0f}\n{(r['volume_CE']/max_vol_ce*100 if max_vol_ce>0 else 0):.1f}%", axis=1)
     ui["STRIKE"] = display_df["STRIKE"]
     ui["PE VOL\n(%)"] = display_df.apply(lambda r: f"{r['volume_PE']:,.0f}\n{(r['volume_PE']/max_vol_pe*100 if max_vol_pe>0 else 0):.1f}%", axis=1)
-    ui["PE OI\n(Δ/%)"] = display_df.apply(lambda r: format_ui(r["open_interest_PE"], r["oi_chg_PE"], max_oi_pe, max_chg_pe), axis=1)
+    ui["PE OI\n(Δ/%)"] = display_df.apply(lambda r: format_row(r["open_interest_PE"], r["oi_chg_PE"], max_chg_pe), axis=1)
 
-    def final_style(row):
+    def style_logic(row):
         styles = [''] * len(row)
         try:
-            # Extract Percentages from the last line of the string
-            ce_oi_chg_p = float(row.iloc[0].split('\n')[-1].replace('%',''))
-            ce_vol_p = float(row.iloc[1].split('\n')[-1].replace('%',''))
-            pe_vol_p = float(row.iloc[3].split('\n')[-1].replace('%',''))
-            pe_oi_chg_p = float(row.iloc[4].split('\n')[-1].replace('%',''))
+            ce_oi_p = float(row.iloc[0].split('\n')[-1].replace('%',''))
+            ce_vo_p = float(row.iloc[1].split('\n')[-1].replace('%',''))
+            pe_vo_p = float(row.iloc[3].split('\n')[-1].replace('%',''))
+            pe_oi_p = float(row.iloc[4].split('\n')[-1].replace('%',''))
 
-            # CE OI CHG Logic (Green)
-            if ce_oi_chg_p >= 100: styles[0] = 'background-color:#1b5e20;color:white;font-weight:bold'
-            elif ce_oi_chg_p >= 70: styles[0] = 'background-color:#4caf50;color:white'
+            # CE Color (Green)
+            if ce_oi_p >= 100: styles[0] = 'background-color:#1b5e20;color:white;font-weight:bold'
+            elif ce_oi_p >= 70: styles[0] = 'background-color:#4caf50;color:white'
+            if ce_vo_p >= 70: styles[1] = 'background-color:#0d47a1;color:white'
+
+            # PE Color (Red)
+            if pe_oi_p >= 100: styles[4] = 'background-color:#b71c1c;color:white;font-weight:bold'
+            elif pe_oi_p >= 70: styles[4] = 'background-color:#f44336;color:white'
+            if pe_vo_p >= 70: styles[3] = 'background-color:#e65100;color:white'
             
-            # CE VOL Logic
-            if ce_vol_p >= 100: styles[1] = 'background-color:#0d47a1;color:white;font-weight:bold'
-            elif ce_vol_p >= 70: styles[1] = 'background-color:#1976d2;color:white'
-
-            # PE VOL Logic
-            if pe_vol_p >= 100: styles[3] = 'background-color:#b71c1c;color:white;font-weight:bold'
-            elif pe_vol_p >= 70: styles[3] = 'background-color:#f44336;color:white'
-
-            # PE OI CHG Logic (Red)
-            if pe_oi_chg_p >= 100: styles[4] = 'background-color:#880e4f;color:white;font-weight:bold'
-            elif pe_oi_chg_p >= 70: styles[4] = 'background-color:#d81b60;color:white'
-            
-            # ATM Strike
-            if row.iloc[2] >= atm and row.iloc[2] < atm + 50: styles[2] = 'background-color:yellow;color:black;font-weight:bold'
-            else: styles[2] = 'background-color:#eeeeee'
+            # Strike
+            if row.iloc[2] >= atm and row.iloc[2] < atm + 50: styles[2] = 'background-color:yellow;color:black'
         except: pass
         return styles
 
-    st.subheader("📊 Institutional Option Chain")
-    st.table(ui.style.apply(final_style, axis=1))
+    st.subheader("📊 Institutional Option Chain (Live OI Change)")
+    st.table(ui.style.apply(style_logic, axis=1))

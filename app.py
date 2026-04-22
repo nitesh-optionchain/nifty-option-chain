@@ -11,6 +11,7 @@ st.set_page_config(page_title="SMART WEALTH AI 5", layout="wide")
 if "is_auth" not in st.session_state:
     st.session_state.is_auth = False
     st.session_state.admin_name = "Guest"
+    st.session_state.is_super_admin = False
 
 # ================= 2. FILE STORAGE =================
 DATA_FILE = "admin_data.json"
@@ -35,9 +36,11 @@ data = load_json(DATA_FILE, {
 # Admin Database Load
 ADMIN_DB = load_json(USER_FILE, {
     "9304768496": "Admin Chief", 
-    "7982046438": "Rupesh Kumar",
-    "9011223344": "Amit Sharma"
+    "9822334455": "Amit Kumar"
 })
+
+# Yahan aap un IDs ko daalein jo edit kar sakte hain
+SUPER_ADMIN_IDS = ["9304768496", "9822334455"]
 
 # ================= 3. LOGIN FIREWALL =================
 if not st.session_state.is_auth:
@@ -50,21 +53,28 @@ if not st.session_state.is_auth:
                 if user_key in ADMIN_DB:
                     st.session_state.is_auth = True
                     st.session_state.admin_name = ADMIN_DB[user_key]
+                    # Check if user is Super Admin
+                    st.session_state.is_super_admin = True if user_key in SUPER_ADMIN_IDS else False
                     st.rerun()
                 else: st.error("❌ Invalid Access ID")
     st.stop()
 
-# ================= 4. SIDEBAR (ADD NEW ADMIN) =================
-st.sidebar.title(f"👤 {st.session_state.admin_name}")
-with st.sidebar.expander("➕ Add New Admin"):
-    new_name = st.text_input("Name")
-    new_mobile = st.text_input("Mobile Number")
-    if st.button("Authorize User"):
-        if new_mobile and new_name:
-            ADMIN_DB[new_mobile] = new_name
-            save_json(USER_FILE, ADMIN_DB)
-            st.sidebar.success(f"Added {new_name}")
-        else: st.sidebar.error("Fill both fields")
+# ================= 4. SIDEBAR =================
+st.sidebar.markdown(f"### 👤 User: **{st.session_state.admin_name}**")
+role = "MAIN ADMIN" if st.session_state.is_super_admin else "VIEW ONLY"
+st.sidebar.info(f"Access Level: {role}")
+
+# Add New Admin option sirf Main Admins ko dikhega
+if st.session_state.is_super_admin:
+    with st.sidebar.expander("➕ Add New User"):
+        new_name = st.text_input("Name")
+        new_mobile = st.text_input("Mobile Number")
+        if st.button("Authorize"):
+            if new_mobile and new_name:
+                ADMIN_DB[new_mobile] = new_name
+                save_json(USER_FILE, ADMIN_DB)
+                st.sidebar.success(f"Added {new_name}")
+            else: st.sidebar.error("Fill both fields")
 
 if st.sidebar.button("Logout"):
     st.session_state.is_auth = False
@@ -108,27 +118,46 @@ if result and result.chain:
         df["oi_chg_CE"] = df["oi_chg_PE"] = df["prc_chg_CE"] = df["prc_chg_PE"] = 0
     st.session_state.prev_df = df.copy()
 
-    # ================= 6. SIGNALS & S/R =================
+    # ================= 6. SIGNALS & S/R (ROLE BASED) =================
     st.markdown("---")
-    c1, c2, c3, c4, c5 = st.columns(5)
-    s_stk = c1.text_input("Strike", value=data["signal"]["Strike"])
-    s_ent = c2.text_input("Entry", value=data["signal"]["Entry"])
-    s_tgt = c3.text_input("Target", value=data["signal"]["Target"])
-    s_sl = c4.text_input("SL", value=data["signal"]["SL"])
-    if c5.button("📢 UPDATE"):
-        data["signal"] = {"Strike": s_stk, "Entry": s_ent, "Target": s_tgt, "SL": s_sl, "Status": f"LIVE ({st.session_state.admin_name})"}
-        save_json(DATA_FILE, data)
-        st.rerun()
+    
+    if st.session_state.is_super_admin:
+        # Edit Mode for Main Admins
+        st.subheader("🎯 UPDATE TRADE SIGNALS")
+        c1, c2, c3, c4, c5 = st.columns(5)
+        s_stk = c1.text_input("Strike", value=data["signal"]["Strike"])
+        s_ent = c2.text_input("Entry", value=data["signal"]["Entry"])
+        s_tgt = c3.text_input("Target", value=data["signal"]["Target"])
+        s_sl = c4.text_input("SL", value=data["signal"]["SL"])
+        if c5.button("📢 UPDATE"):
+            data["signal"] = {"Strike": s_stk, "Entry": s_ent, "Target": s_tgt, "SL": s_sl, "Status": f"LIVE ({st.session_state.admin_name})"}
+            save_json(DATA_FILE, data)
+            st.rerun()
 
-    s1, s2, s3 = st.columns(3)
-    m_sup = s1.text_input("Support", data["sr"]["support"])
-    m_res = s2.text_input("Resistance", data["sr"]["resistance"])
-    if s3.button("SET LEVELS"):
-        data["sr"] = {"support": m_sup, "resistance": m_res}
-        save_json(DATA_FILE, data)
-        st.rerun()
+        st.subheader("📊 UPDATE S/R LEVELS")
+        s1, s2, s3 = st.columns(3)
+        m_sup = s1.text_input("Support", data["sr"]["support"])
+        m_res = s2.text_input("Resistance", data["sr"]["resistance"])
+        if s3.button("SET LEVELS"):
+            data["sr"] = {"support": m_sup, "resistance": m_res}
+            save_json(DATA_FILE, data)
+            st.rerun()
+    else:
+        # Display Mode for View-Only Admins
+        st.subheader("🎯 CURRENT TRADE SIGNALS")
+        m1, m2, m3, m4, m5 = st.columns(5)
+        m1.metric("Strike", data["signal"]["Strike"])
+        m2.metric("Entry", data["signal"]["Entry"])
+        m3.metric("Target", data["signal"]["Target"])
+        m4.metric("SL", data["signal"]["SL"])
+        m5.metric("Status", data["signal"]["Status"])
 
-    # ================= 7. TABLE STYLING (PURANE JAISA) =================
+    # Live S/R Metrics
+    a, b = st.columns(2)
+    a.metric("🟢 SUPPORT", data["sr"]["support"])
+    b.metric("🔴 RESISTANCE", data["sr"]["resistance"])
+
+    # ================= 7. TABLE STYLING =================
     def format_ui(val, delta, m_val):
         pct = (val/m_val*100) if m_val > 0 else 0
         return f"{val:,.0f}\n({delta:+,})\n{pct:.1f}%"
@@ -172,4 +201,4 @@ if result and result.chain:
     st.subheader("📊 Institutional Option Chain")
     st.table(ui.style.apply(final_style, axis=1))
 else:
-    st.warning("Fetching Data...")
+    st.info("Market data is loading...")

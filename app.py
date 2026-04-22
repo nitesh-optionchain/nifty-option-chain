@@ -12,7 +12,7 @@ st.set_page_config(page_title="SMART WEALTH AI 5", layout="wide")
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
-# ================= 2. USER & DATA STORAGE =================
+# ================= 2. USER & DATA STORAGE (SAFE LOADING) =================
 USER_FILE = "authorized_users.json"
 DATA_FILE = "admin_data.json"
 
@@ -27,14 +27,18 @@ def save_json(file, data):
     with open(file, "w") as f: json.dump(data, f)
 
 # --- ADMIN PANEL ACCESS LIST ---
+# In numbers ko apne hisab se badal lein
 ADMIN_NUMBERS = ["9304768496", "98XXXXXXXX", "99XXXXXXXX"] 
 
-auth_users = load_json(USER_FILE, {num: "Admin" for num in ADMIN_NUMBERS})
-# Original Data Structure with SR
-data = load_json(DATA_FILE, {
-    "signal": {"Strike": "-", "Entry": "-", "Target": "-", "SL": "-", "Status": "WAITING"},
-    "sr": {"s1": "-", "s2": "-", "r1": "-", "r2": "-"}
-})
+# Load existing data and repair if keys are missing (Prevents KeyError)
+raw_auth = load_json(USER_FILE, {num: "Admin" for num in ADMIN_NUMBERS})
+raw_data = load_json(DATA_FILE, {})
+
+auth_users = raw_auth
+data = {
+    "signal": raw_data.get("signal", {"Strike": "-", "Entry": "-", "Target": "-", "SL": "-", "Status": "WAITING"}),
+    "sr": raw_data.get("sr", {"s1": "-", "s2": "-", "r1": "-", "r2": "-"})
+}
 
 # ================= 3. LOGIN SCREEN =================
 if not st.session_state.authenticated:
@@ -94,7 +98,7 @@ h2.metric("📉 INDIA VIX", "13.45", "-1.1%")
 h3.metric("🎯 CURRENT ATM", f"{atm_val}")
 st.markdown("---")
 
-# ================= 5. SUPPORT & RESISTANCE TABLE (RESTORED) =================
+# ================= 5. SUPPORT & RESISTANCE TABLE =================
 st.subheader("📉 Support & Resistance Levels")
 sr1, sr2, sr3, sr4, sr5 = st.columns(5)
 
@@ -154,7 +158,7 @@ st.session_state.prev_df = df.copy()
 
 def format_val(val, delta, m_val):
     p = (val/m_val*100) if m_val > 0 else 0
-    return f"{val:,.0f}\n({delta:+,})\n{p:.1f}%"
+    return f"{val:,.0f}\n({delta:+.0f})\n{p:.1f}%"
 
 def get_bup(p, o):
     if p > 0 and o > 0: return "🟢 LONG"
@@ -176,8 +180,10 @@ ui["PE BUILDUP"] = display_df.apply(lambda r: get_bup(r["prc_chg_PE"], r["oi_chg
 def final_style(row):
     styles = [''] * len(row)
     try:
-        c_oi = float(row.iloc[1].split('\n')[-1].replace('%',''))
-        p_oi = float(row.iloc[5].split('\n')[-1].replace('%',''))
+        c_oi_str = row.iloc[1].split('\n')[-1].replace('%','')
+        p_oi_str = row.iloc[5].split('\n')[-1].replace('%','')
+        c_oi = float(c_oi_str)
+        p_oi = float(p_oi_str)
         if c_oi > 65: styles[1] = 'background-color:#0d47a1;color:white'
         if p_oi > 65: styles[5] = 'background-color:#ff6f00;color:white'
         if row["STRIKE"] == atm_val: styles[3] = 'background-color:yellow;color:black;font-weight:bold'

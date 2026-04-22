@@ -30,7 +30,6 @@ def save_json(file_path, data_to_save):
             json.dump(data_to_save, f)
     except: pass
 
-# Database Load
 ADMIN_DB = load_json(USER_FILE, {"9304768496": "Admin Chief", "9822334455": "Amit Kumar"})
 SUPER_ADMIN_IDS = ["9304768496", "9822334455"]
 
@@ -50,7 +49,7 @@ if not st.session_state.is_auth:
                 else: st.error("❌ Invalid Access ID")
     st.stop()
 
-# ================= 4. SIDEBAR & REFRESH =================
+# ================= 4. SIDEBAR & DATA LOAD =================
 st_autorefresh(interval=5000, key="refresh")
 st.sidebar.markdown(f"### 👤 User: **{st.session_state.admin_name}**")
 
@@ -64,11 +63,6 @@ if st.session_state.is_super_admin:
                 save_json(USER_FILE, ADMIN_DB)
                 st.sidebar.success("Added!")
 
-if st.sidebar.button("Logout"):
-    st.session_state.is_auth = False
-    st.rerun()
-
-# Global Data Load for Sync
 current_data = load_json(DATA_FILE, {
     "signal": {"Strike": "-", "Entry": "-", "Target": "-", "SL": "-", "Status": "WAITING"},
     "sr": {"support": "-", "resistance": "-"}
@@ -97,7 +91,7 @@ if result and result.chain:
     df = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE","_PE")).fillna(0)
     df["STRIKE"] = (df["strike_price"]/100).astype(int)
 
-    # Max values for accurate % calculation and highlighting
+    # Max Values for Calculations
     max_oi_ce = df["open_interest_CE"].max()
     max_oi_pe = df["open_interest_PE"].max()
     max_vol_ce = df["volume_CE"].max()
@@ -109,13 +103,11 @@ if result and result.chain:
         p, c = st.session_state.prev_df.set_index("STRIKE"), df.set_index("STRIKE")
         df["oi_chg_CE"] = df["STRIKE"].map(c["open_interest_CE"] - p["open_interest_CE"]).fillna(0)
         df["oi_chg_PE"] = df["STRIKE"].map(c["open_interest_PE"] - p["open_interest_PE"]).fillna(0)
-        df["prc_chg_CE"] = df["STRIKE"].map(c["last_traded_price_CE"] - p["last_traded_price_CE"]).fillna(0)
-        df["prc_chg_PE"] = df["STRIKE"].map(c["last_traded_price_PE"] - p["last_traded_price_PE"]).fillna(0)
     else:
-        df["oi_chg_CE"] = df["oi_chg_PE"] = df["prc_chg_CE"] = df["prc_chg_PE"] = 0
+        df["oi_chg_CE"] = df["oi_chg_PE"] = 0
     st.session_state.prev_df = df.copy()
 
-    # ================= 6. ADMIN PANEL =================
+    # ================= 6. ADMIN/VIEWER PANEL =================
     st.markdown("---")
     if st.session_state.is_super_admin:
         st.subheader("🎯 UPDATE SIGNALS")
@@ -128,6 +120,14 @@ if result and result.chain:
             current_data["signal"] = {"Strike": s_stk, "Entry": s_ent, "Target": s_tgt, "SL": s_sl, "Status": f"LIVE ({st.session_state.admin_name})"}
             save_json(DATA_FILE, current_data)
             st.rerun()
+        
+        s1, s2, s3 = st.columns(3)
+        m_sup = s1.text_input("Support", current_data["sr"]["support"])
+        m_res = s2.text_input("Resistance", current_data["sr"]["resistance"])
+        if s3.button("SET LEVELS"):
+            current_data["sr"] = {"support": m_sup, "resistance": m_res}
+            save_json(DATA_FILE, current_data)
+            st.rerun()
     else:
         st.subheader("🎯 LIVE TRADE SIGNALS")
         v1, v2, v3, v4, v5 = st.columns(5)
@@ -137,12 +137,11 @@ if result and result.chain:
         v4.metric("SL", current_data["signal"]["SL"])
         v5.metric("Status", current_data["signal"]["Status"])
 
-    # Global S/R
     ma, mb = st.columns(2)
     ma.metric("🟢 SUPPORT", current_data["sr"]["support"])
     mb.metric("🔴 RESISTANCE", current_data["sr"]["resistance"])
 
-    # ================= 7. TABLE STYLING (HIGHEST VOLUME LOGIC) =================
+    # ================= 7. TABLE STYLING (70% + MAX LOGIC) =================
     def format_ui(val, delta, m_val):
         pct = (val/m_val*100) if m_val > 0 else 0
         return f"{val:,.0f}\n({delta:+,})\n{pct:.1f}%"
@@ -161,21 +160,27 @@ if result and result.chain:
     def final_style(row):
         styles = [''] * len(row)
         try:
-            # Extract values for comparison
-            ce_oi_val = int(row.iloc[0].split('\n')[0].replace(',',''))
-            ce_vol_val = int(row.iloc[1].split('\n')[0].replace(',',''))
-            pe_vol_val = int(row.iloc[3].split('\n')[0].replace(',',''))
-            pe_oi_val = int(row.iloc[4].split('\n')[0].replace(',',''))
+            # Extract Percentages
+            ce_oi_pct = float(row.iloc[0].split('\n')[-1].replace('%',''))
+            ce_vol_pct = float(row.iloc[1].split('\n')[-1].replace('%',''))
+            pe_vol_pct = float(row.iloc[3].split('\n')[-1].replace('%',''))
+            pe_oi_pct = float(row.iloc[4].split('\n')[-1].replace('%',''))
 
-            # CE OI (Blue) & PE OI (Orange)
-            if ce_oi_val == max_oi_ce: styles[0] = 'background-color:#0d47a1;color:white;font-weight:bold'
-            if pe_oi_val == max_oi_pe: styles[4] = 'background-color:#ff6f00;color:white;font-weight:bold'
+            # OI Logic
+            if ce_oi_pct >= 100: styles[0] = 'background-color:#0d47a1;color:white;font-weight:bold'
+            elif ce_oi_pct >= 70: styles[0] = 'background-color:#1976d2;color:white'
             
-            # HIGHEST VOLUME (Deep Green for CE, Deep Red for PE)
-            if ce_vol_val == max_vol_ce: styles[1] = 'background-color:#1b5e20;color:white;font-weight:bold'
-            if pe_vol_val == max_vol_pe: styles[3] = 'background-color:#b71c1c;color:white;font-weight:bold'
+            if pe_oi_pct >= 100: styles[4] = 'background-color:#e65100;color:white;font-weight:bold'
+            elif pe_oi_pct >= 70: styles[4] = 'background-color:#fb8c00;color:white'
+
+            # VOLUME Logic (FIXED: Max = Deep, 70%+ = Normal)
+            if ce_vol_pct >= 100: styles[1] = 'background-color:#1b5e20;color:white;font-weight:bold'
+            elif ce_vol_pct >= 70: styles[1] = 'background-color:#4caf50;color:white'
+
+            if pe_vol_pct >= 100: styles[3] = 'background-color:#b71c1c;color:white;font-weight:bold'
+            elif pe_vol_pct >= 70: styles[3] = 'background-color:#f44336;color:white'
             
-            # ATM Strike (Yellow)
+            # ATM Strike
             if row.iloc[2] == atm: styles[2] = 'background-color:yellow;color:black;font-weight:bold'
             else: styles[2] = 'background-color:#eeeeee'
         except: pass

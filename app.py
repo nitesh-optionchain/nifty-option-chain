@@ -32,7 +32,7 @@ def save_data(data):
     with open(DATA_FILE, "w") as f: json.dump(data, f)
 
 def load_users():
-    default_admins = {"9304768496": "Admin Chief", "9822334455": "Amit Kumar"}
+    default_admins = {"9304768496": "Admin Chief", "7982048438": "Admin 1"}
     if os.path.exists(USER_FILE):
         try:
             with open(USER_FILE, "r") as f: return json.load(f)

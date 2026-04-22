@@ -35,7 +35,7 @@ data = load_json(DATA_FILE, {
 # Admin Database Load
 ADMIN_DB = load_json(USER_FILE, {
     "9304768496": "Admin Chief", 
-    "9822334455": "Amit Kumar",
+    "7982046438": "Rupesh Kumar",
     "9011223344": "Amit Sharma"
 })
 

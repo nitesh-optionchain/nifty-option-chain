@@ -13,13 +13,16 @@ if "auth" not in st.session_state:
     st.session_state.auth = False
     st.session_state.admin_name = "Guest"
 
-# ================= 2. FILE STORAGE =================
-DATA_FILE = "admin_data.json"
-USER_FILE = "authorized_users.json"
+# ================= 2. FILE STORAGE (SAFE PATHS) =================
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_FILE = os.path.join(BASE_DIR, "admin_data.json")
+USER_FILE = os.path.join(BASE_DIR, "authorized_users.json")
 
 def load_data():
     if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, "r") as f: return json.load(f)
+        try:
+            with open(DATA_FILE, "r") as f: return json.load(f)
+        except: pass
     return {
         "signal": {"Strike": "-", "Entry": "-", "Target": "-", "SL": "-", "Status": "WAITING"},
         "sr": {"support": "-", "resistance": "-"}
@@ -31,7 +34,9 @@ def save_data(data):
 def load_users():
     default_admins = {"9304768496": "Admin Chief", "9822334455": "Amit Kumar", "9011223344": "Amit Sharma"}
     if os.path.exists(USER_FILE):
-        with open(USER_FILE, "r") as f: return json.load(f)
+        try:
+            with open(USER_FILE, "r") as f: return json.load(f)
+        except: pass
     return default_admins
 
 def save_users(users):
@@ -40,11 +45,11 @@ def save_users(users):
 data = load_data()
 ADMIN_DB = load_users()
 
-# ================= 3. LOGIN FIREWALL =================
+# ================= 3. LOGIN FIREWALL (404 SAFE) =================
 query_params = st.query_params
 url_id = query_params.get("id", None)
 
-if url_id in ADMIN_DB:
+if url_id and url_id in ADMIN_DB and not st.session_state.auth:
     st.session_state.auth = True
     st.session_state.admin_name = ADMIN_DB[url_id]
 
@@ -52,69 +57,65 @@ if not st.session_state.auth:
     st.markdown("<h1 style='text-align: center;'>🛡️ SMART WEALTH AI 5</h1>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1,1,1])
     with col2:
-        with st.form("Login Form"):
+        with st.form("Login_Safe"):
             user_key = st.text_input("Enter Mobile ID:", type="password")
             if st.form_submit_button("LOGIN"):
                 if user_key in ADMIN_DB:
                     st.session_state.auth = True
                     st.session_state.admin_name = ADMIN_DB[user_key]
+                    st.query_params.clear()
                     st.rerun()
-                else: st.error("Invalid ID")
+                else:
+                    st.error("Access Denied")
     st.stop()
 
-# ================= 4. DASHBOARD (LOGIN ONLY) =================
+# ================= 4. DASHBOARD HEADER (TICKER) =================
 st_autorefresh(interval=5000, key="refresh")
-current_admin_name = st.session_state.admin_name
 
-# Sidebar Control
-with st.sidebar.expander("👤 Admin: Add New User"):
-    new_name = st.text_input("User Name")
-    new_mobile = st.text_input("User Mobile")
-    if st.button("Register"):
-        if new_mobile and new_name:
-            ADMIN_DB[new_mobile] = new_name
-            save_users(ADMIN_DB)
-            st.sidebar.success(f"Added!")
-
-# --- Investing.com Ticker Widget (Alternative to TradingView) ---
-investing_ticker = """
-<div style="width: 100%; border: 1px solid #333; border-radius: 5px; overflow: hidden;">
-    <iframe src="https://sslecal2.investing.com?columns=exc_flags,exc_actual,exc_prev,exc_forecast&category=_main,5,2,1,10,3,7,1&importance=1,2,3&features=datepicker,timezone&countries=14&calType=day&timeZone=44&lang=56" 
-    width="100%" height="250" frameborder="0" allowtransparency="true" marginwidth="0" marginheight="0"></iframe>
+# Investing.com Ticker (Fixed Header Style)
+ticker_html = """
+<div style="width: 100%; height: 50px; background-color: #121212; overflow: hidden; border-bottom: 1px solid #333;">
+    <iframe src="https://www.widgets.investing.com/live-indices-ticker?theme=darkTheme&pairs=179,953086,172,166" 
+    width="100%" height="100%" frameborder="0" allowtransparency="true" marginwidth="0" marginheight="0"></iframe>
 </div>
 """
+components.html(ticker_html, height=60)
 
-# Agar aapko sirf rates chahiye (Ticker Style), toh ye use karein:
-ticker_style_html = """
-<iframe src="https://www.widgets.investing.com/top-indices?theme=darkTheme&pairs=179,953086,172,166" 
-width="100%" height="150" frameborder="0" allowtransparency="true" marginwidth="0" marginheight="0"></iframe>
-"""
-components.html(ticker_style_html, height=180)
+# Sidebar
+with st.sidebar.expander("👤 Admin: User Management"):
+    u_n = st.text_input("New Name")
+    u_m = st.text_input("New Mobile")
+    if st.button("Add User"):
+        if u_m and u_n:
+            ADMIN_DB[u_m] = u_n
+            save_users(ADMIN_DB)
+            st.sidebar.success(f"Added {u_n}")
 
-# SDK & Data Fetch
+# ================= 5. DATA FETCH (SDK) =================
 if "nubra" not in st.session_state:
     st.session_state.nubra = InitNubraSdk(NubraEnv.UAT, env_creds=True)
+
 market_data = MarketData(st.session_state.nubra)
 result = market_data.option_chain("NIFTY", exchange="NSE")
-if not result: st.stop()
-chain = result.chain
+if not result:
+    st.warning("🔄 Fetching Market Data...")
+    st.stop()
 
-# Spot Calculation
+chain = result.chain
 try:
     spot = chain.ce[0].underlying_price / 100
 except:
     spot = chain.at_the_money_strike / 100
 
 st.title("🛡️ SMART WEALTH AI 5")
-st.subheader(f"📊 LIVE NIFTY (From SDK): {spot:,.2f}")
+st.subheader(f"📊 LIVE NIFTY: {spot:,.2f}")
 
-# Option Chain Data Preparation
+# ================= 6. DATA PROCESSING =================
 df_ce = pd.DataFrame([vars(x) for x in chain.ce])
 df_pe = pd.DataFrame([vars(x) for x in chain.pe])
 df = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE","_PE")).fillna(0)
 df["STRIKE"] = (df["strike_price"]/100).astype(int)
 
-# Change Calculation
 if "prev_df" not in st.session_state: st.session_state.prev_df = None
 if st.session_state.prev_df is not None:
     prev = st.session_state.prev_df.set_index("STRIKE")
@@ -127,33 +128,34 @@ else:
     df["oi_chg_CE"] = df["oi_chg_PE"] = df["prc_chg_CE"] = df["prc_chg_PE"] = 0
 st.session_state.prev_df = df.copy()
 
-# Admin Update Tables
+# ================= 7. ADMIN UPDATES =================
+st.markdown("---")
 st.subheader("🎯 LIVE TRADE SIGNALS")
 c1, c2, c3, c4, c5 = st.columns(5)
-s_stk = c1.text_input("Strike", value=data["signal"]["Strike"])
-s_ent = c2.text_input("Entry", value=data["signal"]["Entry"])
-s_tgt = c3.text_input("Target", value=data["signal"]["Target"])
-s_slp = c4.text_input("SL", value=data["signal"]["SL"])
-if c5.button("📢 UPDATE"):
-    data["signal"] = {"Strike": s_stk, "Entry": s_ent, "Target": s_tgt, "SL": s_slp, "Status": f"LIVE ({current_admin_name})"}
+s_st = c1.text_input("Strike", value=data["signal"]["Strike"])
+s_en = c2.text_input("Entry", value=data["signal"]["Entry"])
+s_tg = c3.text_input("Target", value=data["signal"]["Target"])
+s_sl = c4.text_input("SL", value=data["signal"]["SL"])
+if c5.button("📢 UPDATE SIGNAL"):
+    data["signal"] = {"Strike": s_st, "Entry": s_en, "Target": s_tg, "SL": s_sl, "Status": f"LIVE ({st.session_state.admin_name})"}
     save_data(data)
     st.rerun()
 
+st.markdown("---")
 st.subheader("📊 SUPPORT / RESISTANCE")
-sr_a, sr_b, sr_c = st.columns(3)
-sup = sr_a.text_input("Support", data["sr"]["support"])
-res = sr_b.text_input("Resistance", data["sr"]["resistance"])
-if sr_c.button("SET"):
-    data["sr"] = {"support": sup, "resistance": res}
+sr1, sr2, sr3 = st.columns(3)
+sup_in = sr1.text_input("Support", data["sr"]["support"])
+res_in = sr2.text_input("Resistance", data["sr"]["resistance"])
+if sr3.button("📝 SET S/R"):
+    data["sr"] = {"support": sup_in, "resistance": res_in}
     save_data(data)
     st.rerun()
 
-# Display S/R Metrics
 m1, m2 = st.columns(2)
 m1.metric("🟢 SUPPORT", data["sr"]["support"])
 m2.metric("🔴 RESISTANCE", data["sr"]["resistance"])
 
-# Table Display & Styling (Original Logic)
+# ================= 8. OPTION CHAIN UI =================
 def format_val(val, delta, m_val):
     p = (val/m_val*100) if m_val > 0 else 0
     return f"{val:,.0f}\n({delta:+,})\n{p:.1f}%"

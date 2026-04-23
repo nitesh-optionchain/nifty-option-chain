@@ -31,7 +31,7 @@ def save_json(file_path, data_to_save):
             json.dump(data_to_save, f)
     except: pass
 
-ADMIN_DB = load_json(USER_FILE, {"9304768496": "Admin Chief", "7982046438": "Admin x"})
+ADMIN_DB = load_json(USER_FILE, {"9304768496": "Admin Chief", "7982046038": "Admin x"})
 SUPER_ADMIN_IDS = ["9304768496", "7982046438"]
 
 # ================= 3. LOGIN FIREWALL =================
@@ -180,11 +180,19 @@ if result and result.chain:
         pct = (delta/m_delta*100) if m_delta > 0 else 0
         return f"{delta:+,}\n{pct:.1f}%"
 
+    # SIGNAL LOGIC
+    def get_row_signal(row, side):
+        stk = int(row["STRIKE"])
+        if side == "CE" and stk == be_res_strike and spot >= be_res_strike: return "⬆️ BUY CE"
+        if side == "PE" and stk == be_sup_strike and spot <= be_sup_strike: return "⬆️ BUY PE"
+        return ""
+
     atm_strike = df.loc[(df["STRIKE"] - spot).abs().idxmin(), "STRIKE"]
     atm_idx = df.index[df["STRIKE"] == atm_strike][0]
     d_df = df.iloc[max(atm_idx-7,0): atm_idx+8].copy()
 
     ui = pd.DataFrame()
+    ui["CE SIGNAL"] = d_df.apply(lambda r: get_row_signal(r, "CE"), axis=1) # NEW
     ui["CE OI\n(Δ/%)"] = d_df.apply(lambda r: fmt_val(r["open_interest_CE"], r["oi_chg_CE"], max_oi_ce), axis=1)
     ui["CE OI CHG"] = d_df.apply(lambda r: fmt_chg(r["oi_chg_CE"], max_chg_ce), axis=1)
     ui["CE VOL\n(%)"] = d_df.apply(lambda r: fmt_val(r["volume_CE"], 0, max_vol_ce), axis=1)
@@ -192,44 +200,49 @@ if result and result.chain:
     ui["PE VOL\n(%)"] = d_df.apply(lambda r: fmt_val(r["volume_PE"], 0, max_vol_pe), axis=1)
     ui["PE OI CHG"] = d_df.apply(lambda r: fmt_chg(r["oi_chg_PE"], max_chg_pe), axis=1)
     ui["PE OI\n(Δ/%)"] = d_df.apply(lambda r: fmt_val(r["open_interest_PE"], r["oi_chg_PE"], max_oi_pe), axis=1)
+    ui["PE SIGNAL"] = d_df.apply(lambda r: get_row_signal(r, "PE"), axis=1) # NEW
 
     def style_table(row):
         s = [''] * len(row)
-        try: cur_strike = int(row.iloc[3])
-        except: cur_strike = row.iloc[3]
+        try: cur_strike = int(row.iloc[4]) # Strike index is now 4
+        except: cur_strike = row.iloc[4]
         
-        s[3] = 'background-color:#f0f2f6;color:black;font-weight:bold' 
+        s[4] = 'background-color:#f0f2f6;color:black;font-weight:bold' 
         
         # --- Break Even & Big Move Rows ---
         if cur_strike == be_res_strike: 
             s = ['border-top: 3px solid blue; border-bottom: 3px solid blue; font-weight: bold'] * len(row)
-            if spot >= be_res_strike: s = ['background-color: #008000; color: white; font-weight: bold'] * len(row)
+            if spot >= be_res_strike: 
+                s = ['background-color: #008000; color: white; font-weight: bold'] * len(row)
+                s[0] = 'background-color:white; color:#008000; font-weight:900' # CE Arrow Highlight
         
         if cur_strike == be_sup_strike: 
             s = ['border-top: 3px solid red; border-bottom: 3px solid red; font-weight: bold'] * len(row)
-            if spot <= be_sup_strike: s = ['background-color: #FF0000; color: white; font-weight: bold'] * len(row)
+            if spot <= be_sup_strike: 
+                s = ['background-color: #FF0000; color: white; font-weight: bold'] * len(row)
+                s[8] = 'background-color:white; color:#FF0000; font-weight:900' # PE Arrow Highlight
 
         try:
-            # ORIGINAL COLOR LOGIC RESTORED
-            c_oi_p = float(row.iloc[0].split('\n')[-1].replace('%',''))
-            c_ch_p = float(row.iloc[1].split('\n')[-1].replace('%',''))
-            c_vo_p = float(row.iloc[2].split('\n')[-1].replace('%',''))
-            p_vo_p = float(row.iloc[4].split('\n')[-1].replace('%',''))
-            p_ch_p = float(row.iloc[5].split('\n')[-1].replace('%',''))
-            p_oi_p = float(row.iloc[6].split('\n')[-1].replace('%',''))
+            # ORIGINAL COLOR LOGIC (Adjusted indices for Signal columns)
+            c_oi_p = float(row.iloc[1].split('\n')[-1].replace('%',''))
+            c_ch_p = float(row.iloc[2].split('\n')[-1].replace('%',''))
+            c_vo_p = float(row.iloc[3].split('\n')[-1].replace('%',''))
+            p_vo_p = float(row.iloc[5].split('\n')[-1].replace('%',''))
+            p_ch_p = float(row.iloc[6].split('\n')[-1].replace('%',''))
+            p_oi_p = float(row.iloc[7].split('\n')[-1].replace('%',''))
 
             # CE Side Colors
-            if c_oi_p >= 70: s[0] = 'background-color:#1976d2;color:white'
-            if c_ch_p >= 70: s[1] = 'background-color:#4caf50;color:white'
-            if c_vo_p >= 70: s[2] = 'background-color:#1b5e20;color:white'
+            if 'background-color' not in s[1] and c_oi_p >= 70: s[1] = 'background-color:#1976d2;color:white'
+            if 'background-color' not in s[2] and c_ch_p >= 70: s[2] = 'background-color:#4caf50;color:white'
+            if 'background-color' not in s[3] and c_vo_p >= 70: s[3] = 'background-color:#1b5e20;color:white'
             # PE Side Colors
-            if p_vo_p >= 70: s[4] = 'background-color:#b71c1c;color:white'
-            if p_ch_p >= 70: s[5] = 'background-color:#f44336;color:white'
-            if p_oi_p >= 70: s[6] = 'background-color:#fb8c00;color:white'
+            if 'background-color' not in s[5] and p_vo_p >= 70: s[5] = 'background-color:#b71c1c;color:white'
+            if 'background-color' not in s[6] and p_ch_p >= 70: s[6] = 'background-color:#f44336;color:white'
+            if 'background-color' not in s[7] and p_oi_p >= 70: s[7] = 'background-color:#fb8c00;color:white'
             
             # ATM highlight
             if cur_strike == int(atm_strike):
-                s[3] = 'background-color:yellow;color:black;font-weight:bold'
+                s[4] = 'background-color:yellow;color:black;font-weight:bold'
         except: pass
         return s
 

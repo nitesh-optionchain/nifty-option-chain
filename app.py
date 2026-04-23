@@ -14,7 +14,7 @@ if "is_auth" not in st.session_state:
     st.session_state.is_super_admin = False
 
 # ================= 2. FILE STORAGE =================
-DATA_FILE = "admin_data_v2.json" # Version change for dynamic structure
+DATA_FILE = "admin_data_v2.json" 
 USER_FILE = "authorized_users.json"
 
 def load_json(file_path, default_val):
@@ -30,7 +30,7 @@ def save_json(file_path, data_to_save):
             json.dump(data_to_save, f)
     except: pass
 
-ADMIN_DB = load_json(USER_FILE, {"9304768496": "Admin Chief", "7982046738": "Admin x"})
+ADMIN_DB = load_json(USER_FILE, {"9304768496": "Admin Chief", "7982046438": "Admin x"})
 SUPER_ADMIN_IDS = ["9304768496", "7982046438"]
 
 # ================= 3. LOGIN FIREWALL =================
@@ -60,19 +60,14 @@ if st.sidebar.button("🔒 LOGOUT"):
     st.session_state.is_auth = False
     st.rerun()
 
-# DYNAMIC DATA STRUCTURE: Har index ka apna data
 all_index_data = load_json(DATA_FILE, {
     "NIFTY": {"signal": {"Strike": "-", "Entry": "-", "Target": "-", "SL": "-"}, "sr": {"support": "-", "resistance": "-"}},
     "SENSEX": {"signal": {"Strike": "-", "Entry": "-", "Target": "-", "SL": "-"}, "sr": {"support": "-", "resistance": "-"}}
 })
 
-# Current selected index ka data nikalna
-if index_choice not in all_index_data:
-    all_index_data[index_choice] = {"signal": {"Strike": "-", "Entry": "-", "Target": "-", "SL": "-"}, "sr": {"support": "-", "resistance": "-"}}
+current_idx_data = all_index_data.get(index_choice, all_index_data["NIFTY"])
 
-current_idx_data = all_index_data[index_choice]
-
-# ================= 5. SDK & STABLE DATA FETCH =================
+# ================= 5. SDK & DATA FETCH =================
 if "nubra" not in st.session_state:
     st.session_state.nubra = InitNubraSdk(NubraEnv.UAT, env_creds=True)
 
@@ -93,69 +88,45 @@ if result and result.chain:
     df_ce = pd.DataFrame([vars(x) for x in chain.ce])
     df_pe = pd.DataFrame([vars(x) for x in chain.pe])
     df = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE","_PE")).fillna(0)
+    
+    # Ye fix hai: Nifty/Sensex dono ka strike sahi dikhayega
     df["STRIKE"] = (df["strike_price"]/100).astype(int)
 
-    # --- OI CHANGE STABLE LOGIC ---
     state_key = f"initial_df_{index_choice}"
     if state_key not in st.session_state:
         st.session_state[state_key] = df.copy()
 
     def calc_stable_oi(row, side):
         curr_oi = row[f"open_interest_{side}"]
-        prev_oi = row.get(f"previous_close_oi_{side}", 0)
-        if prev_oi == 0:
-            init_df = st.session_state[state_key].set_index("STRIKE")
-            strike = row["STRIKE"]
-            if strike in init_df.index:
-                prev_oi = init_df.loc[strike, f"open_interest_{side}"]
+        init_df = st.session_state[state_key].set_index("STRIKE")
+        strike = row["STRIKE"]
+        prev_oi = init_df.loc[strike, f"open_interest_{side}"] if strike in init_df.index else curr_oi
         return curr_oi - prev_oi
 
     df["oi_chg_CE"] = df.apply(lambda r: calc_stable_oi(r, "CE"), axis=1)
     df["oi_chg_PE"] = df.apply(lambda r: calc_stable_oi(r, "PE"), axis=1)
 
-    max_oi_ce, max_oi_pe = df["open_interest_CE"].max(), df["open_interest_PE"].max()
-    max_vol_ce, max_vol_pe = df["volume_CE"].max(), df["volume_PE"].max()
-    max_chg_ce = df["oi_chg_CE"].abs().max() if df["oi_chg_CE"].abs().max() > 0 else 1
-    max_chg_pe = df["oi_chg_PE"].abs().max() if df["oi_chg_PE"].abs().max() > 0 else 1
+    max_oi_ce = df["open_interest_CE"].max() or 1
+    max_oi_pe = df["open_interest_PE"].max() or 1
+    max_vol_ce = df["volume_CE"].max() or 1
+    max_vol_pe = df["volume_PE"].max() or 1
+    max_chg_ce = df["oi_chg_CE"].abs().max() or 1
+    max_chg_pe = df["oi_chg_PE"].abs().max() or 1
 
-    # ================= 6. DYNAMIC ADMIN PANEL =================
-    if st.session_state.is_super_admin:
-        with st.expander(f"🛠️ ADMIN CONTROLS ({index_choice})"):
-            t1, t2 = st.tabs(["Signal & Levels", "User Management"])
-            with t1:
-                st.info(f"Yahan jo entry karoge wo sirf {index_choice} ke liye save hogi.")
-                c1, c2, c3, c4 = st.columns(4)
-                s_stk = c1.text_input("Strike", value=current_idx_data["signal"]["Strike"])
-                s_ent = c2.text_input("Entry Price", value=current_idx_data["signal"]["Entry"])
-                s_tgt = c3.text_input("Target", value=current_idx_data["signal"]["Target"])
-                s_sl = c4.text_input("SL", value=current_idx_data["signal"]["SL"])
-                sup_in = st.text_input("Support", value=current_idx_data["sr"]["support"])
-                res_in = st.text_input("Resistance", value=current_idx_data["sr"]["resistance"])
-                
-                if st.button(f"UPDATE {index_choice} DATA"):
-                    all_index_data[index_choice]["signal"] = {"Strike": s_stk, "Entry": s_ent, "Target": s_tgt, "SL": s_sl}
-                    all_index_data[index_choice]["sr"] = {"support": sup_in, "resistance": res_in}
-                    save_json(DATA_FILE, all_index_data)
-                    st.success(f"{index_choice} updated!")
-                    st.rerun()
-            with t2:
-                new_uid = st.text_input("New Mobile ID")
-                new_uname = st.text_input("User Name")
-                if st.button("ADD NEW USER"):
-                    ADMIN_DB[new_uid] = new_uname
-                    save_json(USER_FILE, ADMIN_DB)
-                    st.success(f"Added {new_uname}!")
+    # BREAKOUT POINTS (MAX OI)
+    be_res_strike = int(df.loc[df["open_interest_CE"].idxmax(), "STRIKE"])
+    be_sup_strike = int(df.loc[df["open_interest_PE"].idxmax(), "STRIKE"])
 
-    # Top Metrics (Now Index Specific)
+    # Metrics
     m1, m2, m3, m4, m5, m6 = st.columns(6)
     m1.metric("🎯 STRIKE", current_idx_data["signal"]["Strike"])
     m2.metric("💰 ENTRY", current_idx_data["signal"]["Entry"])
     m3.metric("📈 TARGET", current_idx_data["signal"]["Target"])
     m4.metric("📉 SL", current_idx_data["signal"]["SL"])
-    m5.metric("🟢 SUP", current_idx_data["sr"]["support"])
-    m6.metric("🔴 RES", current_idx_data["sr"]["resistance"])
+    m5.metric("🟢 SUP", be_sup_strike)
+    m6.metric("🔴 RES", be_res_strike)
 
-    # ================= 7. TABLE UI & STYLING =================
+    # ================= 6. TABLE UI =================
     def fmt_val(val, delta, m_val):
         pct = (val/m_val*100) if m_val > 0 else 0
         return f"{val:,.0f}\n({delta:+,})\n{pct:.1f}%"
@@ -163,6 +134,12 @@ if result and result.chain:
     def fmt_chg(delta, m_delta):
         pct = (delta/m_delta*100) if m_delta > 0 else 0
         return f"{delta:+,}\n{pct:.1f}%"
+
+    def get_strike_label(row):
+        stk = int(row["STRIKE"])
+        if stk == be_res_strike and spot >= be_res_strike: return "⬆️ BUY CE"
+        if stk == be_sup_strike and spot <= be_sup_strike: return "⬇️ BUY PE"
+        return str(stk)
 
     atm_strike = df.loc[(df["STRIKE"] - spot).abs().idxmin(), "STRIKE"]
     atm_idx = df.index[df["STRIKE"] == atm_strike][0]
@@ -172,35 +149,30 @@ if result and result.chain:
     ui["CE OI\n(Δ/%)"] = d_df.apply(lambda r: fmt_val(r["open_interest_CE"], r["oi_chg_CE"], max_oi_ce), axis=1)
     ui["CE OI CHG"] = d_df.apply(lambda r: fmt_chg(r["oi_chg_CE"], max_chg_ce), axis=1)
     ui["CE VOL\n(%)"] = d_df.apply(lambda r: fmt_val(r["volume_CE"], 0, max_vol_ce), axis=1)
-    ui["STRIKE"] = d_df["STRIKE"]
+    ui["STRIKE"] = d_df.apply(get_strike_label, axis=1)
     ui["PE VOL\n(%)"] = d_df.apply(lambda r: fmt_val(r["volume_PE"], 0, max_vol_pe), axis=1)
     ui["PE OI CHG"] = d_df.apply(lambda r: fmt_chg(r["oi_chg_PE"], max_chg_pe), axis=1)
     ui["PE OI\n(Δ/%)"] = d_df.apply(lambda r: fmt_val(r["open_interest_PE"], r["oi_chg_PE"], max_oi_pe), axis=1)
+    ui["STK_RAW"] = d_df["STRIKE"]
 
     def style_table(row):
         s = [''] * len(row)
+        cur_strike = int(row["STK_RAW"])
         s[3] = 'background-color:#f0f2f6;color:black;font-weight:bold' 
-        try:
-            c_oi_p = float(row.iloc[0].split('\n')[-1].replace('%',''))
-            c_ch_p = float(row.iloc[1].split('\n')[-1].replace('%',''))
-            c_vo_p = float(row.iloc[2].split('\n')[-1].replace('%',''))
-            p_vo_p = float(row.iloc[4].split('\n')[-1].replace('%',''))
-            p_ch_p = float(row.iloc[5].split('\n')[-1].replace('%',''))
-            p_oi_p = float(row.iloc[6].split('\n')[-1].replace('%',''))
+        
+        # ROW HIGHLIGHTING LOGIC
+        if cur_strike == be_res_strike: 
+            s = ['border: 2px solid blue; font-weight: bold'] * len(row)
+            if spot >= be_res_strike: s = ['background-color: #008000; color: white; font-weight: bold'] * len(row)
+        elif cur_strike == be_sup_strike: 
+            s = ['border: 2px solid red; font-weight: bold'] * len(row)
+            if spot <= be_sup_strike: s = ['background-color: #FF0000; color: white; font-weight: bold'] * len(row)
 
-            if c_oi_p >= 70: s[0] = 'background-color:#1976d2;color:white'
-            if c_ch_p >= 70: s[1] = 'background-color:#4caf50;color:white'
-            if c_vo_p >= 70: s[2] = 'background-color:#1b5e20;color:white'
-            if p_vo_p >= 70: s[4] = 'background-color:#b71c1c;color:white'
-            if p_ch_p >= 70: s[5] = 'background-color:#f44336;color:white'
-            if p_oi_p >= 70: s[6] = 'background-color:#fb8c00;color:white'
-            
-            if row.iloc[3] == atm_strike:
-                s[3] = 'background-color:yellow;color:black;font-weight:bold'
-        except: pass
+        if cur_strike == int(atm_strike) and 'background-color' not in s[3]:
+            s[3] = 'background-color:yellow;color:black;font-weight:bold'
         return s
 
     st.subheader(f"📊 {index_choice} Option Chain")
-    st.table(ui.style.apply(style_table, axis=1))
+    st.table(ui.iloc[:, :7].style.apply(style_table, axis=1))
 else:
     st.info("Market data load ho raha hai...")

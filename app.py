@@ -65,7 +65,7 @@ current_data = load_json(DATA_FILE, {
     "sr": {"support": "-", "resistance": "-"}
 })
 
-# ================= 5. SDK & DATA =================
+# ================= 5. SDK & STABLE DATA FETCH =================
 if "nubra" not in st.session_state:
     st.session_state.nubra = InitNubraSdk(NubraEnv.UAT, env_creds=True)
 
@@ -88,15 +88,29 @@ if result and result.chain:
     df = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE","_PE")).fillna(0)
     df["STRIKE"] = (df["strike_price"]/100).astype(int)
 
+    # --- OI CHANGE STABLE LOGIC ---
     state_key = f"initial_df_{index_choice}"
     if state_key not in st.session_state:
         st.session_state[state_key] = df.copy()
-    
-    init_df = st.session_state[state_key].set_index("STRIKE")
-    df_curr = df.set_index("STRIKE")
-    df["oi_chg_CE"] = df["STRIKE"].map(lambda x: df_curr.loc[x, "open_interest_CE"] - init_df.loc[x, "open_interest_CE"] if x in init_df.index else 0)
-    df["oi_chg_PE"] = df["STRIKE"].map(lambda x: df_curr.loc[x, "open_interest_PE"] - init_df.loc[x, "open_interest_PE"] if x in init_df.index else 0)
 
+    def calc_stable_oi(row, side):
+        curr_oi = row[f"open_interest_{side}"]
+        # SDK Previous Close OI Try (Most accurate for non-zero)
+        prev_oi = row.get(f"previous_close_oi_{side}", 0)
+        
+        # Backup: If SDK prev is 0, use session start data
+        if prev_oi == 0:
+            init_df = st.session_state[state_key].set_index("STRIKE")
+            strike = row["STRIKE"]
+            if strike in init_df.index:
+                prev_oi = init_df.loc[strike, f"open_interest_{side}"]
+        
+        return curr_oi - prev_oi
+
+    df["oi_chg_CE"] = df.apply(lambda r: calc_stable_oi(r, "CE"), axis=1)
+    df["oi_chg_PE"] = df.apply(lambda r: calc_stable_oi(r, "PE"), axis=1)
+
+    # Max Values for % calculation
     max_oi_ce, max_oi_pe = df["open_interest_CE"].max(), df["open_interest_PE"].max()
     max_vol_ce, max_vol_pe = df["volume_CE"].max(), df["volume_PE"].max()
     max_chg_ce = df["oi_chg_CE"].abs().max() if df["oi_chg_CE"].abs().max() > 0 else 1
@@ -140,7 +154,7 @@ if result and result.chain:
         pct = (delta/m_delta*100) if m_delta > 0 else 0
         return f"{delta:+,}\n{pct:.1f}%"
 
-    # Find the single EXACT ATM strike
+    # ATM Calculation (Single Strike)
     atm_strike = df.loc[(df["STRIKE"] - spot).abs().idxmin(), "STRIKE"]
     atm_idx = df.index[df["STRIKE"] == atm_strike][0]
     d_df = df.iloc[max(atm_idx-7,0): atm_idx+8].copy()
@@ -156,8 +170,7 @@ if result and result.chain:
 
     def style_table(row):
         s = [''] * len(row)
-        # Strike column background Grey
-        s[3] = 'background-color:#f0f2f6;color:black;font-weight:bold'
+        s[3] = 'background-color:#f0f2f6;color:black;font-weight:bold' # Strike Grey
         try:
             c_oi_p = float(row.iloc[0].split('\n')[-1].replace('%',''))
             c_ch_p = float(row.iloc[1].split('\n')[-1].replace('%',''))
@@ -166,22 +179,27 @@ if result and result.chain:
             p_ch_p = float(row.iloc[5].split('\n')[-1].replace('%',''))
             p_oi_p = float(row.iloc[6].split('\n')[-1].replace('%',''))
 
+            # CE Styling
             if c_oi_p >= 100: s[0] = 'background-color:#0d47a1;color:white;font-weight:bold'
             elif c_oi_p >= 70: s[0] = 'background-color:#1976d2;color:white'
             if c_ch_p >= 100: s[1] = 'background-color:#1b5e20;color:white;font-weight:bold'
             elif c_ch_p >= 70: s[1] = 'background-color:#4caf50;color:white'
             if c_vo_p >= 70: s[2] = 'background-color:#1b5e20;color:white'
 
+            # PE Styling
             if p_vo_p >= 70: s[4] = 'background-color:#b71c1c;color:white'
             if p_ch_p >= 100: s[5] = 'background-color:#b71c1c;color:white;font-weight:bold'
             elif p_ch_p >= 70: s[5] = 'background-color:#f44336;color:white'
             if p_oi_p >= 100: s[6] = 'background-color:#e65100;color:white;font-weight:bold'
             elif p_oi_p >= 70: s[6] = 'background-color:#fb8c00;color:white'
             
-            # EXACT ATM highlight ONLY (Overrides Grey)
+            # ATM highlight (Overrides Grey)
             if row.iloc[3] == atm_strike:
                 s[3] = 'background-color:yellow;color:black;font-weight:bold'
         except: pass
         return s
 
+    st.subheader(f"📊 {index_choice} Option Chain (Live Delta)")
     st.table(ui.style.apply(style_table, axis=1))
+else:
+    st.info("Market data load ho raha hai, thoda wait karein...")

@@ -102,6 +102,8 @@ if result and result.chain:
 
     max_oi_ce = df["open_interest_CE"].max()
     max_oi_pe = df["open_interest_PE"].max()
+    max_vol_ce = df["volume_CE"].max()
+    max_vol_pe = df["volume_PE"].max()
 
     # ================= BREAK EVEN =================
     ce_resistance = df.loc[df["open_interest_CE"].idxmax(), "STRIKE"]
@@ -117,9 +119,11 @@ if result and result.chain:
         return f"{val:,.0f}\n({delta:+,})\n{p:.1f}%"
 
     ui = pd.DataFrame()
-    ui["CE OI"] = d_df.apply(lambda r: fmt_val(r["open_interest_CE"], r["oi_chg_CE"], max_oi_ce), axis=1)
+    ui["CE OI\n(Δ/%)"] = d_df.apply(lambda r: fmt_val(r["open_interest_CE"], r["oi_chg_CE"], max_oi_ce), axis=1)
+    ui["CE VOL\n(%)"] = d_df.apply(lambda r: fmt_val(r["volume_CE"], 0, max_vol_ce), axis=1)
     ui["STRIKE"] = d_df["STRIKE"]
-    ui["PE OI"] = d_df.apply(lambda r: fmt_val(r["open_interest_PE"], r["oi_chg_PE"], max_oi_pe), axis=1)
+    ui["PE VOL\n(%)"] = d_df.apply(lambda r: fmt_val(r["volume_PE"], 0, max_vol_pe), axis=1)
+    ui["PE OI\n(Δ/%)"] = d_df.apply(lambda r: fmt_val(r["open_interest_PE"], r["oi_chg_PE"], max_oi_pe), axis=1)
 
     # ================= SIGNAL =================
     def get_signal(strike):
@@ -132,15 +136,19 @@ if result and result.chain:
     ui["SIGNAL"] = d_df["STRIKE"].apply(get_signal)
 
     # ================= STYLE =================
-    def style(row):
-        if row["STRIKE"] == pe_support:
-            return ['background-color:#00e676'] * len(row)
-        elif row["STRIKE"] == ce_resistance:
-            return ['background-color:#ff1744;color:white'] * len(row)
-        return [''] * len(row)
+    def style_table(row):
+        styles = [''] * len(row)
 
-    st.subheader("📊 OPTION CHAIN WITH BREAK-EVEN")
-    st.table(ui.style.apply(style, axis=1))
+        if row["STRIKE"] == pe_support:
+            styles = ['background-color:#00e676;color:black;font-weight:bold'] * len(row)
+
+        elif row["STRIKE"] == ce_resistance:
+            styles = ['background-color:#ff1744;color:white;font-weight:bold'] * len(row)
+
+        return styles
+
+    st.subheader(f"📊 {index_choice} Option Chain (Break-Even Enabled)")
+    st.table(ui.style.apply(style_table, axis=1))
 
 else:
-    st.info("Loading market data...")
+    st.info("Market data load ho raha hai...")

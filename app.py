@@ -70,7 +70,7 @@ if index_choice not in all_index_data:
 
 current_idx_data = all_index_data[index_choice]
 
-# ================= 5. SDK & STABLE DATA FETCH =================
+# ================= 5. SDK & DATA FETCH =================
 if "nubra" not in st.session_state:
     st.session_state.nubra = InitNubraSdk(NubraEnv.UAT, env_creds=True)
 
@@ -112,22 +112,11 @@ if result and result.chain:
     max_chg_ce = df["oi_chg_CE"].abs().max() or 1
     max_chg_pe = df["oi_chg_PE"].abs().max() or 1
 
-    # --- BREAK-EVEN CALCULATION ---
+    # Breakout logic for highlight
     be_res_strike = int(df.loc[df["open_interest_CE"].idxmax(), "STRIKE"])
     be_sup_strike = int(df.loc[df["open_interest_PE"].idxmax(), "STRIKE"])
 
-    # ================= 6. DYNAMIC ADMIN PANEL =================
-    if st.session_state.is_super_admin:
-        with st.expander(f"🛠️ ADMIN CONTROLS ({index_choice})"):
-            c1, c2, c3, c4 = st.columns(4)
-            s_stk = c1.text_input("Strike", value=current_idx_data["signal"]["Strike"])
-            s_ent = c2.text_input("Entry Price", value=current_idx_data["signal"]["Entry"])
-            s_tgt = c3.text_input("Target", value=current_idx_data["signal"]["Target"])
-            s_sl = c4.text_input("SL", value=current_idx_data["signal"]["SL"])
-            if st.button(f"UPDATE {index_choice} DATA"):
-                all_index_data[index_choice]["signal"] = {"Strike": s_stk, "Entry": s_ent, "Target": s_tgt, "SL": s_sl}
-                save_json(DATA_FILE, all_index_data); st.rerun()
-
+    # Metrics
     m1, m2, m3, m4, m5, m6 = st.columns(6)
     m1.metric("🎯 STRIKE", current_idx_data["signal"]["Strike"])
     m2.metric("💰 ENTRY", current_idx_data["signal"]["Entry"])
@@ -136,7 +125,7 @@ if result and result.chain:
     m5.metric("🟢 SUP", be_sup_strike)
     m6.metric("🔴 RES", be_res_strike)
 
-    # ================= 7. TABLE UI & STYLING =================
+    # ================= 6. TABLE UI & STYLING =================
     def fmt_val(val, delta, m_val):
         pct = (val/m_val*100) if m_val > 0 else 0
         return f"{val:,.0f}\n({delta:+,})\n{pct:.1f}%"
@@ -163,21 +152,29 @@ if result and result.chain:
         cur_strike = int(row.iloc[3])
         s[3] = 'background-color:#f0f2f6;color:black;font-weight:bold' 
         
-        # --- BREAK-EVEN / BREAKOUT ROW HIGHLIGHTING ---
-        if cur_strike == be_res_strike: 
-            s = ['border: 2px solid blue; font-weight: bold'] * len(row)
-            if spot >= be_res_strike: s = ['background-color: #008000; color: white; font-weight: bold'] * len(row)
-        elif cur_strike == be_sup_strike: 
-            s = ['border: 2px solid red; font-weight: bold'] * len(row)
-            if spot <= be_sup_strike: s = ['background-color: #FF0000; color: white; font-weight: bold'] * len(row)
-
         try:
+            # PURE ORIGINAL COLOR LOGIC
             c_oi_p = float(row.iloc[0].split('\n')[-1].replace('%',''))
+            c_ch_p = float(row.iloc[1].split('\n')[-1].replace('%',''))
+            c_vo_p = float(row.iloc[2].split('\n')[-1].replace('%',''))
+            p_vo_p = float(row.iloc[4].split('\n')[-1].replace('%',''))
+            p_ch_p = float(row.iloc[5].split('\n')[-1].replace('%',''))
             p_oi_p = float(row.iloc[6].split('\n')[-1].replace('%',''))
 
-            if 'background-color' not in s[0] and c_oi_p >= 70: s[0] = 'background-color:#1976d2;color:white'
-            if 'background-color' not in s[6] and p_oi_p >= 70: s[6] = 'background-color:#fb8c00;color:white'
+            if c_oi_p >= 70: s[0] = 'background-color:#1976d2;color:white'
+            if c_ch_p >= 70: s[1] = 'background-color:#4caf50;color:white'
+            if c_vo_p >= 70: s[2] = 'background-color:#1b5e20;color:white'
+            if p_vo_p >= 70: s[4] = 'background-color:#b71c1c;color:white'
+            if p_ch_p >= 70: s[5] = 'background-color:#f44336;color:white'
+            if p_oi_p >= 70: s[6] = 'background-color:#fb8c00;color:white'
             
+            # BREAKOUT OVERRIDE
+            if cur_strike == be_res_strike and spot >= be_res_strike:
+                s = ['background-color: #008000; color: white; font-weight: bold'] * len(row)
+            elif cur_strike == be_sup_strike and spot <= be_sup_strike:
+                s = ['background-color: #FF0000; color: white; font-weight: bold'] * len(row)
+            
+            # ATM YELLOW
             if cur_strike == int(atm_strike) and 'background-color' not in s[3]:
                 s[3] = 'background-color:yellow;color:black;font-weight:bold'
         except: pass

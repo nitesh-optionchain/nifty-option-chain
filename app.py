@@ -112,7 +112,7 @@ if result and result.chain:
     max_chg_ce = df["oi_chg_CE"].abs().max() or 1
     max_chg_pe = df["oi_chg_PE"].abs().max() or 1
 
-    # Breakout logic for highlight
+    # Break-even strikes (Max OI)
     be_res_strike = int(df.loc[df["open_interest_CE"].idxmax(), "STRIKE"])
     be_sup_strike = int(df.loc[df["open_interest_PE"].idxmax(), "STRIKE"])
 
@@ -122,8 +122,8 @@ if result and result.chain:
     m2.metric("💰 ENTRY", current_idx_data["signal"]["Entry"])
     m3.metric("📈 TARGET", current_idx_data["signal"]["Target"])
     m4.metric("📉 SL", current_idx_data["signal"]["SL"])
-    m5.metric("🟢 SUP", be_sup_strike)
-    m6.metric("🔴 RES", be_res_strike)
+    m5.metric("🟢 SUP", current_idx_data["sr"]["support"])
+    m6.metric("🔴 RES", current_idx_data["sr"]["resistance"])
 
     # ================= 6. TABLE UI & STYLING =================
     def fmt_val(val, delta, m_val):
@@ -153,7 +153,7 @@ if result and result.chain:
         s[3] = 'background-color:#f0f2f6;color:black;font-weight:bold' 
         
         try:
-            # PURE ORIGINAL COLOR LOGIC
+            # ORIGINAL COLOR LOGIC
             c_oi_p = float(row.iloc[0].split('\n')[-1].replace('%',''))
             c_ch_p = float(row.iloc[1].split('\n')[-1].replace('%',''))
             c_vo_p = float(row.iloc[2].split('\n')[-1].replace('%',''))
@@ -168,13 +168,12 @@ if result and result.chain:
             if p_ch_p >= 70: s[5] = 'background-color:#f44336;color:white'
             if p_oi_p >= 70: s[6] = 'background-color:#fb8c00;color:white'
             
-            # BREAKOUT OVERRIDE
+            # BREAK-EVEN POINT LOGIC (ROW HIGHLIGHT)
             if cur_strike == be_res_strike and spot >= be_res_strike:
                 s = ['background-color: #008000; color: white; font-weight: bold'] * len(row)
             elif cur_strike == be_sup_strike and spot <= be_sup_strike:
                 s = ['background-color: #FF0000; color: white; font-weight: bold'] * len(row)
             
-            # ATM YELLOW
             if cur_strike == int(atm_strike) and 'background-color' not in s[3]:
                 s[3] = 'background-color:yellow;color:black;font-weight:bold'
         except: pass

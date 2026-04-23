@@ -31,7 +31,7 @@ def save_json(file_path, data_to_save):
             json.dump(data_to_save, f)
     except: pass
 
-ADMIN_DB = load_json(USER_FILE, {"9304768496": "Admin Chief", "7982046038": "Admin x"})
+ADMIN_DB = load_json(USER_FILE, {"9304768496": "Admin Chief", "7982046738": "Admin x"})
 SUPER_ADMIN_IDS = ["9304768496", "7982046438"]
 
 # ================= 3. LOGIN FIREWALL =================
@@ -73,7 +73,13 @@ current_idx_data = all_index_data[index_choice]
 
 # ================= 5. SENSEX LIVE HEADER (TRADING VIEW) =================
 if index_choice == "SENSEX":
-    tv_html = """<div class="tradingview-widget-container"><script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-single-quote.js" async>{"symbol": "BSE:SENSEX", "width": "100%", "colorTheme": "light", "isTransparent": false, "locale": "en"}</script></div>"""
+    tv_html = """
+    <div class="tradingview-widget-container">
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-single-quote.js" async>
+      {"symbol": "BSE:SENSEX", "width": "100%", "colorTheme": "light", "isTransparent": false, "locale": "en"}
+      </script>
+    </div>
+    """
     components.html(tv_html, height=130)
 
 # ================= 6. SDK & STABLE DATA FETCH =================
@@ -86,8 +92,10 @@ result = market_data.option_chain(index_choice, exchange=target_exch)
 if result and result.chain:
     chain = result.chain
     try:
-        raw_spot = getattr(chain.ce[0], 'underlying_price', getattr(chain, 'underlying_price', getattr(chain, 'at_the_money_strike', 0)))
-        spot = float(raw_spot) / 100 if raw_spot > 100000 else float(raw_spot)
+        raw_spot = getattr(chain.ce[0], 'underlying_price', 
+                   getattr(chain, 'underlying_price', 
+                   getattr(chain, 'at_the_money_strike', 0)))
+        spot = raw_spot / 100 if raw_spot > 100000 else raw_spot
     except: spot = 0
 
     st.title(f"🛡️ SMART WEALTH AI 5 | {index_choice}: {spot:,.2f}")
@@ -95,7 +103,7 @@ if result and result.chain:
     df_ce = pd.DataFrame([vars(x) for x in chain.ce])
     df_pe = pd.DataFrame([vars(x) for x in chain.pe])
     df = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE","_PE")).fillna(0)
-    df["STRIKE"] = (df["strike_price"]/100).astype(int) if index_choice == "SENSEX" else df["strike_price"].astype(int)
+    df["STRIKE"] = (df["strike_price"]/100).astype(int)
 
     state_key = f"initial_df_{index_choice}"
     if state_key not in st.session_state:
@@ -103,9 +111,12 @@ if result and result.chain:
 
     def calc_stable_oi(row, side):
         curr_oi = row[f"open_interest_{side}"]
-        init_df = st.session_state[state_key].set_index("STRIKE")
-        strike = row["STRIKE"]
-        prev_oi = init_df.loc[strike, f"open_interest_{side}"] if strike in init_df.index else curr_oi
+        prev_oi = row.get(f"previous_close_oi_{side}", 0)
+        if prev_oi == 0:
+            init_df = st.session_state[state_key].set_index("STRIKE")
+            strike = row["STRIKE"]
+            if strike in init_df.index:
+                prev_oi = init_df.loc[strike, f"open_interest_{side}"]
         return curr_oi - prev_oi
 
     df["oi_chg_CE"] = df.apply(lambda r: calc_stable_oi(r, "CE"), axis=1)
@@ -113,22 +124,54 @@ if result and result.chain:
 
     max_oi_ce, max_oi_pe = df["open_interest_CE"].max(), df["open_interest_PE"].max()
     max_vol_ce, max_vol_pe = df["volume_CE"].max(), df["volume_PE"].max()
-    max_chg_ce = df["oi_chg_CE"].abs().max() or 1
-    max_chg_pe = df["oi_chg_PE"].abs().max() or 1
+    max_chg_ce = df["oi_chg_CE"].abs().max() if df["oi_chg_CE"].abs().max() > 0 else 1
+    max_chg_pe = df["oi_chg_PE"].abs().max() if df["oi_chg_PE"].abs().max() > 0 else 1
 
+    # Break-Even Calculations (Fixed for Sensex)
     be_res_strike = int(df.loc[df["open_interest_CE"].idxmax(), "STRIKE"])
     be_sup_strike = int(df.loc[df["open_interest_PE"].idxmax(), "STRIKE"])
 
-    # ================= 7. METRICS =================
+    # Auto Signal Alert
+    if spot >= be_res_strike:
+        st.success(f"🚀 BIG MOVE: {index_choice} CALL BUYING ABOVE {be_res_strike}")
+    elif spot <= be_sup_strike:
+        st.error(f"🩸 BIG MOVE: {index_choice} PE BUYING BELOW {be_sup_strike}")
+
+    # ================= 7. ADMIN PANEL & METRICS =================
+    if st.session_state.is_super_admin:
+        with st.expander(f"🛠️ ADMIN CONTROLS ({index_choice})"):
+            t1, t2 = st.tabs(["Signal & Levels", "User Management"])
+            with t1:
+                c1, c2, c3, c4 = st.columns(4)
+                s_stk = c1.text_input("Strike", value=current_idx_data["signal"]["Strike"])
+                s_ent = c2.text_input("Entry Price", value=current_idx_data["signal"]["Entry"])
+                s_tgt = c3.text_input("Target", value=current_idx_data["signal"]["Target"])
+                s_sl = c4.text_input("SL", value=current_idx_data["signal"]["SL"])
+                sup_in = st.text_input("Support", value=current_idx_data["sr"]["support"])
+                res_in = st.text_input("Resistance", value=current_idx_data["sr"]["resistance"])
+                
+                if st.button(f"UPDATE {index_choice} DATA"):
+                    all_index_data[index_choice]["signal"] = {"Strike": s_stk, "Entry": s_ent, "Target": s_tgt, "SL": s_sl}
+                    all_index_data[index_choice]["sr"] = {"support": sup_in, "resistance": res_in}
+                    save_json(DATA_FILE, all_index_data)
+                    st.rerun()
+            with t2:
+                new_uid = st.text_input("New Mobile ID")
+                new_uname = st.text_input("User Name")
+                if st.button("ADD NEW USER"):
+                    ADMIN_DB[new_uid] = new_uname
+                    save_json(USER_FILE, ADMIN_DB)
+                    st.success("Added!")
+
     m1, m2, m3, m4, m5, m6 = st.columns(6)
     m1.metric("🎯 STRIKE", current_idx_data["signal"]["Strike"])
     m2.metric("💰 ENTRY", current_idx_data["signal"]["Entry"])
     m3.metric("📈 TARGET", current_idx_data["signal"]["Target"])
     m4.metric("📉 SL", current_idx_data["signal"]["SL"])
-    m5.metric("🟢 SUP", be_sup_strike)
-    m6.metric("🔴 RES", be_res_strike)
+    m5.metric("🟢 SUP", current_idx_data["sr"]["support"])
+    m6.metric("🔴 RES", current_idx_data["sr"]["resistance"])
 
-    # ================= 8. TABLE UI & ARROW LOGIC =================
+    # ================= 8. TABLE UI & FINAL COLOUR LOGIC =================
     def fmt_val(val, delta, m_val):
         pct = (val/m_val*100) if m_val > 0 else 0
         return f"{val:,.0f}\n({delta:+,})\n{pct:.1f}%"
@@ -137,11 +180,11 @@ if result and result.chain:
         pct = (delta/m_delta*100) if m_delta > 0 else 0
         return f"{delta:+,}\n{pct:.1f}%"
 
-    # Arrow logic with safety buffer
-    def get_indicator(row, side):
+    # SIGNAL LOGIC
+    def get_row_signal(row, side):
         stk = int(row["STRIKE"])
-        if side == "CE" and stk == be_res_strike and spot >= (stk - 5): return "⬆️ BUY CE"
-        if side == "PE" and stk == be_sup_strike and spot <= (stk + 5): return "⬇️ BUY PE"
+        if side == "CE" and stk == be_res_strike and spot >= be_res_strike: return "⬆️ BUY CE"
+        if side == "PE" and stk == be_sup_strike and spot <= be_sup_strike: return "⬆️ BUY PE"
         return ""
 
     atm_strike = df.loc[(df["STRIKE"] - spot).abs().idxmin(), "STRIKE"]
@@ -149,7 +192,7 @@ if result and result.chain:
     d_df = df.iloc[max(atm_idx-7,0): atm_idx+8].copy()
 
     ui = pd.DataFrame()
-    ui["CE SIGNAL"] = d_df.apply(lambda r: get_indicator(r, "CE"), axis=1)
+    ui["CE SIGNAL"] = d_df.apply(lambda r: get_row_signal(r, "CE"), axis=1) # NEW
     ui["CE OI\n(Δ/%)"] = d_df.apply(lambda r: fmt_val(r["open_interest_CE"], r["oi_chg_CE"], max_oi_ce), axis=1)
     ui["CE OI CHG"] = d_df.apply(lambda r: fmt_chg(r["oi_chg_CE"], max_chg_ce), axis=1)
     ui["CE VOL\n(%)"] = d_df.apply(lambda r: fmt_val(r["volume_CE"], 0, max_vol_ce), axis=1)
@@ -157,27 +200,50 @@ if result and result.chain:
     ui["PE VOL\n(%)"] = d_df.apply(lambda r: fmt_val(r["volume_PE"], 0, max_vol_pe), axis=1)
     ui["PE OI CHG"] = d_df.apply(lambda r: fmt_chg(r["oi_chg_PE"], max_chg_pe), axis=1)
     ui["PE OI\n(Δ/%)"] = d_df.apply(lambda r: fmt_val(r["open_interest_PE"], r["oi_chg_PE"], max_oi_pe), axis=1)
-    ui["PE SIGNAL"] = d_df.apply(lambda r: get_indicator(r, "PE"), axis=1)
+    ui["PE SIGNAL"] = d_df.apply(lambda r: get_row_signal(r, "PE"), axis=1) # NEW
 
     def style_table(row):
         s = [''] * len(row)
-        cur_strike = int(row["STRIKE"])
+        try: cur_strike = int(row.iloc[4]) # Strike index is now 4
+        except: cur_strike = row.iloc[4]
         
         s[4] = 'background-color:#f0f2f6;color:black;font-weight:bold' 
         
+        # --- Break Even & Big Move Rows ---
         if cur_strike == be_res_strike: 
-            s = ['border: 3px solid blue; font-weight: bold'] * len(row)
+            s = ['border-top: 3px solid blue; border-bottom: 3px solid blue; font-weight: bold'] * len(row)
             if spot >= be_res_strike: 
                 s = ['background-color: #008000; color: white; font-weight: bold'] * len(row)
-                s[0] = 'background-color: white; color: green; font-weight: 900'
+                s[0] = 'background-color:white; color:#008000; font-weight:900' # CE Arrow Highlight
         
         if cur_strike == be_sup_strike: 
-            s = ['border: 3px solid red; font-weight: bold'] * len(row)
+            s = ['border-top: 3px solid red; border-bottom: 3px solid red; font-weight: bold'] * len(row)
             if spot <= be_sup_strike: 
                 s = ['background-color: #FF0000; color: white; font-weight: bold'] * len(row)
-                s[8] = 'background-color: white; color: red; font-weight: 900'
+                s[8] = 'background-color:white; color:#FF0000; font-weight:900' # PE Arrow Highlight
 
-        if cur_strike == int(atm_strike): s[4] = 'background-color:yellow;color:black;font-weight:bold'
+        try:
+            # ORIGINAL COLOR LOGIC (Adjusted indices for Signal columns)
+            c_oi_p = float(row.iloc[1].split('\n')[-1].replace('%',''))
+            c_ch_p = float(row.iloc[2].split('\n')[-1].replace('%',''))
+            c_vo_p = float(row.iloc[3].split('\n')[-1].replace('%',''))
+            p_vo_p = float(row.iloc[5].split('\n')[-1].replace('%',''))
+            p_ch_p = float(row.iloc[6].split('\n')[-1].replace('%',''))
+            p_oi_p = float(row.iloc[7].split('\n')[-1].replace('%',''))
+
+            # CE Side Colors
+            if 'background-color' not in s[1] and c_oi_p >= 70: s[1] = 'background-color:#1976d2;color:white'
+            if 'background-color' not in s[2] and c_ch_p >= 70: s[2] = 'background-color:#4caf50;color:white'
+            if 'background-color' not in s[3] and c_vo_p >= 70: s[3] = 'background-color:#1b5e20;color:white'
+            # PE Side Colors
+            if 'background-color' not in s[5] and p_vo_p >= 70: s[5] = 'background-color:#b71c1c;color:white'
+            if 'background-color' not in s[6] and p_ch_p >= 70: s[6] = 'background-color:#f44336;color:white'
+            if 'background-color' not in s[7] and p_oi_p >= 70: s[7] = 'background-color:#fb8c00;color:white'
+            
+            # ATM highlight
+            if cur_strike == int(atm_strike):
+                s[4] = 'background-color:yellow;color:black;font-weight:bold'
+        except: pass
         return s
 
     st.subheader(f"📊 {index_choice} Option Chain")

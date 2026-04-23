@@ -3,7 +3,6 @@ from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 import streamlit as st
 import pandas as pd
 from streamlit_autorefresh import st_autorefresh
-import streamlit.components.v1 as components
 import json, os
 
 # ================= 1. CONFIG & AUTH STATE =================
@@ -71,18 +70,7 @@ if index_choice not in all_index_data:
 
 current_idx_data = all_index_data[index_choice]
 
-# ================= 5. SENSEX LIVE HEADER (TRADING VIEW) =================
-if index_choice == "SENSEX":
-    tv_html = """
-    <div class="tradingview-widget-container">
-      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-single-quote.js" async>
-      {"symbol": "BSE:SENSEX", "width": "100%", "colorTheme": "light", "isTransparent": false, "locale": "en"}
-      </script>
-    </div>
-    """
-    components.html(tv_html, height=130)
-
-# ================= 6. SDK & STABLE DATA FETCH =================
+# ================= 5. SDK & STABLE DATA FETCH =================
 if "nubra" not in st.session_state:
     st.session_state.nubra = InitNubraSdk(NubraEnv.UAT, env_creds=True)
 
@@ -98,6 +86,9 @@ if result and result.chain:
         spot = raw_spot / 100 if raw_spot > 100000 else raw_spot
     except: spot = 0
 
+    # --- AUTO SIGNAL LOGIC ---
+    be_res = df_max_ce = 0 # Placeholder for calc
+    
     st.title(f"🛡️ SMART WEALTH AI 5 | {index_choice}: {spot:,.2f}")
 
     df_ce = pd.DataFrame([vars(x) for x in chain.ce])
@@ -127,21 +118,22 @@ if result and result.chain:
     max_chg_ce = df["oi_chg_CE"].abs().max() if df["oi_chg_CE"].abs().max() > 0 else 1
     max_chg_pe = df["oi_chg_PE"].abs().max() if df["oi_chg_PE"].abs().max() > 0 else 1
 
-    # Break-Even Calculations (Fixed for Sensex)
-    be_res_strike = int(df.loc[df["open_interest_CE"].idxmax(), "STRIKE"])
-    be_sup_strike = int(df.loc[df["open_interest_PE"].idxmax(), "STRIKE"])
+    # Break-Even Calculation
+    be_res_strike = df.loc[df["open_interest_CE"].idxmax(), "STRIKE"]
+    be_sup_strike = df.loc[df["open_interest_PE"].idxmax(), "STRIKE"]
 
     # Auto Signal Alert
     if spot >= be_res_strike:
-        st.success(f"🚀 BIG MOVE: {index_choice} CALL BUYING ABOVE {be_res_strike}")
+        st.success(f"🚀 BIG MOVE: BUYING ABOVE {be_res_strike}")
     elif spot <= be_sup_strike:
-        st.error(f"🩸 BIG MOVE: {index_choice} PE BUYING BELOW {be_sup_strike}")
+        st.error(f"🩸 BIG MOVE: SELLING BELOW {be_sup_strike}")
 
-    # ================= 7. ADMIN PANEL & METRICS =================
+    # ================= 6. DYNAMIC ADMIN PANEL =================
     if st.session_state.is_super_admin:
         with st.expander(f"🛠️ ADMIN CONTROLS ({index_choice})"):
             t1, t2 = st.tabs(["Signal & Levels", "User Management"])
             with t1:
+                st.info(f"Yahan jo entry karoge wo sirf {index_choice} ke liye save hogi.")
                 c1, c2, c3, c4 = st.columns(4)
                 s_stk = c1.text_input("Strike", value=current_idx_data["signal"]["Strike"])
                 s_ent = c2.text_input("Entry Price", value=current_idx_data["signal"]["Entry"])
@@ -154,6 +146,7 @@ if result and result.chain:
                     all_index_data[index_choice]["signal"] = {"Strike": s_stk, "Entry": s_ent, "Target": s_tgt, "SL": s_sl}
                     all_index_data[index_choice]["sr"] = {"support": sup_in, "resistance": res_in}
                     save_json(DATA_FILE, all_index_data)
+                    st.success(f"{index_choice} updated!")
                     st.rerun()
             with t2:
                 new_uid = st.text_input("New Mobile ID")
@@ -161,8 +154,9 @@ if result and result.chain:
                 if st.button("ADD NEW USER"):
                     ADMIN_DB[new_uid] = new_uname
                     save_json(USER_FILE, ADMIN_DB)
-                    st.success("Added!")
+                    st.success(f"Added {new_uname}!")
 
+    # Top Metrics
     m1, m2, m3, m4, m5, m6 = st.columns(6)
     m1.metric("🎯 STRIKE", current_idx_data["signal"]["Strike"])
     m2.metric("💰 ENTRY", current_idx_data["signal"]["Entry"])
@@ -171,7 +165,7 @@ if result and result.chain:
     m5.metric("🟢 SUP", current_idx_data["sr"]["support"])
     m6.metric("🔴 RES", current_idx_data["sr"]["resistance"])
 
-    # ================= 8. TABLE UI & FINAL COLOUR LOGIC =================
+    # ================= 7. TABLE UI & STYLING =================
     def fmt_val(val, delta, m_val):
         pct = (val/m_val*100) if m_val > 0 else 0
         return f"{val:,.0f}\n({delta:+,})\n{pct:.1f}%"
@@ -195,22 +189,19 @@ if result and result.chain:
 
     def style_table(row):
         s = [''] * len(row)
-        try: cur_strike = int(row.iloc[3])
-        except: cur_strike = row.iloc[3]
-        
+        strike = row.iloc[3]
         s[3] = 'background-color:#f0f2f6;color:black;font-weight:bold' 
         
-        # --- Break Even & Big Move Rows ---
-        if cur_strike == be_res_strike: 
+        # --- NEW: BREAK EVEN & BIG MOVE LINES ---
+        if strike == be_res_strike: 
             s = ['border-top: 3px solid blue; border-bottom: 3px solid blue; font-weight: bold'] * len(row)
-            if spot >= be_res_strike: s = ['background-color: #008000; color: white; font-weight: bold'] * len(row)
+            if spot >= be_res_strike: s = ['background-color: #008000; color: white; font-weight: bold'] * len(row) # Pure Green Line
         
-        if cur_strike == be_sup_strike: 
+        if strike == be_sup_strike: 
             s = ['border-top: 3px solid red; border-bottom: 3px solid red; font-weight: bold'] * len(row)
-            if spot <= be_sup_strike: s = ['background-color: #FF0000; color: white; font-weight: bold'] * len(row)
+            if spot <= be_sup_strike: s = ['background-color: #FF0000; color: white; font-weight: bold'] * len(row) # Pure Red Line
 
         try:
-            # ORIGINAL COLOR LOGIC RESTORED
             c_oi_p = float(row.iloc[0].split('\n')[-1].replace('%',''))
             c_ch_p = float(row.iloc[1].split('\n')[-1].replace('%',''))
             c_vo_p = float(row.iloc[2].split('\n')[-1].replace('%',''))
@@ -218,17 +209,14 @@ if result and result.chain:
             p_ch_p = float(row.iloc[5].split('\n')[-1].replace('%',''))
             p_oi_p = float(row.iloc[6].split('\n')[-1].replace('%',''))
 
-            # CE Side Colors
             if c_oi_p >= 70: s[0] = 'background-color:#1976d2;color:white'
             if c_ch_p >= 70: s[1] = 'background-color:#4caf50;color:white'
             if c_vo_p >= 70: s[2] = 'background-color:#1b5e20;color:white'
-            # PE Side Colors
             if p_vo_p >= 70: s[4] = 'background-color:#b71c1c;color:white'
             if p_ch_p >= 70: s[5] = 'background-color:#f44336;color:white'
             if p_oi_p >= 70: s[6] = 'background-color:#fb8c00;color:white'
             
-            # ATM highlight
-            if cur_strike == int(atm_strike):
+            if strike == atm_strike:
                 s[3] = 'background-color:yellow;color:black;font-weight:bold'
         except: pass
         return s

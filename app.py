@@ -140,7 +140,9 @@ if result and result.chain:
         pct = (delta/m_delta*100) if m_delta > 0 else 0
         return f"{delta:+,}\n{pct:.1f}%"
 
-    atm_idx = df.index[(df["STRIKE"] - spot).abs().argsort()[:1]][0]
+    # Find the single EXACT ATM strike
+    atm_strike = df.loc[(df["STRIKE"] - spot).abs().idxmin(), "STRIKE"]
+    atm_idx = df.index[df["STRIKE"] == atm_strike][0]
     d_df = df.iloc[max(atm_idx-7,0): atm_idx+8].copy()
 
     ui = pd.DataFrame()
@@ -154,7 +156,7 @@ if result and result.chain:
 
     def style_table(row):
         s = [''] * len(row)
-        # Strike column background (Always Grey unless ATM)
+        # Strike column background Grey
         s[3] = 'background-color:#f0f2f6;color:black;font-weight:bold'
         try:
             c_oi_p = float(row.iloc[0].split('\n')[-1].replace('%',''))
@@ -176,8 +178,9 @@ if result and result.chain:
             if p_oi_p >= 100: s[6] = 'background-color:#e65100;color:white;font-weight:bold'
             elif p_oi_p >= 70: s[6] = 'background-color:#fb8c00;color:white'
             
-            # ATM highlight (Overrides Grey)
-            if (row.iloc[3] - spot)**2 <= 2500: s[3] = 'background-color:yellow;color:black;font-weight:bold'
+            # EXACT ATM highlight ONLY (Overrides Grey)
+            if row.iloc[3] == atm_strike:
+                s[3] = 'background-color:yellow;color:black;font-weight:bold'
         except: pass
         return s
 

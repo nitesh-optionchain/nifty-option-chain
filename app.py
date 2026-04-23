@@ -53,7 +53,6 @@ if not st.session_state.is_auth:
 st_autorefresh(interval=5000, key="refresh")
 st.sidebar.markdown(f"### 👤 User: **{st.session_state.admin_name}**")
 
-# SENSEX ADDED HERE
 index_choice = st.sidebar.selectbox("Select Index", ["NIFTY", "SENSEX"])
 target_exch = "NSE" if index_choice == "NIFTY" else "BSE"
 
@@ -71,7 +70,6 @@ if "nubra" not in st.session_state:
     st.session_state.nubra = InitNubraSdk(NubraEnv.UAT, env_creds=True)
 
 market_data = MarketData(st.session_state.nubra)
-# Dynamically fetch NIFTY or SENSEX
 result = market_data.option_chain(index_choice, exchange=target_exch)
 
 if result and result.chain:
@@ -80,7 +78,6 @@ if result and result.chain:
         raw_spot = getattr(chain.ce[0], 'underlying_price', 
                    getattr(chain, 'underlying_price', 
                    getattr(chain, 'at_the_money_strike', 0)))
-        # Spot adjustment for Sensex/Nifty
         spot = raw_spot / 100 if raw_spot > 100000 else raw_spot
     except: spot = 0
 
@@ -91,41 +88,44 @@ if result and result.chain:
     df = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE","_PE")).fillna(0)
     df["STRIKE"] = (df["strike_price"]/100).astype(int)
 
-    # STABLE OI CHANGE LOGIC (Current - Initial per Index)
     state_key = f"initial_df_{index_choice}"
     if state_key not in st.session_state:
         st.session_state[state_key] = df.copy()
     
     init_df = st.session_state[state_key].set_index("STRIKE")
-    df_indexed = df.set_index("STRIKE")
-    
-    df["oi_chg_CE"] = df["STRIKE"].map(lambda x: df_indexed.loc[x, "open_interest_CE"] - init_df.loc[x, "open_interest_CE"] if x in init_df.index else 0)
-    df["oi_chg_PE"] = df["STRIKE"].map(lambda x: df_indexed.loc[x, "open_interest_PE"] - init_df.loc[x, "open_interest_PE"] if x in init_df.index else 0)
+    df_curr = df.set_index("STRIKE")
+    df["oi_chg_CE"] = df["STRIKE"].map(lambda x: df_curr.loc[x, "open_interest_CE"] - init_df.loc[x, "open_interest_CE"] if x in init_df.index else 0)
+    df["oi_chg_PE"] = df["STRIKE"].map(lambda x: df_curr.loc[x, "open_interest_PE"] - init_df.loc[x, "open_interest_PE"] if x in init_df.index else 0)
 
-    # Max Values
     max_oi_ce, max_oi_pe = df["open_interest_CE"].max(), df["open_interest_PE"].max()
     max_vol_ce, max_vol_pe = df["volume_CE"].max(), df["volume_PE"].max()
     max_chg_ce = df["oi_chg_CE"].abs().max() if df["oi_chg_CE"].abs().max() > 0 else 1
     max_chg_pe = df["oi_chg_PE"].abs().max() if df["oi_chg_PE"].abs().max() > 0 else 1
 
     # ================= 6. ADMIN PANEL =================
-    # Expanding to include manual strike/price entries if super admin
     if st.session_state.is_super_admin:
-        with st.expander("🛠️ ADMIN SETTINGS"):
-            c1, c2, c3, c4 = st.columns(4)
-            s_stk = c1.text_input("Strike", value=current_data["signal"]["Strike"])
-            s_ent = c2.text_input("Entry", value=current_data["signal"]["Entry"])
-            s_tgt = c3.text_input("Target", value=current_data["signal"]["Target"])
-            s_sl = c4.text_input("SL", value=current_data["signal"]["SL"])
-            
-            sup_in = st.text_input("Support", value=current_data["sr"]["support"])
-            res_in = st.text_input("Resistance", value=current_data["sr"]["resistance"])
-            
-            if st.button("UPDATE DASHBOARD"):
-                current_data["signal"] = {"Strike": s_stk, "Entry": s_ent, "Target": s_tgt, "SL": s_sl}
-                current_data["sr"] = {"support": sup_in, "resistance": res_in}
-                save_json(DATA_FILE, current_data)
-                st.rerun()
+        with st.expander("🛠️ ADMIN CONTROLS"):
+            t1, t2 = st.tabs(["Signal & Levels", "User Management"])
+            with t1:
+                c1, c2, c3, c4 = st.columns(4)
+                s_stk = c1.text_input("Strike", value=current_data["signal"]["Strike"])
+                s_ent = c2.text_input("Entry", value=current_data["signal"]["Entry"])
+                s_tgt = c3.text_input("Target", value=current_data["signal"]["Target"])
+                s_sl = c4.text_input("SL", value=current_data["signal"]["SL"])
+                sup_in = st.text_input("Support", value=current_data["sr"]["support"])
+                res_in = st.text_input("Resistance", value=current_data["sr"]["resistance"])
+                if st.button("UPDATE DASHBOARD"):
+                    current_data["signal"] = {"Strike": s_stk, "Entry": s_ent, "Target": s_tgt, "SL": s_sl}
+                    current_data["sr"] = {"support": sup_in, "resistance": res_in}
+                    save_json(DATA_FILE, current_data)
+                    st.rerun()
+            with t2:
+                new_uid = st.text_input("New Mobile ID")
+                new_uname = st.text_input("User Name")
+                if st.button("ADD NEW USER"):
+                    ADMIN_DB[new_uid] = new_uname
+                    save_json(USER_FILE, ADMIN_DB)
+                    st.success(f"Added {new_uname}!")
 
     ma, mb = st.columns(2)
     ma.metric("🟢 SUPPORT", current_data["sr"]["support"])
@@ -140,8 +140,6 @@ if result and result.chain:
         pct = (delta/m_delta*100) if m_delta > 0 else 0
         return f"{delta:+,}\n{pct:.1f}%"
 
-    atm = int(spot)
-    # Filter stable ATM index
     atm_idx = df.index[(df["STRIKE"] - spot).abs().argsort()[:1]][0]
     d_df = df.iloc[max(atm_idx-7,0): atm_idx+8].copy()
 
@@ -156,6 +154,8 @@ if result and result.chain:
 
     def style_table(row):
         s = [''] * len(row)
+        # Strike column background (Always Grey unless ATM)
+        s[3] = 'background-color:#f0f2f6;color:black;font-weight:bold'
         try:
             c_oi_p = float(row.iloc[0].split('\n')[-1].replace('%',''))
             c_ch_p = float(row.iloc[1].split('\n')[-1].replace('%',''))
@@ -176,10 +176,9 @@ if result and result.chain:
             if p_oi_p >= 100: s[6] = 'background-color:#e65100;color:white;font-weight:bold'
             elif p_oi_p >= 70: s[6] = 'background-color:#fb8c00;color:white'
             
-            # Strike ATM highlight
+            # ATM highlight (Overrides Grey)
             if (row.iloc[3] - spot)**2 <= 2500: s[3] = 'background-color:yellow;color:black;font-weight:bold'
         except: pass
         return s
 
-    st.subheader(f"📊 {index_choice} Option Chain (Stable Data)")
     st.table(ui.style.apply(style_table, axis=1))

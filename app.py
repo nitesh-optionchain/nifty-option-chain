@@ -117,13 +117,15 @@ if result and result.chain:
 
     ui = pd.DataFrame()
 
-    ui["CE OI"] = display_df.apply(lambda r: format_val(r["open_interest_CE"], r["oi_chg_CE"], max_oi_ce), axis=1)
-    ui["CE VOL"] = display_df.apply(lambda r: format_val(r["volume_CE"],0,max_vol_ce), axis=1)
+    ui["CE OI\n(Δ/%)"] = display_df.apply(lambda r: format_val(r["open_interest_CE"], r["oi_chg_CE"], max_oi_ce), axis=1)
+    ui["CE OI CHG"] = display_df.apply(lambda r: format_val(r["oi_chg_CE"],0,max_oi_ce), axis=1)
+    ui["CE VOL\n(%)"] = display_df.apply(lambda r: format_val(r["volume_CE"],0,max_vol_ce), axis=1)
     ui["STRIKE"] = display_df["STRIKE"]
-    ui["PE VOL"] = display_df.apply(lambda r: format_val(r["volume_PE"],0,max_vol_pe), axis=1)
-    ui["PE OI"] = display_df.apply(lambda r: format_val(r["open_interest_PE"], r["oi_chg_PE"], max_oi_pe), axis=1)
+    ui["PE VOL\n(%)"] = display_df.apply(lambda r: format_val(r["volume_PE"],0,max_vol_pe), axis=1)
+    ui["PE OI CHG"] = display_df.apply(lambda r: format_val(r["oi_chg_PE"],0,max_oi_pe), axis=1)
+    ui["PE OI\n(Δ/%)"] = display_df.apply(lambda r: format_val(r["open_interest_PE"], r["oi_chg_PE"], max_oi_pe), axis=1)
 
-    # ✅ SIGNAL COLUMN
+    # SIGNAL
     ui["SIGNAL"] = ""
 
     for i in range(len(ui)):
@@ -133,20 +135,22 @@ if result and result.chain:
             elif signal_type == "PUT":
                 ui.at[ui.index[i],"SIGNAL"] = "⬇️ PUT BUY"
 
-    # ================= STYLE =================
-    def style(row):
+    def style_table(row):
         s = ['']*len(row)
 
-        if row["STRIKE"] == be_strike:
-            if signal_type == "CALL":
-                s = ['background-color:#00e676;color:black']*len(row)
-            elif signal_type == "PUT":
-                s = ['background-color:#ff5252;color:white']*len(row)
+        try:
+            if row["STRIKE"] == be_strike:
+                if signal_type == "CALL":
+                    s = ['background-color:#00e676;color:black;font-weight:bold']*len(row)
+                elif signal_type == "PUT":
+                    s = ['background-color:#ff5252;color:white;font-weight:bold']*len(row)
+        except:
+            pass
 
         return s
 
     st.subheader("📊 OPTION CHAIN")
-    st.table(ui.style.apply(style, axis=1))
+    st.table(ui.style.apply(style_table, axis=1))
 
 else:
     st.info("Loading...")

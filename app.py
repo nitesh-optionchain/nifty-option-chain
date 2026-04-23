@@ -95,6 +95,21 @@ if result and result.chain:
     df = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE","_PE")).fillna(0)
     df["STRIKE"] = (df["strike_price"]/100).astype(int)
 
+    # ===== BREAK EVEN LOGIC =====
+    total_ce = df["open_interest_CE"].sum()
+    total_pe = df["open_interest_PE"].sum()
+
+    be_strike = int(df.loc[
+        (df["open_interest_CE"] + df["open_interest_PE"]).idxmax(),
+        "STRIKE"
+    ])
+
+    signal_type = None
+    if total_pe > total_ce:
+        signal_type = "CALL"
+    elif total_ce > total_pe:
+        signal_type = "PUT"   
+
     # --- OI CHANGE STABLE LOGIC ---
     state_key = f"initial_df_{index_choice}"
     if state_key not in st.session_state:
@@ -177,9 +192,21 @@ if result and result.chain:
     ui["PE OI CHG"] = d_df.apply(lambda r: fmt_chg(r["oi_chg_PE"], max_chg_pe), axis=1)
     ui["PE OI\n(Δ/%)"] = d_df.apply(lambda r: fmt_val(r["open_interest_PE"], r["oi_chg_PE"], max_oi_pe), axis=1)
 
+    # ===== SIGNAL COLUMN =====
+    ui["SIGNAL"] = ""
+
+    for i in range(len(ui)):
+        if ui.iloc[i]["STRIKE"] == be_strike:
+            if signal_type == "CALL":
+                ui.at[ui.index[i], "SIGNAL"] = "⬆️ CALL BUY"
+            elif signal_type == "PUT":
+                ui.at[ui.index[i], "SIGNAL"] = "⬇️ PUT BUY"
+
+    # ===== STYLE FUNCTION =====
     def style_table(row):
         s = [''] * len(row)
-        s[3] = 'background-color:#f0f2f6;color:black;font-weight:bold' 
+        s[3] = 'background-color:#f0f2f6;color:black;font-weight:bold'
+
         try:
             c_oi_p = float(row.iloc[0].split('\n')[-1].replace('%',''))
             c_ch_p = float(row.iloc[1].split('\n')[-1].replace('%',''))
@@ -194,13 +221,28 @@ if result and result.chain:
             if p_vo_p >= 70: s[4] = 'background-color:#b71c1c;color:white'
             if p_ch_p >= 70: s[5] = 'background-color:#f44336;color:white'
             if p_oi_p >= 70: s[6] = 'background-color:#fb8c00;color:white'
-            
+
+            # ===== BREAK EVEN LINE =====
+            if row.iloc[3] == be_strike:
+                if signal_type == "CALL":
+                    for i in range(len(s)):
+                        s[i] = 'background-color:#00e676;color:black;font-weight:bold'
+                elif signal_type == "PUT":
+                    for i in range(len(s)):
+                        s[i] = 'background-color:#ff5252;color:white;font-weight:bold'
+
+            # ===== ATM highlight =====
             if row.iloc[3] == atm_strike:
                 s[3] = 'background-color:yellow;color:black;font-weight:bold'
-        except: pass
+
+        except:
+            pass
+
         return s
 
+    # ===== FINAL TABLE RENDER =====
     st.subheader(f"📊 {index_choice} Option Chain")
     st.table(ui.style.apply(style_table, axis=1))
+
 else:
     st.info("Market data load ho raha hai...")

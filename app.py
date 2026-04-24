@@ -68,7 +68,7 @@ if not st.session_state.is_auth:
         u_id = st.text_input("Enter Mobile ID", type="password", help="Use your registered mobile number")
         
         if st.button("Unlock Dashboard", use_container_width=True):
-            allowed_ids = ["9304768496", "7982046438"]
+            allowed_ids = ["9304768496"]
             if u_id.strip() in allowed_ids:
                 st.session_state.is_auth = True
                 st.success("Access Granted!")

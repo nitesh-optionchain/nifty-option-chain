@@ -5,3 +5,5 @@ streamlit-autorefresh
 python-dotenv
 pydantic
 pytz
+aiohttp
+nubra-python-sdk

@@ -12,7 +12,7 @@ SIG_FILE = "admin_levels_v2.json"
 
 # --- BHAI YAHAN APNI KEYS DAALEIN (Quotes ke andar) ---
 API_KEY = "9304768496_aapki_key" 
-API_SECRET = "aapka_secret"
+API_SECRET = "3974"
 
 # ================= 2. DATA LOGIC (ASLI API) =================
 def get_market_data(index_name):

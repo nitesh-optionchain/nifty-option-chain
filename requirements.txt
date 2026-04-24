@@ -2,7 +2,7 @@ streamlit
 pandas
 plotly
 streamlit-autorefresh
+aiohttp
 python-dotenv
 pydantic
 pytz
-aiohttp

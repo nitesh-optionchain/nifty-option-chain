@@ -11,7 +11,7 @@ st_autorefresh(interval=3000, key="live_refresh")
 SIG_FILE = "admin_levels_v2.json"
 
 # --- BHAI YAHAN APNI KEYS DAALEIN (Quotes ke andar) ---
-API_KEY = "9304768496_aapki_key" 
+API_KEY = "9304768496" 
 API_SECRET = "3974"
 
 # ================= 2. DATA LOGIC (ASLI API) =================

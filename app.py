@@ -11,7 +11,6 @@ from streamlit_autorefresh import st_autorefresh
 # 1. PATH FIX
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-# Imports wrapped in try to prevent crash
 try:
     from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
     from nubra_python_sdk.ticker import websocketdata
@@ -22,7 +21,7 @@ except Exception as e:
 st.set_page_config(page_title="SMART WEALTH AI", layout="wide")
 st_autorefresh(interval=3000, key="global_refresh")
 IST = ZoneInfo("Asia/Kolkata")
-SIG_FILE = "admin_data_v19.json"
+SIG_FILE = "admin_data_v21.json"
 
 # ================= WEBSOCKET ENGINE =================
 class MarketEngine:
@@ -39,7 +38,7 @@ class MarketEngine:
                 client=self.client,
                 on_index_data=self._on_tick,
                 on_connect=lambda m: setattr(self, 'status', "LIVE ✅"),
-                on_error=lambda e: setattr(self, 'status', f"OFFLINE ❌")
+                on_error=lambda e: setattr(self, 'status', "OFFLINE ❌")
             )
             self.socket.connect()
             self.socket.subscribe(["NIFTY", "SENSEX"], data_type="index", exchange="NSE")
@@ -56,42 +55,35 @@ class MarketEngine:
     def get_live(self, idx):
         with self.lock: return self.live_data.get(idx, {"lp": 0.0, "chg": 0.0})
 
-# ================= 🔐 STABLE LOGIN LOGIC =================
+# ================= 🔐 LOGIN LOGIC =================
 if "is_auth" not in st.session_state:
     st.session_state.is_auth = False
-
-# Function to handle login
-def check_login():
-    typed_id = st.session_state.login_input.strip()
-    if typed_id in ["9304768496", "7982046438"]:
-        st.session_state.is_auth = True
-    else:
-        st.error("❌ Invalid Mobile ID")
 
 if not st.session_state.is_auth:
     col1, col2, col3 = st.columns([1,1.5,1])
     with col2:
         st.markdown("<br><br><h1 style='text-align:center;'>🔐 Login</h1>", unsafe_allow_html=True)
-        # Using on_change for better stability
-        st.text_input("Enter Mobile Number", type="password", key="login_input")
-        if st.button("Access Dashboard", use_container_width=True, on_click=check_login):
-            if st.session_state.is_auth:
+        u_id = st.text_input("Enter Mobile Number", type="password")
+        if st.button("Access Dashboard", use_container_width=True):
+            if u_id.strip() in ["9304768496", "7982046438"]:
+                st.session_state.is_auth = True
                 st.rerun()
+            else:
+                st.error("❌ Invalid Mobile ID")
     st.stop()
 
-# ================= API CONNECTION =================
+# ================= 🔑 API CONNECTION (DIRECT) =================
 if "engine" not in st.session_state:
     try:
-        # Check if secrets exist in Streamlit Cloud
-        if "API_KEY" not in st.secrets:
-            st.error("🛑 API_KEY missing in Streamlit Secrets!")
-            st.stop()
+        # ⚠️ BHAI YAHAN APNI KEYS DAALEIN (Quotes ke andar)
+        MY_KEY = "9304768496" 
+        MY_SECRET = "3974"
         
-        client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
+        client = InitNubraSdk(NubraEnv.PROD, api_key=MY_KEY, api_secret=MY_SECRET)
         st.session_state.engine = MarketEngine(client)
         st.session_state.api = client
     except Exception as e:
-        st.error(f"API Connection Failed: {e}")
+        st.error(f"API Login Failed: {e}")
         st.stop()
 
 # ================= DASHBOARD UI =================
@@ -113,7 +105,7 @@ sig = all_sigs[idx_choice]
 m_color = "#00FF00" if live['chg'] >= 0 else "#FF4B4B"
 st.markdown(f"""
     <div style="background-color:#1e1e1e; padding:20px; border-radius:15px; border-left:10px solid {m_color};">
-        <h1 style="margin:0; color:white;">{idx_choice}: {live['lp']:,}</h1>
+        <h1 style="margin:0; color:white; font-size:35px;">{idx_choice}: {live['lp']:,}</h1>
         <p style="margin:0; color:{m_color}; font-size:20px;">{live['chg']:+.2f}% | {engine.status}</p>
     </div>
 """, unsafe_allow_html=True)
@@ -169,7 +161,7 @@ try:
     idx_atm = ui_df.index[ui_df["STRIKE"] == atm][0]
     st.table(ui_df.iloc[max(idx_atm-10, 0): idx_atm+11].style.apply(style_chain, axis=1))
 except Exception as e:
-    st.info("🔄 Refreshing Data...")
+    st.info("🔄 Option Chain Fetching...")
 
 if st.sidebar.button("Logout"):
     st.session_state.clear()

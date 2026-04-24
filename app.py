@@ -27,8 +27,7 @@ def load_json(file_path, default_val):
 
 def save_json(file_path, data_to_save):
     try:
-        with open(file_path, "w") as f:
-            json.dump(data_to_save, f)
+        with open(file_path, "w") as f: json.dump(data_to_save, f)
     except: pass
 
 ADMIN_DB = load_json(USER_FILE, {"9304768496": "Admin Chief", "7982046438": "Admin x"})
@@ -65,24 +64,14 @@ all_index_data = load_json(DATA_FILE, {
     "NIFTY": {"signal": {"Strike": "-", "Entry": "-", "Target": "-", "SL": "-"}, "sr": {"support": "-", "resistance": "-"}},
     "SENSEX": {"signal": {"Strike": "-", "Entry": "-", "Target": "-", "SL": "-"}, "sr": {"support": "-", "resistance": "-"}}
 })
+current_idx_data = all_index_data.get(index_choice, all_index_data["NIFTY"])
 
-if index_choice not in all_index_data:
-    all_index_data[index_choice] = {"signal": {"Strike": "-", "Entry": "-", "Target": "-", "SL": "-"}, "sr": {"support": "-", "resistance": "-"}}
-
-current_idx_data = all_index_data[index_choice]
-
-# ================= 5. SENSEX LIVE HEADER (TRADING VIEW) =================
+# ================= 5. LIVE HEADER =================
 if index_choice == "SENSEX":
-    tv_html = """
-    <div class="tradingview-widget-container">
-      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-single-quote.js" async>
-      {"symbol": "BSE:SENSEX", "width": "100%", "colorTheme": "light", "isTransparent": false, "locale": "en"}
-      </script>
-    </div>
-    """
+    tv_html = """<div class="tradingview-widget-container"><script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-single-quote.js" async>{"symbol": "BSE:SENSEX", "width": "100%", "colorTheme": "light", "isTransparent": false, "locale": "en"}</script></div>"""
     components.html(tv_html, height=130)
 
-# ================= 6. SDK & STABLE DATA FETCH =================
+# ================= 6. SDK & DATA FETCH =================
 if "nubra" not in st.session_state:
     st.session_state.nubra = InitNubraSdk(NubraEnv.PROD, env_creds=True)
 
@@ -92,10 +81,8 @@ result = market_data.option_chain(index_choice, exchange=target_exch)
 if result and result.chain:
     chain = result.chain
     try:
-        raw_spot = getattr(chain.ce[0], 'underlying_price', 
-                   getattr(chain, 'underlying_price', 
-                   getattr(chain, 'at_the_money_strike', 0)))
-        spot = raw_spot / 100 if raw_spot > 100000 else raw_spot
+        raw_spot = getattr(chain.ce[0], 'underlying_price', getattr(chain, 'underlying_price', 0))
+        spot = float(raw_spot) / 100 if raw_spot > 100000 else float(raw_spot)
     except: spot = 0
 
     st.title(f"🛡️ SMART WEALTH AI 5 | {index_choice}: {spot:,.2f}")
@@ -104,37 +91,41 @@ if result and result.chain:
     df_pe = pd.DataFrame([vars(x) for x in chain.pe])
     df = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE","_PE")).fillna(0)
     
-    # --- STRIKE NORMALIZATION FIX FOR SENSEX ---
+    # Strike Normalization for both Nifty and Sensex
     df["STRIKE"] = df["strike_price"].apply(lambda x: int(round(float(x)/100)) if x > 100000 else int(round(float(x))))
 
+    # OI Change Logic
     state_key = f"initial_df_{index_choice}"
     if state_key not in st.session_state:
         st.session_state[state_key] = df.copy()
 
     def calc_stable_oi(row, side):
-        curr_oi = row[f"open_interest_{side}"]
+        curr_oi = float(row[f"open_interest_{side}"])
         init_df = st.session_state[state_key].set_index("STRIKE")
         strike = row["STRIKE"]
-        prev_oi = init_df.loc[strike, f"open_interest_{side}"] if strike in init_df.index else curr_oi
+        prev_oi = float(init_df.loc[strike, f"open_interest_{side}"]) if strike in init_df.index else curr_oi
         return curr_oi - prev_oi
 
     df["oi_chg_CE"] = df.apply(lambda r: calc_stable_oi(r, "CE"), axis=1)
     df["oi_chg_PE"] = df.apply(lambda r: calc_stable_oi(r, "PE"), axis=1)
 
-    max_oi_ce, max_oi_pe = df["open_interest_CE"].max() or 1, df["open_interest_PE"].max() or 1
-    max_vol_ce, max_vol_pe = df["volume_CE"].max() or 1, df["volume_PE"].max() or 1
+    # Calculation for Scaling and Lines
+    max_oi_ce = df["open_interest_CE"].max() or 1
+    max_oi_pe = df["open_interest_PE"].max() or 1
+    max_vol_ce = df["volume_CE"].max() or 1
+    max_vol_pe = df["volume_PE"].max() or 1
     max_chg_ce = df["oi_chg_CE"].abs().max() or 1
     max_chg_pe = df["oi_chg_PE"].abs().max() or 1
 
-    # Break-Even Calculations
+    # RESISTANCE & SUPPORT STRIKES
     be_res_strike = int(df.loc[df["open_interest_CE"].idxmax(), "STRIKE"])
     be_sup_strike = int(df.loc[df["open_interest_PE"].idxmax(), "STRIKE"])
 
-    # Auto Signal Alert
+    # Auto Signal
     if spot >= be_res_strike:
-        st.success(f"🚀 BIG MOVE: {index_choice} CALL BUYING ABOVE {be_res_strike}")
+        st.success(f"🚀 BREAKOUT: {index_choice} ABOVE {be_res_strike}")
     elif spot <= be_sup_strike:
-        st.error(f"🩸 BIG MOVE: {index_choice} PE BUYING BELOW {be_sup_strike}")
+        st.error(f"🩸 BREAKDOWN: {index_choice} BELOW {be_sup_strike}")
 
     # ================= 7. METRICS =================
     m1, m2, m3, m4, m5, m6 = st.columns(6)
@@ -145,14 +136,9 @@ if result and result.chain:
     m5.metric("🟢 SUP", current_idx_data["sr"]["support"])
     m6.metric("🔴 RES", current_idx_data["sr"]["resistance"])
 
-    # ================= 8. TABLE UI & STYLING =================
-    def fmt_val(val, delta, m_val):
-        pct = (val/m_val*100) if m_val > 0 else 0
-        return f"{val:,.0f}\n({delta:+,})\n{pct:.1f}%"
-
-    def fmt_chg(delta, m_delta):
-        pct = (delta/m_delta*100) if m_delta > 0 else 0
-        return f"{delta:+,}\n{pct:.1f}%"
+    # ================= 8. TABLE UI =================
+    def fmt_val(v, d, m): return f"{v:,.0f}\n({d:+,})\n{(v/m*100):.1f}%"
+    def fmt_chg(d, m): return f"{d:+,}\n{(d/m*100):.1f}%"
 
     atm_strike = df.loc[(df["STRIKE"] - spot).abs().idxmin(), "STRIKE"]
     atm_idx = df.index[df["STRIKE"] == atm_strike][0]
@@ -169,22 +155,23 @@ if result and result.chain:
 
     def style_table(row):
         s = [''] * len(row)
-        try: cur_strike = int(row.iloc[3])
-        except: cur_strike = row.iloc[3]
+        try: cur_stk = int(row.iloc[3])
+        except: cur_stk = row.iloc[3]
         
         s[3] = 'background-color:#f0f2f6;color:black;font-weight:bold' 
         
-        # --- RESISTANCE FIX ---
-        if cur_strike == int(be_res_strike): 
-            s = ['border-top: 3px solid blue; border-bottom: 3px solid blue; font-weight: bold'] * len(row)
+        # --- RESISTANCE LINE (BLUE) ---
+        if cur_stk == be_res_strike:
+            s = ['border-top: 4px solid blue; border-bottom: 4px solid blue; font-weight:bold'] * len(row)
             if spot >= be_res_strike: s = ['background-color: #008000; color: white; font-weight: bold'] * len(row)
         
-        # --- SUPPORT FIX ---
-        if cur_strike == int(be_sup_strike): 
-            s = ['border-top: 3px solid red; border-bottom: 3px solid red; font-weight: bold'] * len(row)
-            if spot <= be_sup_strike: s = ['background-color: #FF0000; color: white; font-weight: bold'] * len(row)
+        # --- SUPPORT LINE (RED) ---
+        if cur_stk == be_sup_strike:
+            s = ['border-top: 4px solid red; border-bottom: 4px solid red; font-weight:bold'] * len(row)
+            if spot <= be_sup_strike: s = ['background-color: #B22222; color: white; font-weight: bold'] * len(row)
 
         try:
+            # Bakki Colors
             c_oi_p = float(row.iloc[0].split('\n')[-1].replace('%',''))
             c_ch_p = float(row.iloc[1].split('\n')[-1].replace('%',''))
             c_vo_p = float(row.iloc[2].split('\n')[-1].replace('%',''))
@@ -192,7 +179,7 @@ if result and result.chain:
             p_ch_p = float(row.iloc[5].split('\n')[-1].replace('%',''))
             p_oi_p = float(row.iloc[6].split('\n')[-1].replace('%',''))
 
-            if 'background-color' not in s[0]: # Highlight row check
+            if 'background-color' not in s[0]:
                 if c_oi_p >= 70: s[0] = 'background-color:#1976d2;color:white'
                 if c_ch_p >= 70: s[1] = 'background-color:#4caf50;color:white'
                 if c_vo_p >= 70: s[2] = 'background-color:#1b5e20;color:white'
@@ -200,8 +187,7 @@ if result and result.chain:
                 if p_ch_p >= 70: s[5] = 'background-color:#f44336;color:white'
                 if p_oi_p >= 70: s[6] = 'background-color:#fb8c00;color:white'
             
-            if cur_strike == int(atm_strike):
-                s[3] = 'background-color:yellow;color:black;font-weight:bold'
+            if cur_stk == int(atm_strike): s[3] = 'background-color:yellow;color:black;font-weight:bold'
         except: pass
         return s
 

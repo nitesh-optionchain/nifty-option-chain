@@ -1,239 +1,135 @@
-from nubra_python_sdk.marketdata.market_data import MarketData
-from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 import streamlit as st
 import pandas as pd
-from streamlit_autorefresh import st_autorefresh
-import streamlit.components.v1 as components
+import threading
 import json, os
+from datetime import datetime
+from zoneinfo import ZoneInfo
+from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
+from nubra_python_sdk.ticker import websocketdata
+from streamlit_autorefresh import st_autorefresh
 
-# ================= 1. CONFIG & AUTH STATE =================
-st.set_page_config(page_title="SMART WEALTH AI 5", layout="wide")
+# ================= 1. SETUP =================
+st.set_page_config(page_title="SMART WEALTH AI - LIVE", layout="wide")
+st_autorefresh(interval=2000, key="ui_refresh")
+IST = ZoneInfo("Asia/Kolkata")
+SIG_FILE = "admin_v16_data.json"
 
-if "is_auth" not in st.session_state:
-    st.session_state.is_auth = False
-    st.session_state.admin_name = "Guest"
-    st.session_state.is_super_admin = False
+# ================= 2. WEBSOCKET ENGINE =================
+class MarketEngine:
+    def __init__(self, client):
+        self.client = client
+        self.lock = threading.RLock()
+        self.live_data = {"NIFTY": {"lp": 0.0, "chg": 0.0}, "SENSEX": {"lp": 0.0, "chg": 0.0}}
+        self.status = "Connecting..."
+        self._start_socket()
 
-# ================= 2. FILE STORAGE =================
-DATA_FILE = "admin_data_v2.json" 
-USER_FILE = "authorized_users.json"
-
-def load_json(file_path, default_val):
-    if os.path.exists(file_path):
+    def _start_socket(self):
         try:
-            with open(file_path, "r") as f: return json.load(f)
-        except: pass
-    return default_val
+            self.socket = websocketdata.NubraDataSocket(
+                client=self.client,
+                on_index_data=self._on_tick,
+                on_connect=lambda m: setattr(self, 'status', "LIVE ✅"),
+                on_error=lambda e: setattr(self, 'status', "OFFLINE ❌")
+            )
+            self.socket.connect()
+            self.socket.subscribe(["NIFTY", "SENSEX"], data_type="index", exchange="NSE")
+        except: self.status = "Error"
 
-def save_json(file_path, data_to_save):
-    try:
-        with open(file_path, "w") as f:
-            json.dump(data_to_save, f)
-    except: pass
+    def _on_tick(self, msg):
+        with self.lock:
+            sym = getattr(msg, "indexname", "")
+            raw = getattr(msg, "index_value", 0)
+            price = round(raw / 100 if raw > 100000 else raw, 2)
+            if sym in self.live_data:
+                self.live_data[sym] = {"lp": price, "chg": getattr(msg, "changepercent", 0.0)}
 
-ADMIN_DB = load_json(USER_FILE, {"9304768496": "Admin Chief", "7982046438": "Admin x"})
-SUPER_ADMIN_IDS = ["9304768496", "7982046438"]
+    def get_price(self, idx):
+        with self.lock: return self.live_data.get(idx, {"lp":0.0, "chg":0.0})
 
-# ================= 3. LOGIN FIREWALL =================
+# ================= 3. MANUAL DATA STORAGE =================
+def load_manual_data():
+    if os.path.exists(SIG_FILE):
+        with open(SIG_FILE, "r") as f: return json.load(f)
+    return {"NIFTY": {"stk":"-","buy":"-","tgt":"-","sl":"-","sup":"-","res":"-"}, 
+            "SENSEX": {"stk":"-","buy":"-","tgt":"-","sl":"-","sup":"-","res":"-"}}
+
+if "is_auth" not in st.session_state: st.session_state.is_auth = False
 if not st.session_state.is_auth:
-    st.markdown("<h1 style='text-align: center;'>🛡️ SMART WEALTH AI 5</h1>", unsafe_allow_html=True)
-    _, col2, _ = st.columns([1, 1, 1])
-    with col2:
-        with st.form("Login"):
-            user_key = st.text_input("Enter Mobile ID:", type="password")
-            if st.form_submit_button("LOGIN"):
-                if user_key in ADMIN_DB:
-                    st.session_state.is_auth = True
-                    st.session_state.admin_name = ADMIN_DB[user_key]
-                    st.session_state.is_super_admin = True if user_key in SUPER_ADMIN_IDS else False
-                    st.rerun()
-                else: st.error("❌ Invalid Access ID")
+    u_id = st.text_input("Mobile ID", type="password")
+    if st.button("Login"):
+        if u_id in ["9304768496", "7982046438"]:
+            st.session_state.is_auth = True
+            st.rerun()
     st.stop()
 
-# ================= 4. SIDEBAR & REFRESH =================
-st_autorefresh(interval=5000, key="refresh")
-st.sidebar.markdown(f"### 👤 User: **{st.session_state.admin_name}**")
+# Persistent Client
+if "engine" not in st.session_state:
+    client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
+    st.session_state.engine = MarketEngine(client)
+    st.session_state.api = client
 
-index_choice = st.sidebar.selectbox("Select Index", ["NIFTY", "SENSEX"])
-target_exch = "NSE" if index_choice == "NIFTY" else "BSE"
+# ================= 4. UI & ADMIN PANEL =================
+idx_choice = st.sidebar.selectbox("Market", ["NIFTY", "SENSEX"])
+live = st.session_state.engine.get_price(idx_choice)
+all_sigs = load_manual_data()
+sig = all_sigs[idx_choice]
 
-if st.sidebar.button("🔒 LOGOUT"):
-    st.session_state.is_auth = False
-    st.rerun()
+# Header
+color = "#00FF00" if live['chg'] >= 0 else "#FF4B4B"
+st.markdown(f"<div style='background-color:#1e1e1e; padding:15px; border-radius:10px; border-left:8px solid {color};'><h2>{idx_choice}: {live['lp']:,} <span style='font-size:18px;'>({live['chg']:+.2f}%)</span></h2></div>", unsafe_allow_html=True)
 
-all_index_data = load_json(DATA_FILE, {
-    "NIFTY": {"signal": {"Strike": "-", "Entry": "-", "Target": "-", "SL": "-"}, "sr": {"support": "-", "resistance": "-"}},
-    "SENSEX": {"signal": {"Strike": "-", "Entry": "-", "Target": "-", "SL": "-"}, "sr": {"support": "-", "resistance": "-"}}
-})
+# --- MANUAL ENTRY SECTION ---
+with st.expander("🛠️ ADMIN PANEL (MANUAL ENTRY)"):
+    c = st.columns(4)
+    v_stk = c[0].text_input("Signal Strike", sig['stk'])
+    v_buy = c[1].text_input("Entry Price", sig['buy'])
+    v_tgt = c[2].text_input("Target", sig['tgt'])
+    v_sl = c[3].text_input("Stoploss", sig['sl'])
+    v_sup = st.text_input("Support Strike (For Table)", sig['sup'])
+    v_res = st.text_input("Resistance Strike (For Table)", sig['res'])
+    if st.button("SAVE LEVELS"):
+        all_sigs[idx_choice] = {"stk":v_stk,"buy":v_buy,"tgt":v_tgt,"sl":v_sl,"sup":v_sup,"res":v_res}
+        with open(SIG_FILE, "w") as f: json.dump(all_sigs, f)
+        st.success("Data Updated!")
+        st.rerun()
 
-if index_choice not in all_index_data:
-    all_index_data[index_choice] = {"signal": {"Strike": "-", "Entry": "-", "Target": "-", "SL": "-"}, "sr": {"support": "-", "resistance": "-"}}
+# Display Metrics
+m = st.columns(4)
+m[0].metric("🎯 SIGNAL", sig['stk']); m[1].metric("💰 BUY", sig['buy'])
+m[2].metric("📈 TGT", sig['tgt']); m[3].metric("📉 SL", sig['sl'])
 
-current_idx_data = all_index_data[index_choice]
-
-# ================= 5. SENSEX LIVE HEADER (TRADING VIEW) =================
-if index_choice == "SENSEX":
-    tv_html = """
-    <div class="tradingview-widget-container">
-      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-single-quote.js" async>
-      {"symbol": "BSE:SENSEX", "width": "100%", "colorTheme": "light", "isTransparent": false, "locale": "en"}
-      </script>
-    </div>
-    """
-    components.html(tv_html, height=130)
-
-# ================= 6. SDK & STABLE DATA FETCH =================
-if "nubra" not in st.session_state:
-    st.session_state.nubra = InitNubraSdk(NubraEnv.PROD, env_creds=True)
-
-market_data = MarketData(st.session_state.nubra)
-result = market_data.option_chain(index_choice, exchange=target_exch)
-
-if result and result.chain:
-    chain = result.chain
-    try:
-        raw_spot = getattr(chain.ce[0], 'underlying_price', 
-                   getattr(chain, 'underlying_price', 
-                   getattr(chain, 'at_the_money_strike', 0)))
-        spot = raw_spot / 100 if raw_spot > 100000 else raw_spot
-    except: spot = 0
-
-    st.title(f"🛡️ SMART WEALTH AI 5 | {index_choice}: {spot:,.2f}")
-
-    df_ce = pd.DataFrame([vars(x) for x in chain.ce])
-    df_pe = pd.DataFrame([vars(x) for x in chain.pe])
-    df = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE","_PE")).fillna(0)
-    df["STRIKE"] = (df["strike_price"]/100).astype(int)
-
-    state_key = f"initial_df_{index_choice}"
-    if state_key not in st.session_state:
-        st.session_state[state_key] = df.copy()
-
-    def calc_stable_oi(row, side):
-        curr_oi = row[f"open_interest_{side}"]
-        prev_oi = row.get(f"previous_close_oi_{side}", 0)
-        if prev_oi == 0:
-            init_df = st.session_state[state_key].set_index("STRIKE")
-            strike = row["STRIKE"]
-            if strike in init_df.index:
-                prev_oi = init_df.loc[strike, f"open_interest_{side}"]
-        return curr_oi - prev_oi
-
-    df["oi_chg_CE"] = df.apply(lambda r: calc_stable_oi(r, "CE"), axis=1)
-    df["oi_chg_PE"] = df.apply(lambda r: calc_stable_oi(r, "PE"), axis=1)
-
-    max_oi_ce, max_oi_pe = df["open_interest_CE"].max(), df["open_interest_PE"].max()
-    max_vol_ce, max_vol_pe = df["volume_CE"].max(), df["volume_PE"].max()
-    max_chg_ce = df["oi_chg_CE"].abs().max() if df["oi_chg_CE"].abs().max() > 0 else 1
-    max_chg_pe = df["oi_chg_PE"].abs().max() if df["oi_chg_PE"].abs().max() > 0 else 1
-
-    # Break-Even Calculations (Fixed for Sensex)
-    be_res_strike = int(df.loc[df["open_interest_CE"].idxmax(), "STRIKE"])
-    be_sup_strike = int(df.loc[df["open_interest_PE"].idxmax(), "STRIKE"])
-
-    # Auto Signal Alert
-    if spot >= be_res_strike:
-        st.success(f"🚀 BIG MOVE: {index_choice} CALL BUYING ABOVE {be_res_strike}")
-    elif spot <= be_sup_strike:
-        st.error(f"🩸 BIG MOVE: {index_choice} PE BUYING BELOW {be_sup_strike}")
-
-    # ================= 7. ADMIN PANEL & METRICS =================
-    if st.session_state.is_super_admin:
-        with st.expander(f"🛠️ ADMIN CONTROLS ({index_choice})"):
-            t1, t2 = st.tabs(["Signal & Levels", "User Management"])
-            with t1:
-                c1, c2, c3, c4 = st.columns(4)
-                s_stk = c1.text_input("Strike", value=current_idx_data["signal"]["Strike"])
-                s_ent = c2.text_input("Entry Price", value=current_idx_data["signal"]["Entry"])
-                s_tgt = c3.text_input("Target", value=current_idx_data["signal"]["Target"])
-                s_sl = c4.text_input("SL", value=current_idx_data["signal"]["SL"])
-                sup_in = st.text_input("Support", value=current_idx_data["sr"]["support"])
-                res_in = st.text_input("Resistance", value=current_idx_data["sr"]["resistance"])
-                
-                if st.button(f"UPDATE {index_choice} DATA"):
-                    all_index_data[index_choice]["signal"] = {"Strike": s_stk, "Entry": s_ent, "Target": s_tgt, "SL": s_sl}
-                    all_index_data[index_choice]["sr"] = {"support": sup_in, "resistance": res_in}
-                    save_json(DATA_FILE, all_index_data)
-                    st.rerun()
-            with t2:
-                new_uid = st.text_input("New Mobile ID")
-                new_uname = st.text_input("User Name")
-                if st.button("ADD NEW USER"):
-                    ADMIN_DB[new_uid] = new_uname
-                    save_json(USER_FILE, ADMIN_DB)
-                    st.success("Added!")
-
-    m1, m2, m3, m4, m5, m6 = st.columns(6)
-    m1.metric("🎯 STRIKE", current_idx_data["signal"]["Strike"])
-    m2.metric("💰 ENTRY", current_idx_data["signal"]["Entry"])
-    m3.metric("📈 TARGET", current_idx_data["signal"]["Target"])
-    m4.metric("📉 SL", current_idx_data["signal"]["SL"])
-    m5.metric("🟢 SUP", current_idx_data["sr"]["support"])
-    m6.metric("🔴 RES", current_idx_data["sr"]["resistance"])
-
-    # ================= 8. TABLE UI & FINAL COLOUR LOGIC =================
-    def fmt_val(val, delta, m_val):
-        pct = (val/m_val*100) if m_val > 0 else 0
-        return f"{val:,.0f}\n({delta:+,})\n{pct:.1f}%"
-
-    def fmt_chg(delta, m_delta):
-        pct = (delta/m_delta*100) if m_delta > 0 else 0
-        return f"{delta:+,}\n{pct:.1f}%"
-
-    atm_strike = df.loc[(df["STRIKE"] - spot).abs().idxmin(), "STRIKE"]
-    atm_idx = df.index[df["STRIKE"] == atm_strike][0]
-    d_df = df.iloc[max(atm_idx-7,0): atm_idx+8].copy()
-
-    ui = pd.DataFrame()
-    ui["CE OI\n(Δ/%)"] = d_df.apply(lambda r: fmt_val(r["open_interest_CE"], r["oi_chg_CE"], max_oi_ce), axis=1)
-    ui["CE OI CHG"] = d_df.apply(lambda r: fmt_chg(r["oi_chg_CE"], max_chg_ce), axis=1)
-    ui["CE VOL\n(%)"] = d_df.apply(lambda r: fmt_val(r["volume_CE"], 0, max_vol_ce), axis=1)
-    ui["STRIKE"] = d_df["STRIKE"]
-    ui["PE VOL\n(%)"] = d_df.apply(lambda r: fmt_val(r["volume_PE"], 0, max_vol_pe), axis=1)
-    ui["PE OI CHG"] = d_df.apply(lambda r: fmt_chg(r["oi_chg_PE"], max_chg_pe), axis=1)
-    ui["PE OI\n(Δ/%)"] = d_df.apply(lambda r: fmt_val(r["open_interest_PE"], r["oi_chg_PE"], max_oi_pe), axis=1)
+# ================= 5. OPTION CHAIN & COLOUR CODE =================
+try:
+    res = st.session_state.api.marketdata.option_chain(idx_choice, exchange="NSE" if idx_choice=="NIFTY" else "BSE")
+    def parse(d): return pd.DataFrame([{"strike": x.strike_price, "oi": getattr(x, 'open_interest', 0), "vol": getattr(x, 'volume', 0)} for x in d])
+    df = pd.merge(parse(res.chain.ce), parse(res.chain.pe), on="strike", suffixes=("_CE","_PE")).fillna(0)
+    df["STRIKE"] = df["strike"].apply(lambda x: int(x/100) if x > 100000 else int(x))
+    
+    mx_oi_ce, mx_vol_ce = df["oi_CE"].max() or 1, df["vol_CE"].max() or 1
+    mx_oi_pe, mx_vol_pe = df["oi_PE"].max() or 1, df["vol_PE"].max() or 1
+    atm = df.loc[(df["STRIKE"] - live['lp']).abs().idxmin(), "STRIKE"]
 
     def style_table(row):
         s = [''] * len(row)
-        try: cur_strike = int(row.iloc[3])
-        except: cur_strike = row.iloc[3]
-        
-        s[3] = 'background-color:#f0f2f6;color:black;font-weight:bold' 
-        
-        # --- Break Even & Big Move Rows ---
-        if cur_strike == be_res_strike: 
-            s = ['border-top: 3px solid blue; border-bottom: 3px solid blue; font-weight: bold'] * len(row)
-            if spot >= be_res_strike: s = ['background-color: #008000; color: white; font-weight: bold'] * len(row)
-        
-        if cur_strike == be_sup_strike: 
-            s = ['border-top: 3px solid red; border-bottom: 3px solid red; font-weight: bold'] * len(row)
-            if spot <= be_sup_strike: s = ['background-color: #FF0000; color: white; font-weight: bold'] * len(row)
-
-        try:
-            # ORIGINAL COLOR LOGIC RESTORED
-            c_oi_p = float(row.iloc[0].split('\n')[-1].replace('%',''))
-            c_ch_p = float(row.iloc[1].split('\n')[-1].replace('%',''))
-            c_vo_p = float(row.iloc[2].split('\n')[-1].replace('%',''))
-            p_vo_p = float(row.iloc[4].split('\n')[-1].replace('%',''))
-            p_ch_p = float(row.iloc[5].split('\n')[-1].replace('%',''))
-            p_oi_p = float(row.iloc[6].split('\n')[-1].replace('%',''))
-
-            # CE Side Colors
-            if c_oi_p >= 70: s[0] = 'background-color:#1976d2;color:white'
-            if c_ch_p >= 70: s[1] = 'background-color:#4caf50;color:white'
-            if c_vo_p >= 70: s[2] = 'background-color:#1b5e20;color:white'
-            # PE Side Colors
-            if p_vo_p >= 70: s[4] = 'background-color:#b71c1c;color:white'
-            if p_ch_p >= 70: s[5] = 'background-color:#f44336;color:white'
-            if p_oi_p >= 70: s[6] = 'background-color:#fb8c00;color:white'
-            
-            # ATM highlight
-            if cur_strike == int(atm_strike):
-                s[3] = 'background-color:yellow;color:black;font-weight:bold'
-        except: pass
+        stk = int(row["STRIKE"])
+        # 70% Colour Logic
+        if (row["oi_CE"] / mx_oi_ce) >= 0.7: s[0] = 'background-color: #E65100; color: white;' # Orange
+        if (row["vol_CE"] / mx_vol_ce) >= 0.7: s[1] = 'background-color: #4A148C; color: white;' # Purple
+        if (row["oi_PE"] / mx_oi_pe) >= 0.7: s[4] = 'background-color: #E65100; color: white;'
+        if (row["vol_PE"] / mx_vol_pe) >= 0.7: s[3] = 'background-color: #4A148C; color: white;'
+        # ATM & Manual Levels Highlight
+        if stk == atm: s[2] = 'background-color: #FFD600; color: black; font-weight: bold;'
+        if str(stk) == sig['sup']: s[2] = 'background-color: #d32f2f; color: white;'
+        if str(stk) == sig['res']: s[2] = 'background-color: #388e3c; color: white;'
         return s
 
-    st.subheader(f"📊 {index_choice} Option Chain")
-    st.table(ui.style.apply(style_table, axis=1))
-else:
-    st.info("Market data load ho raha hai...")
+    st.subheader("Live Option Chain")
+    ui = df[["oi_CE", "vol_CE", "STRIKE", "vol_PE", "oi_PE"]]
+    idx_atm = ui.index[ui["STRIKE"] == atm][0]
+    st.table(ui.iloc[max(idx_atm-10, 0): idx_atm+11].style.apply(style_table, axis=1))
+
+except: st.info("Loading Option Chain...")
+
+if st.sidebar.button("Logout"):
+    st.session_state.clear()
+    st.rerun()

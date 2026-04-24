@@ -1,9 +1,4 @@
 streamlit
 pandas
-plotly
+request
 streamlit-autorefresh
-aiohttp
-msgspec
-pydantic
-python-dotenv
-pytz

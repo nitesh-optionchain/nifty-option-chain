@@ -3,6 +3,7 @@ from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 import streamlit as st
 import pandas as pd
 from streamlit_autorefresh import st_autorefresh
+import streamlit.components.v1 as components
 import json, os
 
 # ================= 1. CONFIG & AUTH STATE =================
@@ -14,7 +15,7 @@ if "is_auth" not in st.session_state:
     st.session_state.is_super_admin = False
 
 # ================= 2. FILE STORAGE =================
-DATA_FILE = "admin_data_v2.json" # Version change for dynamic structure
+DATA_FILE = "admin_data_v2.json" 
 USER_FILE = "authorized_users.json"
 
 def load_json(file_path, default_val):
@@ -60,19 +61,28 @@ if st.sidebar.button("🔒 LOGOUT"):
     st.session_state.is_auth = False
     st.rerun()
 
-# DYNAMIC DATA STRUCTURE: Har index ka apna data
 all_index_data = load_json(DATA_FILE, {
     "NIFTY": {"signal": {"Strike": "-", "Entry": "-", "Target": "-", "SL": "-"}, "sr": {"support": "-", "resistance": "-"}},
     "SENSEX": {"signal": {"Strike": "-", "Entry": "-", "Target": "-", "SL": "-"}, "sr": {"support": "-", "resistance": "-"}}
 })
 
-# Current selected index ka data nikalna
 if index_choice not in all_index_data:
     all_index_data[index_choice] = {"signal": {"Strike": "-", "Entry": "-", "Target": "-", "SL": "-"}, "sr": {"support": "-", "resistance": "-"}}
 
 current_idx_data = all_index_data[index_choice]
 
-# ================= 5. SDK & STABLE DATA FETCH =================
+# ================= 5. SENSEX LIVE HEADER (TRADING VIEW) =================
+if index_choice == "SENSEX":
+    tv_html = """
+    <div class="tradingview-widget-container">
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-single-quote.js" async>
+      {"symbol": "BSE:SENSEX", "width": "100%", "colorTheme": "light", "isTransparent": false, "locale": "en"}
+      </script>
+    </div>
+    """
+    components.html(tv_html, height=130)
+
+# ================= 6. SDK & STABLE DATA FETCH =================
 if "nubra" not in st.session_state:
     st.session_state.nubra = InitNubraSdk(NubraEnv.UAT, env_creds=True)
 
@@ -95,22 +105,6 @@ if result and result.chain:
     df = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE","_PE")).fillna(0)
     df["STRIKE"] = (df["strike_price"]/100).astype(int)
 
-    # ===== BREAK EVEN LOGIC =====
-    total_ce = df["open_interest_CE"].sum()
-    total_pe = df["open_interest_PE"].sum()
-
-    be_strike = int(df.loc[
-        (df["open_interest_CE"] + df["open_interest_PE"]).idxmax(),
-        "STRIKE"
-    ])
-
-    signal_type = None
-    if total_pe > total_ce:
-        signal_type = "CALL"
-    elif total_ce > total_pe:
-        signal_type = "PUT"   
-
-    # --- OI CHANGE STABLE LOGIC ---
     state_key = f"initial_df_{index_choice}"
     if state_key not in st.session_state:
         st.session_state[state_key] = df.copy()
@@ -133,12 +127,21 @@ if result and result.chain:
     max_chg_ce = df["oi_chg_CE"].abs().max() if df["oi_chg_CE"].abs().max() > 0 else 1
     max_chg_pe = df["oi_chg_PE"].abs().max() if df["oi_chg_PE"].abs().max() > 0 else 1
 
-    # ================= 6. DYNAMIC ADMIN PANEL =================
+    # Break-Even Calculations (Fixed for Sensex)
+    be_res_strike = int(df.loc[df["open_interest_CE"].idxmax(), "STRIKE"])
+    be_sup_strike = int(df.loc[df["open_interest_PE"].idxmax(), "STRIKE"])
+
+    # Auto Signal Alert
+    if spot >= be_res_strike:
+        st.success(f"🚀 BIG MOVE: {index_choice} CALL BUYING ABOVE {be_res_strike}")
+    elif spot <= be_sup_strike:
+        st.error(f"🩸 BIG MOVE: {index_choice} PE BUYING BELOW {be_sup_strike}")
+
+    # ================= 7. ADMIN PANEL & METRICS =================
     if st.session_state.is_super_admin:
         with st.expander(f"🛠️ ADMIN CONTROLS ({index_choice})"):
             t1, t2 = st.tabs(["Signal & Levels", "User Management"])
             with t1:
-                st.info(f"Yahan jo entry karoge wo sirf {index_choice} ke liye save hogi.")
                 c1, c2, c3, c4 = st.columns(4)
                 s_stk = c1.text_input("Strike", value=current_idx_data["signal"]["Strike"])
                 s_ent = c2.text_input("Entry Price", value=current_idx_data["signal"]["Entry"])
@@ -151,7 +154,6 @@ if result and result.chain:
                     all_index_data[index_choice]["signal"] = {"Strike": s_stk, "Entry": s_ent, "Target": s_tgt, "SL": s_sl}
                     all_index_data[index_choice]["sr"] = {"support": sup_in, "resistance": res_in}
                     save_json(DATA_FILE, all_index_data)
-                    st.success(f"{index_choice} updated!")
                     st.rerun()
             with t2:
                 new_uid = st.text_input("New Mobile ID")
@@ -159,9 +161,8 @@ if result and result.chain:
                 if st.button("ADD NEW USER"):
                     ADMIN_DB[new_uid] = new_uname
                     save_json(USER_FILE, ADMIN_DB)
-                    st.success(f"Added {new_uname}!")
+                    st.success("Added!")
 
-    # Top Metrics (Now Index Specific)
     m1, m2, m3, m4, m5, m6 = st.columns(6)
     m1.metric("🎯 STRIKE", current_idx_data["signal"]["Strike"])
     m2.metric("💰 ENTRY", current_idx_data["signal"]["Entry"])
@@ -170,7 +171,7 @@ if result and result.chain:
     m5.metric("🟢 SUP", current_idx_data["sr"]["support"])
     m6.metric("🔴 RES", current_idx_data["sr"]["resistance"])
 
-    # ================= 7. TABLE UI & STYLING =================
+    # ================= 8. TABLE UI & FINAL COLOUR LOGIC =================
     def fmt_val(val, delta, m_val):
         pct = (val/m_val*100) if m_val > 0 else 0
         return f"{val:,.0f}\n({delta:+,})\n{pct:.1f}%"
@@ -192,22 +193,24 @@ if result and result.chain:
     ui["PE OI CHG"] = d_df.apply(lambda r: fmt_chg(r["oi_chg_PE"], max_chg_pe), axis=1)
     ui["PE OI\n(Δ/%)"] = d_df.apply(lambda r: fmt_val(r["open_interest_PE"], r["oi_chg_PE"], max_oi_pe), axis=1)
 
-    # ===== SIGNAL COLUMN =====
-    ui["SIGNAL"] = ""
-
-    for i in range(len(ui)):
-        if ui.iloc[i]["STRIKE"] == be_strike:
-            if signal_type == "CALL":
-                ui.at[ui.index[i], "SIGNAL"] = "⬆️ CALL BUY"
-            elif signal_type == "PUT":
-                ui.at[ui.index[i], "SIGNAL"] = "⬇️ PUT BUY"
-
-    # ===== STYLE FUNCTION =====
     def style_table(row):
         s = [''] * len(row)
-        s[3] = 'background-color:#f0f2f6;color:black;font-weight:bold'
+        try: cur_strike = int(row.iloc[3])
+        except: cur_strike = row.iloc[3]
+        
+        s[3] = 'background-color:#f0f2f6;color:black;font-weight:bold' 
+        
+        # --- Break Even & Big Move Rows ---
+        if cur_strike == be_res_strike: 
+            s = ['border-top: 3px solid blue; border-bottom: 3px solid blue; font-weight: bold'] * len(row)
+            if spot >= be_res_strike: s = ['background-color: #008000; color: white; font-weight: bold'] * len(row)
+        
+        if cur_strike == be_sup_strike: 
+            s = ['border-top: 3px solid red; border-bottom: 3px solid red; font-weight: bold'] * len(row)
+            if spot <= be_sup_strike: s = ['background-color: #FF0000; color: white; font-weight: bold'] * len(row)
 
         try:
+            # ORIGINAL COLOR LOGIC RESTORED
             c_oi_p = float(row.iloc[0].split('\n')[-1].replace('%',''))
             c_ch_p = float(row.iloc[1].split('\n')[-1].replace('%',''))
             c_vo_p = float(row.iloc[2].split('\n')[-1].replace('%',''))
@@ -215,34 +218,22 @@ if result and result.chain:
             p_ch_p = float(row.iloc[5].split('\n')[-1].replace('%',''))
             p_oi_p = float(row.iloc[6].split('\n')[-1].replace('%',''))
 
+            # CE Side Colors
             if c_oi_p >= 70: s[0] = 'background-color:#1976d2;color:white'
             if c_ch_p >= 70: s[1] = 'background-color:#4caf50;color:white'
             if c_vo_p >= 70: s[2] = 'background-color:#1b5e20;color:white'
+            # PE Side Colors
             if p_vo_p >= 70: s[4] = 'background-color:#b71c1c;color:white'
             if p_ch_p >= 70: s[5] = 'background-color:#f44336;color:white'
             if p_oi_p >= 70: s[6] = 'background-color:#fb8c00;color:white'
-
-            # ===== BREAK EVEN LINE =====
-            if row.iloc[3] == be_strike:
-                if signal_type == "CALL":
-                    for i in range(len(s)):
-                        s[i] = 'background-color:#00e676;color:black;font-weight:bold'
-                elif signal_type == "PUT":
-                    for i in range(len(s)):
-                        s[i] = 'background-color:#ff5252;color:white;font-weight:bold'
-
-            # ===== ATM highlight =====
-            if row.iloc[3] == atm_strike:
+            
+            # ATM highlight
+            if cur_strike == int(atm_strike):
                 s[3] = 'background-color:yellow;color:black;font-weight:bold'
-
-        except:
-            pass
-
+        except: pass
         return s
 
-    # ===== FINAL TABLE RENDER =====
     st.subheader(f"📊 {index_choice} Option Chain")
     st.table(ui.style.apply(style_table, axis=1))
-
 else:
     st.info("Market data load ho raha hai...")

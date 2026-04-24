@@ -72,7 +72,7 @@ current_idx_data = all_index_data[index_choice]
 
 # ================= 5. SDK & STABLE DATA FETCH =================
 if "nubra" not in st.session_state:
-    st.session_state.nubra = InitNubraSdk(NubraEnv.UAT, env_creds=True)
+    st.session_state.nubra = InitNubraSdk(NubraEnv.PROD, env_creds=True)
 
 market_data = MarketData(st.session_state.nubra)
 result = market_data.option_chain(index_choice, exchange=target_exch)

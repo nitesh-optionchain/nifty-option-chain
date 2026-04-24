@@ -3,6 +3,7 @@ pandas
 plotly
 streamlit-autorefresh
 aiohttp
+msgspec
 pydantic
 python-dotenv
 pytz

@@ -2,5 +2,6 @@ streamlit
 pandas
 plotly
 streamlit-autorefresh
-aiohttp
-msgspec
+python-dotenv
+pydantic
+pytz

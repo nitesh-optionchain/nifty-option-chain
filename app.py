@@ -26,13 +26,6 @@ if "is_auth" not in st.session_state:
 if "admin_name" not in st.session_state:
     st.session_state.admin_name = "Guest"
 
-# ================= SESSION INIT =================
-if "is_auth" not in st.session_state:
-    st.session_state.is_auth = False
-
-if "admin_name" not in st.session_state:
-    st.session_state.admin_name = "Guest"
-
 # ================= LOGIN CHECK FIRST =================
 if st.session_state.is_auth == False:
 

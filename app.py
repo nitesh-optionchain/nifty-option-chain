@@ -6,10 +6,10 @@ import streamlit as st
 import pandas as pd
 from streamlit_autorefresh import st_autorefresh
 
-# ================= PAGE =================
+# ================= PAGE CONFIG =================
 st.set_page_config(page_title="SMART WEALTH AI 5", layout="wide")
 
-# ================= SESSION =================
+# ================= SESSION INIT =================
 if "auth" not in st.session_state:
     st.session_state.auth = False
 
@@ -17,15 +17,19 @@ if "user" not in st.session_state:
     st.session_state.user = "Guest"
 
 if "live" not in st.session_state:
-    st.session_state.live = {"NIFTY": 0, "SENSEX": 0, "BANKNIFTY": 0}
+    st.session_state.live = {
+        "NIFTY": 0,
+        "SENSEX": 0,
+        "BANKNIFTY": 0
+    }
 
 # ================= LOGIN =================
-if not st.session_state.auth:
+def login_page():
 
-    st.title("🛡️ SMART WEALTH LOGIN")
+    st.title("🛡️ SMART WEALTH AI LOGIN")
 
-    user = st.text_input("User ID")
-    pwd = st.text_input("Password", type="password")
+    user = st.text_input("User ID", key="u1")
+    pwd = st.text_input("Password", type="password", key="p1")
 
     if st.button("LOGIN"):
 
@@ -42,13 +46,16 @@ if not st.session_state.auth:
 
     st.stop()
 
+if not st.session_state.auth:
+    login_page()
+
 # ================= AUTO REFRESH =================
 st_autorefresh(interval=5000, key="refresh")
 
 # ================= HEADER =================
-st.title("🚀 SMART WEALTH AI LIVE DASHBOARD")
+st.title("🚀 SMART WEALTH AI DASHBOARD")
 
-st.sidebar.write(f"👤 {st.session_state.user}")
+st.sidebar.write(f"👤 User: {st.session_state.user}")
 
 # ================= SDK =================
 if "sdk" not in st.session_state:
@@ -69,17 +76,20 @@ def on_tick(msg):
         pass
 
 if "socket" not in st.session_state:
-    socket = NubraDataSocket(
-        client=st.session_state.sdk,
-        on_index_data=on_tick
-    )
-    socket.connect()
-    socket.subscribe(
-        ["NIFTY", "SENSEX", "BANKNIFTY"],
-        data_type="index",
-        exchange="NSE"
-    )
-    st.session_state.socket = socket
+    try:
+        socket = NubraDataSocket(
+            client=st.session_state.sdk,
+            on_index_data=on_tick
+        )
+        socket.connect()
+        socket.subscribe(
+            ["NIFTY", "SENSEX", "BANKNIFTY"],
+            data_type="index",
+            exchange="NSE"
+        )
+        st.session_state.socket = socket
+    except Exception as e:
+        st.warning(f"WebSocket Warning: {e}")
 
 # ================= LIVE HEADER =================
 c1, c2, c3 = st.columns(3)
@@ -88,7 +98,7 @@ c1.metric("NIFTY", st.session_state.live["NIFTY"])
 c2.metric("SENSEX", st.session_state.live["SENSEX"])
 c3.metric("BANKNIFTY", st.session_state.live["BANKNIFTY"])
 
-# ================= INDEX =================
+# ================= INDEX SELECT =================
 index_choice = st.sidebar.selectbox(
     "Select Index",
     ["NIFTY", "SENSEX", "BANKNIFTY"]
@@ -123,6 +133,9 @@ df = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE", "_PE"))
 df["STRIKE"] = (df["strike_price"] / 100).astype(int)
 
 df = df.sort_values("STRIKE").reset_index(drop=True)
+
+# ================= SPOT =================
+st.write(f"📍 Selected Index: {index_choice}")
 
 # ================= TABLE =================
 st.dataframe(df, use_container_width=True)

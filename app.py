@@ -19,23 +19,36 @@ if "admin_name" not in st.session_state:
 if "live_data" not in st.session_state:
     st.session_state.live_data = {"NIFTY": 0, "SENSEX": 0}
 
-# ================= LOGIN =================
+# ================= SESSION INIT =================
+if "is_auth" not in st.session_state:
+    st.session_state.is_auth = False
+
+if "admin_name" not in st.session_state:
+    st.session_state.admin_name = "Guest"
+
+# ================= LOGIN PAGE =================
 if not st.session_state.is_auth:
 
     st.title("🛡️ SMART WEALTH AI 5 LOGIN")
 
-    user = st.text_input("User ID", key="user")
-    pwd = st.text_input("Password", type="password", key="pass")
+    user = st.text_input("User ID", key="uid")
+    pwd = st.text_input("Password", type="password", key="pwd")
 
-    if st.button("LOGIN"):
+    login = st.button("LOGIN")
 
-        if user.strip() == "admin" and pwd.strip() == "1234":
+    if login:
+
+        if user == "admin" and pwd == "1234":
+
             st.session_state.is_auth = True
             st.session_state.admin_name = "Admin"
+
             st.success("Login Successful 🚀")
+
             st.rerun()
+
         else:
-            st.error("❌ Invalid Credentials")
+            st.error("❌ Wrong ID or Password")
 
     st.stop()
 

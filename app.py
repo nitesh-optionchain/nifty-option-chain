@@ -6,7 +6,7 @@ import streamlit as st
 import pandas as pd
 from streamlit_autorefresh import st_autorefresh
 
-# ================= CONFIG =================
+# ================= PAGE CONFIG =================
 st.set_page_config(page_title="SMART WEALTH AI 5", layout="wide")
 
 # ================= SESSION INIT =================
@@ -21,19 +21,21 @@ if "live_data" not in st.session_state:
 
 # ================= LOGIN =================
 if not st.session_state.is_auth:
+
     st.title("🛡️ SMART WEALTH AI 5 LOGIN")
 
-    user = st.text_input("User ID")
-    pwd = st.text_input("Password", type="password")
+    user = st.text_input("User ID", key="user")
+    pwd = st.text_input("Password", type="password", key="pass")
 
     if st.button("LOGIN"):
-        # SIMPLE LOGIN (can be replaced with JSON later)
-        if user == "admin" and pwd == "1234":
+
+        if user.strip() == "admin" and pwd.strip() == "1234":
             st.session_state.is_auth = True
             st.session_state.admin_name = "Admin"
+            st.success("Login Successful 🚀")
             st.rerun()
         else:
-            st.error("Invalid Credentials")
+            st.error("❌ Invalid Credentials")
 
     st.stop()
 
@@ -68,10 +70,10 @@ if "socket" not in st.session_state:
         socket.subscribe(["NIFTY", "SENSEX"], data_type="index", exchange="NSE")
         st.session_state.socket = socket
     except Exception as e:
-        st.warning(f"WebSocket Init Issue: {e}")
+        st.warning(f"WebSocket Warning: {e}")
 
 # ================= HEADER =================
-st.title("🚀 SMART WEALTH AI 5 - LIVE TERMINAL")
+st.title("🚀 SMART WEALTH AI 5 - LIVE DASHBOARD")
 
 c1, c2 = st.columns(2)
 c1.metric("📊 NIFTY LIVE", st.session_state.live_data.get("NIFTY", "WAIT"))
@@ -79,7 +81,7 @@ c2.metric("📊 SENSEX LIVE", st.session_state.live_data.get("SENSEX", "WAIT"))
 
 st.sidebar.write(f"👤 User: {st.session_state.admin_name}")
 
-# ================= INDEX =================
+# ================= INDEX SELECT =================
 index_choice = st.sidebar.selectbox("Select Index", ["NIFTY", "SENSEX"])
 exchange = "NSE" if index_choice == "NIFTY" else "BSE"
 
@@ -87,7 +89,7 @@ if st.sidebar.button("LOGOUT"):
     st.session_state.is_auth = False
     st.rerun()
 
-# ================= DATA =================
+# ================= OPTION CHAIN =================
 st.subheader(f"📊 {index_choice} OPTION CHAIN")
 
 try:
@@ -116,7 +118,7 @@ st.write(f"📍 Spot Price: {spot}")
 df["oi_chg_CE"] = df["open_interest_CE"].diff().fillna(0)
 df["oi_chg_PE"] = df["open_interest_PE"].diff().fillna(0)
 
-# ================= BREAKOUT =================
+# ================= BREAKOUT LEVELS =================
 be_res = df.loc[df["open_interest_CE"].idxmax(), "STRIKE"]
 be_sup = df.loc[df["open_interest_PE"].idxmax(), "STRIKE"]
 
@@ -126,8 +128,15 @@ if spot >= be_res:
 elif spot <= be_sup:
     st.error(f"🩸 PUT BREAKDOWN BELOW {be_sup}")
 
-# ================= TABLE =================
-ui = df[["STRIKE", "open_interest_CE", "oi_chg_CE", "volume_CE",
-         "volume_PE", "oi_chg_PE", "open_interest_PE"]]
+# ================= FINAL TABLE =================
+ui = df[[
+    "STRIKE",
+    "open_interest_CE",
+    "oi_chg_CE",
+    "volume_CE",
+    "volume_PE",
+    "oi_chg_PE",
+    "open_interest_PE"
+]]
 
 st.dataframe(ui, use_container_width=True)

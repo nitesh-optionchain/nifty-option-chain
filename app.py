@@ -13,6 +13,7 @@ if "is_auth" not in st.session_state:
     st.session_state.is_auth = False
     st.session_state.admin_name = "Guest"
     st.session_state.is_super_admin = False
+    st.session_state.current_user_id = "" # Added to track current login
 
 # ================= 2. FILE STORAGE =================
 DATA_FILE = "admin_data_v2.json" 
@@ -28,13 +29,28 @@ def load_json(file_path, default_val):
 def save_json(file_path, data_to_save):
     try:
         with open(file_path, "w") as f:
-            json.dump(data_to_save, f)
+            json.dump(data_to_save, f, indent=4)
     except: pass
 
 ADMIN_DB = load_json(USER_FILE, {"9304768496": "Admin Chief", "7982046438": "Admin x"})
 SUPER_ADMIN_IDS = ["9304768496", "7982046438"]
 
-# ================= 3. LOGIN FIREWALL =================
+# ================= 3. LOGIN FIREWALL (SESSION PERSISTENCE FIX) =================
+# Pehle check karo ki kya koi purani session file padi hai
+if "is_auth" not in st.session_state:
+    if os.path.exists("session_login.json"):
+        try:
+            with open("session_login.json", "r") as f:
+                saved = json.load(f)
+                st.session_state.is_auth = True
+                st.session_state.admin_name = saved["admin_name"]
+                st.session_state.current_user_id = saved["user_id"]
+                st.session_state.is_super_admin = saved["is_super_admin"]
+        except:
+            st.session_state.is_auth = False
+    else:
+        st.session_state.is_auth = False
+
 if not st.session_state.is_auth:
     st.markdown("<h1 style='text-align: center;'>🛡️ SMART WEALTH AI 5</h1>", unsafe_allow_html=True)
     _, col2, _ = st.columns([1, 1, 1])
@@ -45,7 +61,17 @@ if not st.session_state.is_auth:
                 if user_key in ADMIN_DB:
                     st.session_state.is_auth = True
                     st.session_state.admin_name = ADMIN_DB[user_key]
+                    st.session_state.current_user_id = user_key
                     st.session_state.is_super_admin = True if user_key in SUPER_ADMIN_IDS else False
+                    
+                    # Login hote hi file save karo (taki logout na ho)
+                    session_data = {
+                        "user_id": user_key,
+                        "admin_name": st.session_state.admin_name,
+                        "is_super_admin": st.session_state.is_super_admin
+                    }
+                    with open("session_login.json", "w") as f:
+                        json.dump(session_data, f)
                     st.rerun()
                 else: st.error("❌ Invalid Access ID")
     st.stop()
@@ -54,15 +80,19 @@ if not st.session_state.is_auth:
 st_autorefresh(interval=5000, key="refresh")
 st.sidebar.markdown(f"### 👤 User: **{st.session_state.admin_name}**")
 
-index_choice = st.sidebar.selectbox("Select Index", ["NIFTY", "SENSEX"])
-target_exch = "NSE" if index_choice == "NIFTY" else "BSE"
+index_choice = st.sidebar.selectbox("Select Index", ["NIFTY", "BANKNIFTY", "SENSEX"])
+target_exch = "BSE" if index_choice == "SENSEX" else "NSE"
 
+# Purana logout hata kar ye lagayein
 if st.sidebar.button("🔒 LOGOUT"):
+    if os.path.exists("session_login.json"):
+        os.remove("session_login.json") # Ye line session clear kar degi
     st.session_state.is_auth = False
     st.rerun()
 
 all_index_data = load_json(DATA_FILE, {
     "NIFTY": {"signal": {"Strike": "-", "Entry": "-", "Target": "-", "SL": "-"}, "sr": {"support": "-", "resistance": "-"}},
+    "BANKNIFTY": {"signal": {"Strike": "-", "Entry": "-", "Target": "-", "SL": "-"}, "sr": {"support": "-", "resistance": "-"}},
     "SENSEX": {"signal": {"Strike": "-", "Entry": "-", "Target": "-", "SL": "-"}, "sr": {"support": "-", "resistance": "-"}}
 })
 
@@ -111,12 +141,9 @@ if result and result.chain:
 
     def calc_stable_oi(row, side):
         curr_oi = row[f"open_interest_{side}"]
-        prev_oi = row.get(f"previous_close_oi_{side}", 0)
-        if prev_oi == 0:
-            init_df = st.session_state[state_key].set_index("STRIKE")
-            strike = row["STRIKE"]
-            if strike in init_df.index:
-                prev_oi = init_df.loc[strike, f"open_interest_{side}"]
+        init_df = st.session_state[state_key].set_index("STRIKE")
+        strike = row["STRIKE"]
+        prev_oi = init_df.loc[strike, f"open_interest_{side}"] if strike in init_df.index else curr_oi
         return curr_oi - prev_oi
 
     df["oi_chg_CE"] = df.apply(lambda r: calc_stable_oi(r, "CE"), axis=1)
@@ -127,7 +154,6 @@ if result and result.chain:
     max_chg_ce = df["oi_chg_CE"].abs().max() if df["oi_chg_CE"].abs().max() > 0 else 1
     max_chg_pe = df["oi_chg_PE"].abs().max() if df["oi_chg_PE"].abs().max() > 0 else 1
 
-    # Break-Even Calculations (Fixed for Sensex)
     be_res_strike = int(df.loc[df["open_interest_CE"].idxmax(), "STRIKE"])
     be_sup_strike = int(df.loc[df["open_interest_PE"].idxmax(), "STRIKE"])
 
@@ -154,14 +180,36 @@ if result and result.chain:
                     all_index_data[index_choice]["signal"] = {"Strike": s_stk, "Entry": s_ent, "Target": s_tgt, "SL": s_sl}
                     all_index_data[index_choice]["sr"] = {"support": sup_in, "resistance": res_in}
                     save_json(DATA_FILE, all_index_data)
+                    st.success("Levels Updated!")
                     st.rerun()
             with t2:
+                st.markdown("#### ➕ Add New User")
                 new_uid = st.text_input("New Mobile ID")
                 new_uname = st.text_input("User Name")
                 if st.button("ADD NEW USER"):
-                    ADMIN_DB[new_uid] = new_uname
-                    save_json(USER_FILE, ADMIN_DB)
-                    st.success("Added!")
+                    if new_uid and new_uname:
+                        ADMIN_DB[new_uid] = new_uname
+                        save_json(USER_FILE, ADMIN_DB)
+                        st.success("User Added!")
+                        st.rerun()
+                    else: st.warning("Please fill all details.")
+                
+                st.divider()
+                
+                st.markdown("#### 🗑️ Delete User")
+                # Exclude the current logged-in super admin from deletion list for safety
+                delete_list = {f"{v} ({k})": k for k, v in ADMIN_DB.items() if k != st.session_state.current_user_id}
+                
+                if delete_list:
+                    selected_user_to_del = st.selectbox("Select User to Remove", list(delete_list.keys()))
+                    if st.button("REMOVE SELECTED USER", type="primary"):
+                        uid_to_remove = delete_list[selected_user_to_del]
+                        del ADMIN_DB[uid_to_remove]
+                        save_json(USER_FILE, ADMIN_DB)
+                        st.error(f"User {selected_user_to_del} removed!")
+                        st.rerun()
+                else:
+                    st.info("No other users to delete.")
 
     m1, m2, m3, m4, m5, m6 = st.columns(6)
     m1.metric("🎯 STRIKE", current_idx_data["signal"]["Strike"])
@@ -171,7 +219,7 @@ if result and result.chain:
     m5.metric("🟢 SUP", current_idx_data["sr"]["support"])
     m6.metric("🔴 RES", current_idx_data["sr"]["resistance"])
 
-    # ================= 8. TABLE UI & FINAL COLOUR LOGIC =================
+   # ================= 8. TABLE UI & COLOUR LOGIC =================
     def fmt_val(val, delta, m_val):
         pct = (val/m_val*100) if m_val > 0 else 0
         return f"{val:,.0f}\n({delta:+,})\n{pct:.1f}%"
@@ -180,9 +228,12 @@ if result and result.chain:
         pct = (delta/m_delta*100) if m_delta > 0 else 0
         return f"{delta:+,}\n{pct:.1f}%"
 
+    # Find ATM
     atm_strike = df.loc[(df["STRIKE"] - spot).abs().idxmin(), "STRIKE"]
     atm_idx = df.index[df["STRIKE"] == atm_strike][0]
-    d_df = df.iloc[max(atm_idx-7,0): atm_idx+8].copy()
+    
+    # Slice and RESET INDEX (Bahut Zaroori Hai)
+    d_df = df.iloc[max(atm_idx-7,0): atm_idx+8].copy().reset_index(drop=True)
 
     ui = pd.DataFrame()
     ui["CE OI\n(Δ/%)"] = d_df.apply(lambda r: fmt_val(r["open_interest_CE"], r["oi_chg_CE"], max_oi_ce), axis=1)
@@ -195,42 +246,55 @@ if result and result.chain:
 
     def style_table(row):
         s = [''] * len(row)
-        try: cur_strike = int(row.iloc[3])
-        except: cur_strike = row.iloc[3]
-        
-        s[3] = 'background-color:#f0f2f6;color:black;font-weight:bold' 
-        
-        # --- Break Even & Big Move Rows ---
-        if cur_strike == be_res_strike: 
-            s = ['border-top: 3px solid blue; border-bottom: 3px solid blue; font-weight: bold'] * len(row)
-            if spot >= be_res_strike: s = ['background-color: #008000; color: white; font-weight: bold'] * len(row)
-        
-        if cur_strike == be_sup_strike: 
-            s = ['border-top: 3px solid red; border-bottom: 3px solid red; font-weight: bold'] * len(row)
-            if spot <= be_sup_strike: s = ['background-color: #FF0000; color: white; font-weight: bold'] * len(row)
-
         try:
-            # ORIGINAL COLOR LOGIC RESTORED
+            # Current row data from d_df using index
+            idx = row.name
+            cur_strike = int(d_df.loc[idx, "STRIKE"])
+            
+            # Extract percentages for highlighting
+            # row.iloc[0] = CE OI, row.iloc[1] = CE OI CHG, row.iloc[2] = CE VOL
             c_oi_p = float(row.iloc[0].split('\n')[-1].replace('%',''))
             c_ch_p = float(row.iloc[1].split('\n')[-1].replace('%',''))
             c_vo_p = float(row.iloc[2].split('\n')[-1].replace('%',''))
+            
             p_vo_p = float(row.iloc[4].split('\n')[-1].replace('%',''))
             p_ch_p = float(row.iloc[5].split('\n')[-1].replace('%',''))
             p_oi_p = float(row.iloc[6].split('\n')[-1].replace('%',''))
 
-            # CE Side Colors
-            if c_oi_p >= 70: s[0] = 'background-color:#1976d2;color:white'
-            if c_ch_p >= 70: s[1] = 'background-color:#4caf50;color:white'
-            if c_vo_p >= 70: s[2] = 'background-color:#1b5e20;color:white'
-            # PE Side Colors
-            if p_vo_p >= 70: s[4] = 'background-color:#b71c1c;color:white'
-            if p_ch_p >= 70: s[5] = 'background-color:#f44336;color:white'
-            if p_oi_p >= 70: s[6] = 'background-color:#fb8c00;color:white'
-            
-            # ATM highlight
+            # Highest Volume values in current view
+            max_vol_ce_view = d_df["volume_CE"].max()
+            max_vol_pe_view = d_df["volume_PE"].max()
+            raw_vol_ce = d_df.loc[idx, "volume_CE"]
+            raw_vol_pe = d_df.loc[idx, "volume_PE"]
+
+            # --- 1. STRIKE & ATM Highlight ---
+            s[3] = 'background-color:#f0f2f6;color:black;font-weight:bold' 
             if cur_strike == int(atm_strike):
                 s[3] = 'background-color:yellow;color:black;font-weight:bold'
-        except: pass
+
+            # --- 2. OI & OI CHG Logic ---
+            if c_oi_p >= 70: s[0] = 'background-color:#1976d2;color:white'
+            if c_ch_p >= 70: s[1] = 'background-color:#4caf50;color:white'
+            if p_ch_p >= 70: s[5] = 'background-color:#f44336;color:white'
+            if p_oi_p >= 70: s[6] = 'background-color:#fb8c00;color:white'
+
+            # --- 3. Volume & Trap Filter ---
+            # CE Volume: Highest or > 75%
+            if raw_vol_ce == max_vol_ce_view or c_vo_p >= 75:
+                s[2] = 'background-color:#1b5e20;color:white'
+
+            # PE Volume: Highest or > 75%
+            if raw_vol_pe == max_vol_pe_view or p_vo_p >= 75:
+                s[4] = 'background-color:#b71c1c;color:white'
+
+            # --- 4. Support/Resistance Borders (Overwrites if needed) ---
+            if cur_strike == be_res_strike:
+                for i in range(len(s)): s[i] += '; border-top: 3px solid blue; border-bottom: 3px solid blue'
+            if cur_strike == be_sup_strike:
+                for i in range(len(s)): s[i] += '; border-top: 3px solid red; border-bottom: 3px solid red'
+
+        except Exception as e:
+            pass
         return s
 
     st.subheader(f"📊 {index_choice} Option Chain")

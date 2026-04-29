@@ -6,18 +6,12 @@ from streamlit_autorefresh import st_autorefresh
 import streamlit.components.v1 as components
 import json, os
 
-# ================= 1. CONFIG & AUTH STATE =================
+# ================= 1. CONFIG & FILE STORAGE =================
 st.set_page_config(page_title="SMART WEALTH AI 5", layout="wide")
 
-if "is_auth" not in st.session_state:
-    st.session_state.is_auth = False
-    st.session_state.admin_name = "Guest"
-    st.session_state.is_super_admin = False
-    st.session_state.current_user_id = "" # Added to track current login
-
-# ================= 2. FILE STORAGE =================
 DATA_FILE = "admin_data_v2.json" 
 USER_FILE = "authorized_users.json"
+SESSION_FILE = "session_login.json" # Session store karne ke liye file
 
 def load_json(file_path, default_val):
     if os.path.exists(file_path):
@@ -35,22 +29,25 @@ def save_json(file_path, data_to_save):
 ADMIN_DB = load_json(USER_FILE, {"9304768496": "Admin Chief", "7982046438": "Admin x"})
 SUPER_ADMIN_IDS = ["9304768496", "7982046438"]
 
-# ================= 3. LOGIN FIREWALL (SESSION PERSISTENCE FIX) =================
-# Pehle check karo ki kya koi purani session file padi hai
+# ================= 2. LOGOUT FIX (AUTO-RECOVERY LOGIC) =================
 if "is_auth" not in st.session_state:
-    if os.path.exists("session_login.json"):
-        try:
-            with open("session_login.json", "r") as f:
-                saved = json.load(f)
-                st.session_state.is_auth = True
-                st.session_state.admin_name = saved["admin_name"]
-                st.session_state.current_user_id = saved["user_id"]
-                st.session_state.is_super_admin = saved["is_super_admin"]
-        except:
-            st.session_state.is_auth = False
-    else:
-        st.session_state.is_auth = False
+    st.session_state.is_auth = False
 
+# Agar session state False hai, toh file check karo (Refresh handle karne ke liye)
+if not st.session_state.is_auth and os.path.exists(SESSION_FILE):
+    try:
+        with open(SESSION_FILE, "r") as f:
+            saved = json.load(f)
+            # Check if user still exists in DB
+            if saved["user_id"] in ADMIN_DB:
+                st.session_state.is_auth = True
+                st.session_state.admin_name = ADMIN_DB[saved["user_id"]]
+                st.session_state.current_user_id = saved["user_id"]
+                st.session_state.is_super_admin = (saved["user_id"] in SUPER_ADMIN_IDS)
+    except:
+        pass
+
+# Login Screen (Agar auth nahi hai)
 if not st.session_state.is_auth:
     st.markdown("<h1 style='text-align: center;'>🛡️ SMART WEALTH AI 5</h1>", unsafe_allow_html=True)
     _, col2, _ = st.columns([1, 1, 1])
@@ -64,32 +61,34 @@ if not st.session_state.is_auth:
                     st.session_state.current_user_id = user_key
                     st.session_state.is_super_admin = True if user_key in SUPER_ADMIN_IDS else False
                     
-                    # Login hote hi file save karo (taki logout na ho)
+                    # File save karo (Persistent login)
                     session_data = {
                         "user_id": user_key,
                         "admin_name": st.session_state.admin_name,
                         "is_super_admin": st.session_state.is_super_admin
                     }
-                    with open("session_login.json", "w") as f:
-                        json.dump(session_data, f)
+                    save_json(SESSION_FILE, session_data)
                     st.rerun()
-                else: st.error("❌ Invalid Access ID")
+                else: 
+                    st.error("❌ Invalid Access ID")
     st.stop()
 
-# ================= 4. SIDEBAR & REFRESH =================
+# ================= 3. SIDEBAR & LOGOUT =================
 st_autorefresh(interval=5000, key="refresh")
 st.sidebar.markdown(f"### 👤 User: **{st.session_state.admin_name}**")
+
+# LOGOUT Button Logic
+if st.sidebar.button("🔒 LOGOUT"):
+    if os.path.exists(SESSION_FILE):
+        os.remove(SESSION_FILE) # File delete taaki auto-login na ho
+    st.session_state.is_auth = False
+    st.session_state.clear() # Pura session clear
+    st.rerun()
 
 index_choice = st.sidebar.selectbox("Select Index", ["NIFTY", "BANKNIFTY", "SENSEX"])
 target_exch = "BSE" if index_choice == "SENSEX" else "NSE"
 
-# Purana logout hata kar ye lagayein
-if st.sidebar.button("🔒 LOGOUT"):
-    if os.path.exists("session_login.json"):
-        os.remove("session_login.json") # Ye line session clear kar degi
-    st.session_state.is_auth = False
-    st.rerun()
-
+# ================= 4. DATA LOADING =================
 all_index_data = load_json(DATA_FILE, {
     "NIFTY": {"signal": {"Strike": "-", "Entry": "-", "Target": "-", "SL": "-"}, "sr": {"support": "-", "resistance": "-"}},
     "BANKNIFTY": {"signal": {"Strike": "-", "Entry": "-", "Target": "-", "SL": "-"}, "sr": {"support": "-", "resistance": "-"}},
@@ -101,7 +100,7 @@ if index_choice not in all_index_data:
 
 current_idx_data = all_index_data[index_choice]
 
-# ================= 5. SENSEX LIVE HEADER (TRADING VIEW) =================
+# ================= 5. SENSEX LIVE HEADER =================
 if index_choice == "SENSEX":
     tv_html = """
     <div class="tradingview-widget-container">
@@ -112,7 +111,7 @@ if index_choice == "SENSEX":
     """
     components.html(tv_html, height=130)
 
-# ================= 6. SDK & STABLE DATA FETCH =================
+# ================= 6. SDK & DATA FETCH =================
 if "nubra" not in st.session_state:
     st.session_state.nubra = InitNubraSdk(NubraEnv.PROD, env_creds=True)
 
@@ -192,24 +191,18 @@ if result and result.chain:
                         save_json(USER_FILE, ADMIN_DB)
                         st.success("User Added!")
                         st.rerun()
-                    else: st.warning("Please fill all details.")
                 
                 st.divider()
-                
                 st.markdown("#### 🗑️ Delete User")
-                # Exclude the current logged-in super admin from deletion list for safety
                 delete_list = {f"{v} ({k})": k for k, v in ADMIN_DB.items() if k != st.session_state.current_user_id}
-                
                 if delete_list:
                     selected_user_to_del = st.selectbox("Select User to Remove", list(delete_list.keys()))
                     if st.button("REMOVE SELECTED USER", type="primary"):
                         uid_to_remove = delete_list[selected_user_to_del]
                         del ADMIN_DB[uid_to_remove]
                         save_json(USER_FILE, ADMIN_DB)
-                        st.error(f"User {selected_user_to_del} removed!")
+                        st.error(f"User removed!")
                         st.rerun()
-                else:
-                    st.info("No other users to delete.")
 
     m1, m2, m3, m4, m5, m6 = st.columns(6)
     m1.metric("🎯 STRIKE", current_idx_data["signal"]["Strike"])
@@ -219,7 +212,7 @@ if result and result.chain:
     m5.metric("🟢 SUP", current_idx_data["sr"]["support"])
     m6.metric("🔴 RES", current_idx_data["sr"]["resistance"])
 
-   # ================= 8. TABLE UI & COLOUR LOGIC =================
+   # ================= 8. TABLE UI =================
     def fmt_val(val, delta, m_val):
         pct = (val/m_val*100) if m_val > 0 else 0
         return f"{val:,.0f}\n({delta:+,})\n{pct:.1f}%"
@@ -228,11 +221,8 @@ if result and result.chain:
         pct = (delta/m_delta*100) if m_delta > 0 else 0
         return f"{delta:+,}\n{pct:.1f}%"
 
-    # Find ATM
     atm_strike = df.loc[(df["STRIKE"] - spot).abs().idxmin(), "STRIKE"]
     atm_idx = df.index[df["STRIKE"] == atm_strike][0]
-    
-    # Slice and RESET INDEX (Bahut Zaroori Hai)
     d_df = df.iloc[max(atm_idx-7,0): atm_idx+8].copy().reset_index(drop=True)
 
     ui = pd.DataFrame()
@@ -247,54 +237,35 @@ if result and result.chain:
     def style_table(row):
         s = [''] * len(row)
         try:
-            # Current row data from d_df using index
             idx = row.name
             cur_strike = int(d_df.loc[idx, "STRIKE"])
-            
-            # Extract percentages for highlighting
-            # row.iloc[0] = CE OI, row.iloc[1] = CE OI CHG, row.iloc[2] = CE VOL
             c_oi_p = float(row.iloc[0].split('\n')[-1].replace('%',''))
             c_ch_p = float(row.iloc[1].split('\n')[-1].replace('%',''))
             c_vo_p = float(row.iloc[2].split('\n')[-1].replace('%',''))
-            
             p_vo_p = float(row.iloc[4].split('\n')[-1].replace('%',''))
             p_ch_p = float(row.iloc[5].split('\n')[-1].replace('%',''))
             p_oi_p = float(row.iloc[6].split('\n')[-1].replace('%',''))
 
-            # Highest Volume values in current view
             max_vol_ce_view = d_df["volume_CE"].max()
             max_vol_pe_view = d_df["volume_PE"].max()
             raw_vol_ce = d_df.loc[idx, "volume_CE"]
             raw_vol_pe = d_df.loc[idx, "volume_PE"]
 
-            # --- 1. STRIKE & ATM Highlight ---
             s[3] = 'background-color:#f0f2f6;color:black;font-weight:bold' 
-            if cur_strike == int(atm_strike):
-                s[3] = 'background-color:yellow;color:black;font-weight:bold'
-
-            # --- 2. OI & OI CHG Logic ---
+            if cur_strike == int(atm_strike): s[3] = 'background-color:yellow;color:black;font-weight:bold'
             if c_oi_p >= 70: s[0] = 'background-color:#1976d2;color:white'
             if c_ch_p >= 70: s[1] = 'background-color:#4caf50;color:white'
             if p_ch_p >= 70: s[5] = 'background-color:#f44336;color:white'
             if p_oi_p >= 70: s[6] = 'background-color:#fb8c00;color:white'
 
-            # --- 3. Volume & Trap Filter ---
-            # CE Volume: Highest or > 75%
-            if raw_vol_ce == max_vol_ce_view or c_vo_p >= 75:
-                s[2] = 'background-color:#1b5e20;color:white'
+            if raw_vol_ce == max_vol_ce_view or c_vo_p >= 75: s[2] = 'background-color:#1b5e20;color:white'
+            if raw_vol_pe == max_vol_pe_view or p_vo_p >= 75: s[4] = 'background-color:#b71c1c;color:white'
 
-            # PE Volume: Highest or > 75%
-            if raw_vol_pe == max_vol_pe_view or p_vo_p >= 75:
-                s[4] = 'background-color:#b71c1c;color:white'
-
-            # --- 4. Support/Resistance Borders (Overwrites if needed) ---
             if cur_strike == be_res_strike:
                 for i in range(len(s)): s[i] += '; border-top: 3px solid blue; border-bottom: 3px solid blue'
             if cur_strike == be_sup_strike:
                 for i in range(len(s)): s[i] += '; border-top: 3px solid red; border-bottom: 3px solid red'
-
-        except Exception as e:
-            pass
+        except: pass
         return s
 
     st.subheader(f"📊 {index_choice} Option Chain")

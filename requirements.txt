@@ -1,9 +1,7 @@
 streamlit
 pandas
-numpy
 plotly
 streamlit-autorefresh
 python-dotenv
 pydantic
 pytz
-nubra-sdk

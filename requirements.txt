@@ -6,3 +6,4 @@ streamlit-autorefresh
 python-dotenv
 pydantic
 pytz
+nubra-sdk

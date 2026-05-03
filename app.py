@@ -15,6 +15,13 @@ import plotly.graph_objects as go
 import streamlit as st
 import streamlit.components.v1 as components
 
+st.set_page_config(
+    page_title="Smart Wealth AI 5",
+    page_icon=None,
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
+
 
 INDEX_SYMBOLS = {
     "NIFTY": {"exchange": "NSE", "type": "INDEX"},
@@ -78,23 +85,16 @@ def require_login() -> dict[str, str] | None:
     if saved_mobile and saved_role:
         return {"mobile": saved_mobile, "role": saved_role}
 
-    st.markdown('<div class="login-shell">', unsafe_allow_html=True)
-    st.subheader("Dashboard Login")
-    st.caption("Enter registered mobile number to open the dashboard.")
-    mobile = st.text_input("Mobile number", max_chars=14, placeholder="10 digit mobile")
-    if st.button("Login", use_container_width=True):
-        cleaned = clean_mobile(mobile)
-        role = mobile_role(cleaned, users)
-        if role:
-            st.session_state["auth_mobile"] = cleaned
-            st.rerun()
-        else:
-            st.error("This mobile number is not allowed. Ask admin to add viewer.")
-    st.markdown("</div>", unsafe_allow_html=True)
-    return None
-
-
-def user_admin_panel(auth: dict[str, str]) -> None:
-    users = load_users()
-    st.sidebar.divider()
-    st.sidebar.caption(f"Logged in: {auth['mobile']} ({auth['role']})")
+    st.title("Smart Wealth AI 5")
+    st.info("Login is required before dashboard data is shown.")
+    st.sidebar.title("Login")
+    st.sidebar.info("Enter super admin or viewer mobile number on the main page.")
+    left, center, right = st.columns([0.32, 0.36, 0.32])
+    with center:
+        st.subheader("Dashboard Login")
+        st.caption("Enter registered mobile number to open the dashboard.")
+        mobile = st.text_input("Mobile number", max_chars=14, placeholder="10 digit mobile")
+        if st.button("Login", use_container_width=True):
+            cleaned = clean_mobile(mobile)
+            role = mobile_role(cleaned, users)
+            if role:

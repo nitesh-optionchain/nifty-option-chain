@@ -1,231 +1,274 @@
+from nubra_python_sdk.marketdata.market_data import MarketData
+from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 import streamlit as st
 import pandas as pd
-import numpy as np
-import plotly.graph_objects as go
-from datetime import datetime
 from streamlit_autorefresh import st_autorefresh
+import streamlit.components.v1 as components
+import json, os
 
-from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
-from nubra_python_sdk.marketdata.market_data import MarketData
+# ================= 1. CONFIG & FILE STORAGE =================
+st.set_page_config(page_title="SMART WEALTH AI 5", layout="wide")
 
-# ================= CONFIG =================
-st.set_page_config(layout="wide", page_title="Trading Dashboard")
+DATA_FILE = "admin_data_v2.json" 
+USER_FILE = "authorized_users.json"
+SESSION_FILE = "session_login.json" # Session store karne ke liye file
 
-# 🔁 Refresh every 15 sec (safe)
-st_autorefresh(interval=15000, key="refresh")
+def load_json(file_path, default_val):
+    if os.path.exists(file_path):
+        try:
+            with open(file_path, "r") as f: return json.load(f)
+        except: pass
+    return default_val
 
-# ================= AUTH =================
-try:
-    nubra = InitNubraSdk(NubraEnv.PROD, env_creds=True)
-    md = MarketData(nubra)
-except Exception as e:
-    st.error("Login/Auth failed. Check .env or secrets.")
+def save_json(file_path, data_to_save):
+    try:
+        with open(file_path, "w") as f:
+            json.dump(data_to_save, f, indent=4)
+    except: pass
+
+ADMIN_DB = load_json(USER_FILE, {"9304768496": "Admin Chief", "7982046438": "Admin x"})
+SUPER_ADMIN_IDS = ["9304768496", "7982046438"]
+
+# ================= 2. LOGOUT FIX (AUTO-RECOVERY LOGIC) =================
+if "is_auth" not in st.session_state:
+    st.session_state.is_auth = False
+
+# Agar session state False hai, toh file check karo (Refresh handle karne ke liye)
+if not st.session_state.is_auth and os.path.exists(SESSION_FILE):
+    try:
+        with open(SESSION_FILE, "r") as f:
+            saved = json.load(f)
+            # Check if user still exists in DB
+            if saved["user_id"] in ADMIN_DB:
+                st.session_state.is_auth = True
+                st.session_state.admin_name = ADMIN_DB[saved["user_id"]]
+                st.session_state.current_user_id = saved["user_id"]
+                st.session_state.is_super_admin = (saved["user_id"] in SUPER_ADMIN_IDS)
+    except:
+        pass
+
+# Login Screen (Agar auth nahi hai)
+if not st.session_state.is_auth:
+    st.markdown("<h1 style='text-align: center;'>🛡️ SMART WEALTH AI 5</h1>", unsafe_allow_html=True)
+    _, col2, _ = st.columns([1, 1, 1])
+    with col2:
+        with st.form("Login"):
+            user_key = st.text_input("Enter Mobile ID:", type="password")
+            if st.form_submit_button("LOGIN"):
+                if user_key in ADMIN_DB:
+                    st.session_state.is_auth = True
+                    st.session_state.admin_name = ADMIN_DB[user_key]
+                    st.session_state.current_user_id = user_key
+                    st.session_state.is_super_admin = True if user_key in SUPER_ADMIN_IDS else False
+                    
+                    # File save karo (Persistent login)
+                    session_data = {
+                        "user_id": user_key,
+                        "admin_name": st.session_state.admin_name,
+                        "is_super_admin": st.session_state.is_super_admin
+                    }
+                    save_json(SESSION_FILE, session_data)
+                    st.rerun()
+                else: 
+                    st.error("❌ Invalid Access ID")
     st.stop()
 
-# ================= INDEX HEADER =================
-st.title("📊 Live Market Dashboard")
+# ================= 3. SIDEBAR & LOGOUT =================
+st_autorefresh(interval=5000, key="refresh")
+st.sidebar.markdown(f"### 👤 User: **{st.session_state.admin_name}**")
 
-def get_index(symbol):
+# LOGOUT Button Logic
+if st.sidebar.button("🔒 LOGOUT"):
+    if os.path.exists(SESSION_FILE):
+        os.remove(SESSION_FILE) # File delete taaki auto-login na ho
+    st.session_state.is_auth = False
+    st.session_state.clear() # Pura session clear
+    st.rerun()
+
+index_choice = st.sidebar.selectbox("Select Index", ["NIFTY", "BANKNIFTY", "SENSEX"])
+target_exch = "BSE" if index_choice == "SENSEX" else "NSE"
+
+# ================= 4. DATA LOADING =================
+all_index_data = load_json(DATA_FILE, {
+    "NIFTY": {"signal": {"Strike": "-", "Entry": "-", "Target": "-", "SL": "-"}, "sr": {"support": "-", "resistance": "-"}},
+    "BANKNIFTY": {"signal": {"Strike": "-", "Entry": "-", "Target": "-", "SL": "-"}, "sr": {"support": "-", "resistance": "-"}},
+    "SENSEX": {"signal": {"Strike": "-", "Entry": "-", "Target": "-", "SL": "-"}, "sr": {"support": "-", "resistance": "-"}}
+})
+
+if index_choice not in all_index_data:
+    all_index_data[index_choice] = {"signal": {"Strike": "-", "Entry": "-", "Target": "-", "SL": "-"}, "sr": {"support": "-", "resistance": "-"}}
+
+current_idx_data = all_index_data[index_choice]
+
+# ================= 5. SENSEX LIVE HEADER =================
+if index_choice == "SENSEX":
+    tv_html = """
+    <div class="tradingview-widget-container">
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-single-quote.js" async>
+      {"symbol": "BSE:SENSEX", "width": "100%", "colorTheme": "light", "isTransparent": false, "locale": "en"}
+      </script>
+    </div>
+    """
+    components.html(tv_html, height=130)
+
+# ================= 6. SDK & DATA FETCH =================
+if "nubra" not in st.session_state:
+    st.session_state.nubra = InitNubraSdk(NubraEnv.PROD, env_creds=True)
+
+market_data = MarketData(st.session_state.nubra)
+result = market_data.option_chain(index_choice, exchange=target_exch)
+
+if result and result.chain:
+    chain = result.chain
     try:
-        if symbol == "SENSEX":
-            data = md.current_price(symbol, exchange="BSE")
-        else:
-            data = md.current_price(symbol)
+        raw_spot = getattr(chain.ce[0], 'underlying_price', 
+                   getattr(chain, 'underlying_price', 
+                   getattr(chain, 'at_the_money_strike', 0)))
+        spot = raw_spot / 100 if raw_spot > 100000 else raw_spot
+    except: spot = 0
 
-        price = data.price / 100
-        change = data.change
-        return price, change
-    except:
-        return None, None
+    st.title(f"🛡️ SMART WEALTH AI 5 | {index_choice}: {spot:,.2f}")
 
-cols = st.columns(3)
-symbols = ["NIFTY", "BANKNIFTY", "SENSEX"]
+    df_ce = pd.DataFrame([vars(x) for x in chain.ce])
+    df_pe = pd.DataFrame([vars(x) for x in chain.pe])
+    df = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE","_PE")).fillna(0)
+    df["STRIKE"] = (df["strike_price"]/100).astype(int)
 
-for i, sym in enumerate(symbols):
-    price, change = get_index(sym)
+    state_key = f"initial_df_{index_choice}"
+    if state_key not in st.session_state:
+        st.session_state[state_key] = df.copy()
 
-    if price is None:
-        cols[i].warning(f"{sym} error")
-        continue
+    def calc_stable_oi(row, side):
+        curr_oi = row[f"open_interest_{side}"]
+        init_df = st.session_state[state_key].set_index("STRIKE")
+        strike = row["STRIKE"]
+        prev_oi = init_df.loc[strike, f"open_interest_{side}"] if strike in init_df.index else curr_oi
+        return curr_oi - prev_oi
 
-    color = "green" if change > 0 else "red"
+    df["oi_chg_CE"] = df.apply(lambda r: calc_stable_oi(r, "CE"), axis=1)
+    df["oi_chg_PE"] = df.apply(lambda r: calc_stable_oi(r, "PE"), axis=1)
 
-    cols[i].markdown(
-        f"""
-        <h3>{sym}</h3>
-        <h1 style='color:{color}'>{price:.2f}</h1>
-        <h4>{change:.2f}%</h4>
-        """,
-        unsafe_allow_html=True
-    )
+    max_oi_ce, max_oi_pe = df["open_interest_CE"].max(), df["open_interest_PE"].max()
+    max_vol_ce, max_vol_pe = df["volume_CE"].max(), df["volume_PE"].max()
+    max_chg_ce = df["oi_chg_CE"].abs().max() if df["oi_chg_CE"].abs().max() > 0 else 1
+    max_chg_pe = df["oi_chg_PE"].abs().max() if df["oi_chg_PE"].abs().max() > 0 else 1
 
-st.divider()
+    be_res_strike = int(df.loc[df["open_interest_CE"].idxmax(), "STRIKE"])
+    be_sup_strike = int(df.loc[df["open_interest_PE"].idxmax(), "STRIKE"])
 
-# ================= TIMEFRAME =================
-tf = st.selectbox("Select Timeframe", ["1m","5m","15m","1h","1d"])
+    # Auto Signal Alert
+    if spot >= be_res_strike:
+        st.success(f"🚀 BIG MOVE: {index_choice} CALL BUYING ABOVE {be_res_strike}")
+    elif spot <= be_sup_strike:
+        st.error(f"🩸 BIG MOVE: {index_choice} PE BUYING BELOW {be_sup_strike}")
 
-# ================= FETCH DATA =================
-@st.cache_data(ttl=30)
-def get_data(tf):
-    try:
-        res = md.historical_data({
-            "exchange": "NSE",
-            "type": "INDEX",
-            "values": ["NIFTY"],
-            "fields": ["open","high","low","close","cumulative_volume"],
-            "startDate": "2026-05-01T03:30:00.000Z",
-            "endDate": datetime.utcnow().isoformat()+"Z",
-            "interval": tf,
-            "intraDay": True,
-            "realTime": False
-        })
+    # ================= 7. ADMIN PANEL & METRICS =================
+    if st.session_state.is_super_admin:
+        with st.expander(f"🛠️ ADMIN CONTROLS ({index_choice})"):
+            t1, t2 = st.tabs(["Signal & Levels", "User Management"])
+            with t1:
+                c1, c2, c3, c4 = st.columns(4)
+                s_stk = c1.text_input("Strike", value=current_idx_data["signal"]["Strike"])
+                s_ent = c2.text_input("Entry Price", value=current_idx_data["signal"]["Entry"])
+                s_tgt = c3.text_input("Target", value=current_idx_data["signal"]["Target"])
+                s_sl = c4.text_input("SL", value=current_idx_data["signal"]["SL"])
+                sup_in = st.text_input("Support", value=current_idx_data["sr"]["support"])
+                res_in = st.text_input("Resistance", value=current_idx_data["sr"]["resistance"])
+                
+                if st.button(f"UPDATE {index_choice} DATA"):
+                    all_index_data[index_choice]["signal"] = {"Strike": s_stk, "Entry": s_ent, "Target": s_tgt, "SL": s_sl}
+                    all_index_data[index_choice]["sr"] = {"support": sup_in, "resistance": res_in}
+                    save_json(DATA_FILE, all_index_data)
+                    st.success("Levels Updated!")
+                    st.rerun()
+            with t2:
+                st.markdown("#### ➕ Add New User")
+                new_uid = st.text_input("New Mobile ID")
+                new_uname = st.text_input("User Name")
+                if st.button("ADD NEW USER"):
+                    if new_uid and new_uname:
+                        ADMIN_DB[new_uid] = new_uname
+                        save_json(USER_FILE, ADMIN_DB)
+                        st.success("User Added!")
+                        st.rerun()
+                
+                st.divider()
+                st.markdown("#### 🗑️ Delete User")
+                delete_list = {f"{v} ({k})": k for k, v in ADMIN_DB.items() if k != st.session_state.current_user_id}
+                if delete_list:
+                    selected_user_to_del = st.selectbox("Select User to Remove", list(delete_list.keys()))
+                    if st.button("REMOVE SELECTED USER", type="primary"):
+                        uid_to_remove = delete_list[selected_user_to_del]
+                        del ADMIN_DB[uid_to_remove]
+                        save_json(USER_FILE, ADMIN_DB)
+                        st.error(f"User removed!")
+                        st.rerun()
 
-        stock = res.result[0].values[0]["NIFTY"]
+    m1, m2, m3, m4, m5, m6 = st.columns(6)
+    m1.metric("🎯 STRIKE", current_idx_data["signal"]["Strike"])
+    m2.metric("💰 ENTRY", current_idx_data["signal"]["Entry"])
+    m3.metric("📈 TARGET", current_idx_data["signal"]["Target"])
+    m4.metric("📉 SL", current_idx_data["signal"]["SL"])
+    m5.metric("🟢 SUP", current_idx_data["sr"]["support"])
+    m6.metric("🔴 RES", current_idx_data["sr"]["resistance"])
 
-        df = pd.DataFrame({
-            "open": [x.value for x in stock.open],
-            "high": [x.value for x in stock.high],
-            "low": [x.value for x in stock.low],
-            "close": [x.value for x in stock.close],
-            "volume": [x.value for x in stock.cumulative_volume],
-        })
+   # ================= 8. TABLE UI =================
+    def fmt_val(val, delta, m_val):
+        pct = (val/m_val*100) if m_val > 0 else 0
+        return f"{val:,.0f}\n({delta:+,})\n{pct:.1f}%"
 
-        return df / 100
+    def fmt_chg(delta, m_delta):
+        pct = (delta/m_delta*100) if m_delta > 0 else 0
+        return f"{delta:+,}\n{pct:.1f}%"
 
-    except:
-        return pd.DataFrame()
+    atm_strike = df.loc[(df["STRIKE"] - spot).abs().idxmin(), "STRIKE"]
+    atm_idx = df.index[df["STRIKE"] == atm_strike][0]
+    d_df = df.iloc[max(atm_idx-7,0): atm_idx+8].copy().reset_index(drop=True)
 
-df = get_data(tf)
+    ui = pd.DataFrame()
+    ui["CE OI\n(Δ/%)"] = d_df.apply(lambda r: fmt_val(r["open_interest_CE"], r["oi_chg_CE"], max_oi_ce), axis=1)
+    ui["CE OI CHG"] = d_df.apply(lambda r: fmt_chg(r["oi_chg_CE"], max_chg_ce), axis=1)
+    ui["CE VOL\n(%)"] = d_df.apply(lambda r: fmt_val(r["volume_CE"], 0, max_vol_ce), axis=1)
+    ui["STRIKE"] = d_df["STRIKE"]
+    ui["PE VOL\n(%)"] = d_df.apply(lambda r: fmt_val(r["volume_PE"], 0, max_vol_pe), axis=1)
+    ui["PE OI CHG"] = d_df.apply(lambda r: fmt_chg(r["oi_chg_PE"], max_chg_pe), axis=1)
+    ui["PE OI\n(Δ/%)"] = d_df.apply(lambda r: fmt_val(r["open_interest_PE"], r["oi_chg_PE"], max_oi_pe), axis=1)
 
-if df.empty:
-    st.error("Data fetch error")
-    st.stop()
+    def style_table(row):
+        s = [''] * len(row)
+        try:
+            idx = row.name
+            cur_strike = int(d_df.loc[idx, "STRIKE"])
+            c_oi_p = float(row.iloc[0].split('\n')[-1].replace('%',''))
+            c_ch_p = float(row.iloc[1].split('\n')[-1].replace('%',''))
+            c_vo_p = float(row.iloc[2].split('\n')[-1].replace('%',''))
+            p_vo_p = float(row.iloc[4].split('\n')[-1].replace('%',''))
+            p_ch_p = float(row.iloc[5].split('\n')[-1].replace('%',''))
+            p_oi_p = float(row.iloc[6].split('\n')[-1].replace('%',''))
 
-# ================= INDICATORS =================
-def rsi(data, period=14):
-    delta = data.diff()
-    gain = delta.clip(lower=0).rolling(period).mean()
-    loss = (-delta.clip(upper=0)).rolling(period).mean()
-    rs = gain / loss
-    return 100 - (100 / (1 + rs))
+            max_vol_ce_view = d_df["volume_CE"].max()
+            max_vol_pe_view = d_df["volume_PE"].max()
+            raw_vol_ce = d_df.loc[idx, "volume_CE"]
+            raw_vol_pe = d_df.loc[idx, "volume_PE"]
 
-df["RSI"] = rsi(df["close"])
+            s[3] = 'background-color:#f0f2f6;color:black;font-weight:bold' 
+            if cur_strike == int(atm_strike): s[3] = 'background-color:yellow;color:black;font-weight:bold'
+            if c_oi_p >= 70: s[0] = 'background-color:#1976d2;color:white'
+            if c_ch_p >= 70: s[1] = 'background-color:#4caf50;color:white'
+            if p_ch_p >= 70: s[5] = 'background-color:#f44336;color:white'
+            if p_oi_p >= 70: s[6] = 'background-color:#fb8c00;color:white'
 
-# Supertrend
-def supertrend(df, period=10, mult=3):
-    hl2 = (df.high + df.low) / 2
-    atr = (df.high - df.low).rolling(period).mean()
-    upper = hl2 + mult * atr
-    lower = hl2 - mult * atr
-    return upper, lower
+            if raw_vol_ce == max_vol_ce_view or c_vo_p >= 75: s[2] = 'background-color:#1b5e20;color:white'
+            if raw_vol_pe == max_vol_pe_view or p_vo_p >= 75: s[4] = 'background-color:#b71c1c;color:white'
 
-df["ST_up"], df["ST_down"] = supertrend(df)
+            if cur_strike == be_res_strike:
+                for i in range(len(s)): s[i] += '; border-top: 3px solid blue; border-bottom: 3px solid blue'
+            if cur_strike == be_sup_strike:
+                for i in range(len(s)): s[i] += '; border-top: 3px solid red; border-bottom: 3px solid red'
+        except: pass
+        return s
 
-# Volume spike
-df["vol_avg"] = df["volume"].rolling(20).mean()
-df["vol_spike"] = df["volume"] > df["vol_avg"] * 2
-
-# Boring candle
-df["body"] = abs(df["close"] - df["open"])
-df["range"] = df["high"] - df["low"]
-df["boring"] = df["body"] < (df["range"] * 0.3)
-
-# Support / Resistance
-df["resistance"] = df["high"].rolling(20).max()
-df["support"] = df["low"].rolling(20).min()
-
-# ================= CHART =================
-st.subheader("📈 Candle Chart")
-
-fig = go.Figure()
-
-fig.add_trace(go.Candlestick(
-    open=df["open"],
-    high=df["high"],
-    low=df["low"],
-    close=df["close"],
-    name="Price"
-))
-
-fig.add_trace(go.Scatter(y=df["resistance"], name="Resistance", line=dict(color="blue", width=3)))
-fig.add_trace(go.Scatter(y=df["support"], name="Support", line=dict(color="maroon", width=3)))
-
-fig.add_trace(go.Scatter(y=df["ST_up"], name="ST Up"))
-fig.add_trace(go.Scatter(y=df["ST_down"], name="ST Down"))
-
-st.plotly_chart(fig, use_container_width=True)
-
-# ================= RSI =================
-st.subheader("RSI")
-st.line_chart(df["RSI"])
-
-# ================= OPTION CHAIN =================
-st.subheader("📊 Option Chain")
-
-try:
-    chain = md.option_chain("NIFTY")
-
-    ce = pd.DataFrame([vars(x) for x in chain.chain.ce])
-    pe = pd.DataFrame([vars(x) for x in chain.chain.pe])
-
-    df_chain = pd.DataFrame({
-        "CE Vol": ce["volume"],
-        "CE OI": ce["open_interest"],
-        "CE OI Chg": ce["open_interest_change"],
-        "Strike": ce["strike_price"],
-        "PE OI": pe["open_interest"],
-        "PE OI Chg": pe["open_interest_change"],
-        "PE Vol": pe["volume"],
-    })
-
-    def color_chain(row):
-        styles = []
-        for col in row.index:
-            val = row[col]
-
-            if col == "CE Vol" and val == df_chain["CE Vol"].max():
-                styles.append("background-color: darkgreen")
-            elif col == "PE Vol" and val == df_chain["PE Vol"].max():
-                styles.append("background-color: darkred")
-            elif "CE OI" in col and val > df_chain["CE OI"].max()*0.75:
-                styles.append("background-color: orange")
-            elif "PE OI" in col and val > df_chain["PE OI"].max()*0.75:
-                styles.append("background-color: pink")
-            else:
-                styles.append("")
-        return styles
-
-    st.dataframe(df_chain.style.apply(color_chain, axis=1))
-
-except:
-    st.error("Option Chain Error")
-
-# ================= ADMIN PANEL =================
-st.sidebar.title("🔐 Admin Panel")
-
-admins = ["9304768496", "7982046438"]
-user = st.sidebar.text_input("Enter Mobile")
-
-if user in admins:
-    st.sidebar.success("Admin Access")
-
-    strike = st.sidebar.text_input("Strike")
-    entry = st.sidebar.text_input("Entry")
-    target = st.sidebar.text_input("Target")
-    sl = st.sidebar.text_input("SL")
-
-    if st.sidebar.button("Broadcast Signal"):
-        st.session_state["trade"] = {
-            "Strike": strike,
-            "Entry": entry,
-            "Target": target,
-            "SL": sl
-        }
-
-# ================= VIEWERS =================
-st.subheader("📢 Live Trade Signal")
-
-if "trade" in st.session_state:
-    st.success(st.session_state["trade"])
+    st.subheader(f"📊 {index_choice} Option Chain")
+    st.table(ui.style.apply(style_table, axis=1))
 else:
-    st.info("No Active Signal")
+    st.info("Market data load ho raha hai...")

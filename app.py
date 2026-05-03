@@ -78,23 +78,23 @@ def require_login() -> dict[str, str] | None:
     if saved_mobile and saved_role:
         return {"mobile": saved_mobile, "role": saved_role}
 
-    st.markdown('<div class="login-shell">', unsafe_allow_html=True)
-    st.subheader("Dashboard Login")
-    st.caption("Enter registered mobile number to open the dashboard.")
-    mobile = st.text_input("Mobile number", max_chars=14, placeholder="10 digit mobile")
-    if st.button("Login", use_container_width=True):
-        cleaned = clean_mobile(mobile)
-        role = mobile_role(cleaned, users)
-        if role:
-            st.session_state["auth_mobile"] = cleaned
-            st.rerun()
-        else:
-            st.error("This mobile number is not allowed. Ask admin to add viewer.")
-    st.markdown("</div>", unsafe_allow_html=True)
+    st.title("Smart Wealth AI 5")
+    st.info("Login is required before dashboard data is shown.")
+    left, center, right = st.columns([0.32, 0.36, 0.32])
+    with center:
+        st.subheader("Dashboard Login")
+        st.caption("Enter registered mobile number to open the dashboard.")
+        mobile = st.text_input("Mobile number", max_chars=14, placeholder="10 digit mobile")
+        if st.button("Login", use_container_width=True):
+            cleaned = clean_mobile(mobile)
+            role = mobile_role(cleaned, users)
+            if role:
+                st.session_state["auth_mobile"] = cleaned
+                st.rerun()
+            else:
+                st.error("This mobile number is not allowed. Ask admin to add viewer.")
+        st.caption("Super admin: 9304768496, 7631409004")
     return None
 
 
 def user_admin_panel(auth: dict[str, str]) -> None:
-    users = load_users()
-    st.sidebar.divider()
-    st.sidebar.caption(f"Logged in: {auth['mobile']} ({auth['role']})")

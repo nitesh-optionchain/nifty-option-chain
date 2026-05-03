@@ -1,34 +1,17 @@
 from __future__ import annotations
 
-import streamlit as st
-
-st.set_page_config(
-    page_title="Smart Wealth AI 5",
-    page_icon=None,
-    layout="wide",
-    initial_sidebar_state="collapsed",
-)
-st.title("Smart Wealth AI 5")
-st.caption("Starting dashboard...")
-
-import json
-import math
-import os
-import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Any
 
-try:
-    import numpy as np
-    import pandas as pd
-    import plotly.graph_objects as go
-    import streamlit.components.v1 as components
-except Exception as startup_error:
-    st.error("Dashboard startup import failed.")
-    st.exception(startup_error)
-    st.stop()
+import numpy as np
+import pandas as pd
+import plotly.graph_objects as go
+import streamlit as st
+
+
+st.set_page_config(page_title="Smart Wealth AI 5", layout="wide", initial_sidebar_state="expanded")
+st.title("Smart Wealth AI 5")
 
 
 INDEX_SYMBOLS = {
@@ -36,12 +19,8 @@ INDEX_SYMBOLS = {
     "SENSEX": {"exchange": "BSE", "type": "INDEX"},
     "BANKNIFTY": {"exchange": "NSE", "type": "INDEX"},
 }
-
-TIMEFRAME_MINUTES = [5, 10, 15, 25]
-PRICE_COLUMNS = ["open", "high", "low", "close"]
+SUPER_ADMINS = {"9304768496", "7631409004"}
 IST = "Asia/Kolkata"
-SUPER_ADMIN_MOBILES = {"9304768496", "7631409004"}
-USER_STORE = Path(__file__).with_name("dashboard_users.json")
 
 
 @dataclass
@@ -50,50 +29,72 @@ class DataStatus:
     message: str
 
 
-def clean_mobile(value: str) -> str:
-    return re.sub(r"\D", "", value or "")[-10:]
-
-
-def load_users() -> dict[str, Any]:
-    default = {"viewers": [], "admins": []}
-    if not USER_STORE.exists():
-        return default
+def normalize_price(value: Any) -> float:
+    if value is None:
+        return np.nan
     try:
-        loaded = json.loads(USER_STORE.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return default
-    return {
-        "viewers": sorted({clean_mobile(m) for m in loaded.get("viewers", []) if clean_mobile(m)}),
-        "admins": sorted({clean_mobile(m) for m in loaded.get("admins", []) if clean_mobile(m)}),
-    }
+        price = float(value)
+    except (TypeError, ValueError):
+        return np.nan
+    return price / 100 if abs(price) >= 100000 else price
 
 
-def save_users(users: dict[str, Any]) -> None:
-    cleaned = {
-        "viewers": sorted({clean_mobile(m) for m in users.get("viewers", []) if clean_mobile(m)}),
-        "admins": sorted({clean_mobile(m) for m in users.get("admins", []) if clean_mobile(m)}),
-    }
-    USER_STORE.write_text(json.dumps(cleaned, indent=2), encoding="utf-8")
+def utc_iso(dt: datetime) -> str:
+    return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
 
-def mobile_role(mobile: str, users: dict[str, Any]) -> str | None:
-    if mobile in SUPER_ADMIN_MOBILES:
-        return "super_admin"
-    if mobile in set(users.get("admins", [])):
-        return "admin"
-    if mobile in set(users.get("viewers", [])):
-        return "viewer"
-    return None
+@st.cache_resource(show_spinner=False)
+def get_market_data(env_name: str, use_env_creds: bool) -> tuple[Any | None, DataStatus]:
+    try:
+        from nubra_python_sdk.marketdata.market_data import MarketData
+        from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
+    except Exception as exc:
+        return None, DataStatus(False, f"Nubra SDK import failed: {exc}")
+
+    try:
+        nubra = InitNubraSdk(getattr(NubraEnv, env_name), env_creds=use_env_creds)
+        return MarketData(nubra), DataStatus(True, f"Connected to Nubra {env_name}")
+    except Exception as exc:
+        return None, DataStatus(False, f"Nubra login/connect failed: {exc}")
 
 
-def require_login() -> dict[str, str] | None:
-    return {"mobile": "public", "role": "viewer"}
+def point_series(points: Any, price: bool = True) -> pd.Series:
+    if not points:
+        return pd.Series(dtype="float64")
+    rows = []
+    for point in points:
+        ts = getattr(point, "timestamp", None)
+        val = getattr(point, "value", None)
+        if ts is None or val is None:
+            continue
+        rows.append((ts, normalize_price(val) if price else float(val)))
+    if not rows:
+        return pd.Series(dtype="float64")
+    index = pd.to_datetime([x[0] for x in rows], unit="ns", utc=True).tz_convert(IST)
+    return pd.Series([x[1] for x in rows], index=index, dtype="float64")
 
 
-def user_admin_panel(auth: dict[str, str]) -> None:
-    users = load_users()
-    st.sidebar.divider()
-    st.sidebar.caption(f"Logged in: {auth['mobile']} ({auth['role']})")
-    if st.sidebar.button("Logout", use_container_width=True):
-        st.session_state.pop("auth_mobile", None)
-        st.rerun()
+def response_to_frames(response: Any) -> dict[str, pd.DataFrame]:
+    frames: dict[str, pd.DataFrame] = {}
+    for group in getattr(response, "result", []) or []:
+        for item in getattr(group, "values", []) or []:
+            for symbol, chart in item.items():
+                df = pd.DataFrame(
+                    {
+                        "open": point_series(getattr(chart, "open", None)),
+                        "high": point_series(getattr(chart, "high", None)),
+                        "low": point_series(getattr(chart, "low", None)),
+                        "close": point_series(getattr(chart, "close", None)),
+                        "cum_volume": point_series(getattr(chart, "cumulative_volume", None), price=False),
+                    }
+                ).dropna(subset=["open", "high", "low", "close"])
+                if not df.empty:
+                    df = df.sort_index()
+                    df["volume"] = df["cum_volume"].diff().fillna(df["cum_volume"]).clip(lower=0)
+                    frames[symbol] = df.drop(columns=["cum_volume"])
+    return frames
+
+
+def fetch_history(
+    md: Any | None,
+    symbol: str,

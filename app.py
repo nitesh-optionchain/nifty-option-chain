@@ -4,15 +4,14 @@ import streamlit as st
 import pandas as pd
 from streamlit_autorefresh import st_autorefresh
 import streamlit.components.v1 as components
-import plotly.graph_objects as go
-import json, os, numpy as np
+import json, os
 
 # ================= 1. CONFIG & FILE STORAGE =================
 st.set_page_config(page_title="SMART WEALTH AI 5", layout="wide")
 
 DATA_FILE = "admin_data_v2.json" 
 USER_FILE = "authorized_users.json"
-SESSION_FILE = "session_login.json"
+SESSION_FILE = "session_login.json" # Session store karne ke liye file
 
 def load_json(file_path, default_val):
     if os.path.exists(file_path):
@@ -34,17 +33,21 @@ SUPER_ADMIN_IDS = ["9304768496", "7982046438"]
 if "is_auth" not in st.session_state:
     st.session_state.is_auth = False
 
+# Agar session state False hai, toh file check karo (Refresh handle karne ke liye)
 if not st.session_state.is_auth and os.path.exists(SESSION_FILE):
     try:
         with open(SESSION_FILE, "r") as f:
             saved = json.load(f)
+            # Check if user still exists in DB
             if saved["user_id"] in ADMIN_DB:
                 st.session_state.is_auth = True
                 st.session_state.admin_name = ADMIN_DB[saved["user_id"]]
                 st.session_state.current_user_id = saved["user_id"]
                 st.session_state.is_super_admin = (saved["user_id"] in SUPER_ADMIN_IDS)
-    except: pass
+    except:
+        pass
 
+# Login Screen (Agar auth nahi hai)
 if not st.session_state.is_auth:
     st.markdown("<h1 style='text-align: center;'>🛡️ SMART WEALTH AI 5</h1>", unsafe_allow_html=True)
     _, col2, _ = st.columns([1, 1, 1])
@@ -57,19 +60,29 @@ if not st.session_state.is_auth:
                     st.session_state.admin_name = ADMIN_DB[user_key]
                     st.session_state.current_user_id = user_key
                     st.session_state.is_super_admin = True if user_key in SUPER_ADMIN_IDS else False
-                    save_json(SESSION_FILE, {"user_id": user_key, "admin_name": st.session_state.admin_name, "is_super_admin": st.session_state.is_super_admin})
+                    
+                    # File save karo (Persistent login)
+                    session_data = {
+                        "user_id": user_key,
+                        "admin_name": st.session_state.admin_name,
+                        "is_super_admin": st.session_state.is_super_admin
+                    }
+                    save_json(SESSION_FILE, session_data)
                     st.rerun()
-                else: st.error("❌ Invalid Access ID")
+                else: 
+                    st.error("❌ Invalid Access ID")
     st.stop()
 
 # ================= 3. SIDEBAR & LOGOUT =================
 st_autorefresh(interval=5000, key="refresh")
 st.sidebar.markdown(f"### 👤 User: **{st.session_state.admin_name}**")
 
+# LOGOUT Button Logic
 if st.sidebar.button("🔒 LOGOUT"):
-    if os.path.exists(SESSION_FILE): os.remove(SESSION_FILE)
+    if os.path.exists(SESSION_FILE):
+        os.remove(SESSION_FILE) # File delete taaki auto-login na ho
     st.session_state.is_auth = False
-    st.session_state.clear()
+    st.session_state.clear() # Pura session clear
     st.rerun()
 
 index_choice = st.sidebar.selectbox("Select Index", ["NIFTY", "BANKNIFTY", "SENSEX"])
@@ -82,30 +95,21 @@ all_index_data = load_json(DATA_FILE, {
     "SENSEX": {"signal": {"Strike": "-", "Entry": "-", "Target": "-", "SL": "-"}, "sr": {"support": "-", "resistance": "-"}}
 })
 
-current_idx_data = all_index_data.get(index_choice, all_index_data["NIFTY"])
+if index_choice not in all_index_data:
+    all_index_data[index_choice] = {"signal": {"Strike": "-", "Entry": "-", "Target": "-", "SL": "-"}, "sr": {"support": "-", "resistance": "-"}}
 
-# ================= 5. NUBRA CANDLE CHART LOGIC =================
-def fetch_nubra_candles(md, symbol, exch):
-    try:
-        # Intraday 5m candles fetch kar rahe hain
-        res = md.historical_data({
-            "exchange": exch, "type": "INDEX", "values": [symbol],
-            "fields": ["open", "high", "low", "close"],
-            "interval": "5m", "intraDay": True
-        })
-        # SDK Response parsing
-        for group in res.result:
-            for inst_dict in group.values:
-                for sym, chart in inst_dict.items():
-                    if sym == symbol:
-                        df = pd.DataFrame({
-                            "open": [p.value/100 if p.value > 100000 else p.value for p in chart.open],
-                            "high": [p.value/100 if p.value > 100000 else p.value for p in chart.high],
-                            "low": [p.value/100 if p.value > 100000 else p.value for p in chart.low],
-                            "close": [p.value/100 if p.value > 100000 else p.value for p in chart.close],
-                        }, index=pd.to_datetime([p.timestamp for p in chart.close], unit='ns', utc=True).tz_convert("Asia/Kolkata"))
-                        return df
-    except: return pd.DataFrame()
+current_idx_data = all_index_data[index_choice]
+
+# ================= 5. SENSEX LIVE HEADER =================
+if index_choice == "SENSEX":
+    tv_html = """
+    <div class="tradingview-widget-container">
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-single-quote.js" async>
+      {"symbol": "BSE:SENSEX", "width": "100%", "colorTheme": "light", "isTransparent": false, "locale": "en"}
+      </script>
+    </div>
+    """
+    components.html(tv_html, height=130)
 
 # ================= 6. SDK & DATA FETCH =================
 if "nubra" not in st.session_state:
@@ -117,27 +121,22 @@ result = market_data.option_chain(index_choice, exchange=target_exch)
 if result and result.chain:
     chain = result.chain
     try:
-        raw_spot = getattr(chain.ce[0], 'underlying_price', getattr(chain, 'underlying_price', getattr(chain, 'at_the_money_strike', 0)))
+        raw_spot = getattr(chain.ce[0], 'underlying_price', 
+                   getattr(chain, 'underlying_price', 
+                   getattr(chain, 'at_the_money_strike', 0)))
         spot = raw_spot / 100 if raw_spot > 100000 else raw_spot
     except: spot = 0
 
     st.title(f"🛡️ SMART WEALTH AI 5 | {index_choice}: {spot:,.2f}")
 
-    # --- NUBRA CHART SECTION ---
-    df_candles = fetch_nubra_candles(market_data, index_choice, target_exch)
-    if not df_candles.empty:
-        fig = go.Figure(data=[go.Candlestick(x=df_candles.index, open=df_candles['open'], high=df_candles['high'], low=df_candles['low'], close=df_candles['close'])])
-        fig.update_layout(height=400, margin=dict(l=0,r=0,t=0,b=0), xaxis_rangeslider_visible=False, template="plotly_white")
-        st.plotly_chart(fig, use_container_width=True)
-
-    # --- REST OF YOUR ORIGINAL LOGIC ---
     df_ce = pd.DataFrame([vars(x) for x in chain.ce])
     df_pe = pd.DataFrame([vars(x) for x in chain.pe])
     df = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE","_PE")).fillna(0)
     df["STRIKE"] = (df["strike_price"]/100).astype(int)
 
     state_key = f"initial_df_{index_choice}"
-    if state_key not in st.session_state: st.session_state[state_key] = df.copy()
+    if state_key not in st.session_state:
+        st.session_state[state_key] = df.copy()
 
     def calc_stable_oi(row, side):
         curr_oi = row[f"open_interest_{side}"]
@@ -157,10 +156,13 @@ if result and result.chain:
     be_res_strike = int(df.loc[df["open_interest_CE"].idxmax(), "STRIKE"])
     be_sup_strike = int(df.loc[df["open_interest_PE"].idxmax(), "STRIKE"])
 
-    if spot >= be_res_strike: st.success(f"🚀 BIG MOVE: {index_choice} CALL BUYING ABOVE {be_res_strike}")
-    elif spot <= be_sup_strike: st.error(f"🩸 BIG MOVE: {index_choice} PE BUYING BELOW {be_sup_strike}")
+    # Auto Signal Alert
+    if spot >= be_res_strike:
+        st.success(f"🚀 BIG MOVE: {index_choice} CALL BUYING ABOVE {be_res_strike}")
+    elif spot <= be_sup_strike:
+        st.error(f"🩸 BIG MOVE: {index_choice} PE BUYING BELOW {be_sup_strike}")
 
-    # Admin Panel & Metrics (Wahi jo aapne bheja tha)
+    # ================= 7. ADMIN PANEL & METRICS =================
     if st.session_state.is_super_admin:
         with st.expander(f"🛠️ ADMIN CONTROLS ({index_choice})"):
             t1, t2 = st.tabs(["Signal & Levels", "User Management"])
@@ -172,15 +174,35 @@ if result and result.chain:
                 s_sl = c4.text_input("SL", value=current_idx_data["signal"]["SL"])
                 sup_in = st.text_input("Support", value=current_idx_data["sr"]["support"])
                 res_in = st.text_input("Resistance", value=current_idx_data["sr"]["resistance"])
+                
                 if st.button(f"UPDATE {index_choice} DATA"):
                     all_index_data[index_choice]["signal"] = {"Strike": s_stk, "Entry": s_ent, "Target": s_tgt, "SL": s_sl}
                     all_index_data[index_choice]["sr"] = {"support": sup_in, "resistance": res_in}
-                    save_json(DATA_FILE, all_index_data); st.success("Levels Updated!"); st.rerun()
+                    save_json(DATA_FILE, all_index_data)
+                    st.success("Levels Updated!")
+                    st.rerun()
             with t2:
+                st.markdown("#### ➕ Add New User")
                 new_uid = st.text_input("New Mobile ID")
                 new_uname = st.text_input("User Name")
                 if st.button("ADD NEW USER"):
-                    if new_uid and new_uname: ADMIN_DB[new_uid] = new_uname; save_json(USER_FILE, ADMIN_DB); st.rerun()
+                    if new_uid and new_uname:
+                        ADMIN_DB[new_uid] = new_uname
+                        save_json(USER_FILE, ADMIN_DB)
+                        st.success("User Added!")
+                        st.rerun()
+                
+                st.divider()
+                st.markdown("#### 🗑️ Delete User")
+                delete_list = {f"{v} ({k})": k for k, v in ADMIN_DB.items() if k != st.session_state.current_user_id}
+                if delete_list:
+                    selected_user_to_del = st.selectbox("Select User to Remove", list(delete_list.keys()))
+                    if st.button("REMOVE SELECTED USER", type="primary"):
+                        uid_to_remove = delete_list[selected_user_to_del]
+                        del ADMIN_DB[uid_to_remove]
+                        save_json(USER_FILE, ADMIN_DB)
+                        st.error(f"User removed!")
+                        st.rerun()
 
     m1, m2, m3, m4, m5, m6 = st.columns(6)
     m1.metric("🎯 STRIKE", current_idx_data["signal"]["Strike"])
@@ -190,7 +212,7 @@ if result and result.chain:
     m5.metric("🟢 SUP", current_idx_data["sr"]["support"])
     m6.metric("🔴 RES", current_idx_data["sr"]["resistance"])
 
-    # Table UI (Wahi formatting)
+   # ================= 8. TABLE UI =================
     def fmt_val(val, delta, m_val):
         pct = (val/m_val*100) if m_val > 0 else 0
         return f"{val:,.0f}\n({delta:+,})\n{pct:.1f}%"
@@ -219,9 +241,15 @@ if result and result.chain:
             cur_strike = int(d_df.loc[idx, "STRIKE"])
             c_oi_p = float(row.iloc[0].split('\n')[-1].replace('%',''))
             c_ch_p = float(row.iloc[1].split('\n')[-1].replace('%',''))
+            c_vo_p = float(row.iloc[2].split('\n')[-1].replace('%',''))
+            p_vo_p = float(row.iloc[4].split('\n')[-1].replace('%',''))
             p_ch_p = float(row.iloc[5].split('\n')[-1].replace('%',''))
             p_oi_p = float(row.iloc[6].split('\n')[-1].replace('%',''))
-            raw_vol_ce, raw_vol_pe = d_df.loc[idx, "volume_CE"], d_df.loc[idx, "volume_PE"]
+
+            max_vol_ce_view = d_df["volume_CE"].max()
+            max_vol_pe_view = d_df["volume_PE"].max()
+            raw_vol_ce = d_df.loc[idx, "volume_CE"]
+            raw_vol_pe = d_df.loc[idx, "volume_PE"]
 
             s[3] = 'background-color:#f0f2f6;color:black;font-weight:bold' 
             if cur_strike == int(atm_strike): s[3] = 'background-color:yellow;color:black;font-weight:bold'
@@ -229,8 +257,10 @@ if result and result.chain:
             if c_ch_p >= 70: s[1] = 'background-color:#4caf50;color:white'
             if p_ch_p >= 70: s[5] = 'background-color:#f44336;color:white'
             if p_oi_p >= 70: s[6] = 'background-color:#fb8c00;color:white'
-            if raw_vol_ce == d_df["volume_CE"].max(): s[2] = 'background-color:#1b5e20;color:white'
-            if raw_vol_pe == d_df["volume_PE"].max(): s[4] = 'background-color:#b71c1c;color:white'
+
+            if raw_vol_ce == max_vol_ce_view or c_vo_p >= 75: s[2] = 'background-color:#1b5e20;color:white'
+            if raw_vol_pe == max_vol_pe_view or p_vo_p >= 75: s[4] = 'background-color:#b71c1c;color:white'
+
             if cur_strike == be_res_strike:
                 for i in range(len(s)): s[i] += '; border-top: 3px solid blue; border-bottom: 3px solid blue'
             if cur_strike == be_sup_strike:

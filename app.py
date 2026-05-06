@@ -31,7 +31,7 @@ if "is_auth" not in st.session_state: st.session_state.is_auth = settings.get("i
 if "allowed_users" not in st.session_state: st.session_state.allowed_users = settings.get("allowed_users")
 
 # ================= 2. DATA ENGINE =================
-st_autorefresh(interval=3000, key="v5_gh_stable_final")
+st_autorefresh(interval=3000, key="v5_gh_final_stable")
 
 @st.cache_resource(show_spinner=False)
 def get_engine():
@@ -104,7 +104,7 @@ def clean_v(v):
 # ================= 4. UI RENDER & LOGIC =================
 try:
     if md is None:
-        st.error("Engine failed. Check Secrets/API Key.")
+        st.error("Engine Connection Failed. Check Secrets/API Key.")
         st.stop()
 
     res = md.option_chain(symbol, exchange=INDEX_MAP[symbol])
@@ -136,7 +136,6 @@ try:
     m_df = pd.merge(full_ce, full_pe, on="strike_price", suffixes=("_CE","_PE")).fillna(0)
     m_df["STRK"] = (m_df["strike_price"]/100).astype(int)
 
-    # Scan Zone: Index ke +/- 500 range
     active_zone = m_df[(m_df["STRK"] >= live_px - 500) & (m_df["STRK"] <= live_px + 500)]
     res_stk = int(active_zone.loc[active_zone["volume_CE"].idxmax(), "STRK"])
     sup_stk = int(active_zone.loc[active_zone["volume_PE"].idxmax(), "STRK"])
@@ -148,9 +147,9 @@ try:
     mood = "🐂 BULLISH" if pcr > 1.15 else "🐻 BEARISH" if pcr < 0.85 else "↔️ SIDEWAYS"
 
     st.markdown(f'''<div style="background:#f8fafc; color:#334155; padding:8px; border-radius:8px; text-align:center; font-weight:bold; border: 1px solid #cbd5e1; margin-top:8px;">
-        <span style="color:#0d47a1;">RESISTANCE (Near): {res_stk}</span> | 
+        <span style="color:#0d47a1;">RESISTANCE (Near Index): {res_stk}</span> | 
         <span style="font-size:16px;">PCR: {pcr:.2f} ({mood})</span> | 
-        <span style="color:#b71c1c;">SUPPORT (Near): {sup_stk}</span>
+        <span style="color:#b71c1c;">SUPPORT (Near Index): {sup_stk}</span>
     </div>''', unsafe_allow_html=True)
 
     # --- BIG MOVE PREDICTION ---
@@ -201,9 +200,11 @@ try:
         elif (orig["volume_PE"]/mx_v_pe) >= 0.70: s[4] = 'background-color: #ffcdd2; color: black;'
         if (orig["open_interest_PE"]/mx_o_pe) >= 0.70: s[5] = s[6] = 'background-color: #f8bbd0; color: black;' 
 
-        # Border Lines (Index Centric)
-        if stk == res_stk: for i in range(7): s[i] += '; border-top: 6px solid #0d47a1;'
-        if stk == sup_stk: for i in range(7): s[i] += '; border-bottom: 6px solid #b71c1c;'
+        # Border Lines (Corrected Syntax)
+        if stk == res_stk: 
+            for i in range(7): s[i] += '; border-top: 6px solid #0d47a1;'
+        if stk == sup_stk: 
+            for i in range(7): s[i] += '; border-bottom: 6px solid #b71c1c;'
         return s
 
     st.table(ui.style.apply(style_table, axis=1))

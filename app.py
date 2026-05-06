@@ -5,32 +5,60 @@ import pandas as pd
 import streamlit as st
 from datetime import datetime
 from streamlit_autorefresh import st_autorefresh
+import streamlit.components.v1 as components
 
-# ================= 1. SYSTEM & MEMORY =================
+# ================= 1. CONFIG & PERSISTENCE =================
 st.set_page_config(page_title="SMART WEALTH AI 5", layout="wide")
-STORE_FILE = "matrix_settings.json"
 
-def save_settings(is_auth, last_index, allowed_users):
-    with open(STORE_FILE, "w") as f:
-        json.dump({"is_auth": is_auth, "last_index": last_index, "allowed_users": allowed_users}, f)
+USER_FILE = "authorized_users.json"
+SESSION_FILE = "session_login.json"
+DATA_FILE = "admin_data_v2.json"
 
-def load_settings():
-    if os.path.exists(STORE_FILE):
+def load_json(file_path, default_val):
+    if os.path.exists(file_path):
         try:
-            with open(STORE_FILE, "r") as f:
-                d = json.load(f)
-                if "allowed_users" not in d: d["allowed_users"] = ["9304768496", "7982046438"]
-                return d
+            with open(file_path, "r") as f: return json.load(f)
         except: pass
-    return {"is_auth": False, "last_index": "NIFTY", "allowed_users": ["9304768496", "7982046438"]}
+    return default_val
 
-settings = load_settings()
-if "ticks" not in st.session_state: st.session_state.ticks = {}
-if "is_auth" not in st.session_state: st.session_state.is_auth = settings.get("is_auth", False)
-if "allowed_users" not in st.session_state: st.session_state.allowed_users = settings.get("allowed_users")
+def save_json(file_path, data_to_save):
+    try:
+        with open(file_path, "w") as f: json.dump(data_to_save, f, indent=4)
+    except: pass
 
-# ================= 2. DATA ENGINE =================
-st_autorefresh(interval=3000, key="v5_absolute_final_sr")
+ADMIN_DB = load_json(USER_FILE, {"9304768496": "Admin Chief", "7982046438": "Admin x"})
+SUPER_ADMIN_IDS = ["9304768496", "7982046438"]
+
+# --- LOGIN RECOVERY LOGIC ---
+if "is_auth" not in st.session_state: st.session_state.is_auth = False
+
+if not st.session_state.is_auth and os.path.exists(SESSION_FILE):
+    saved = load_json(SESSION_FILE, None)
+    if saved and saved["user_id"] in ADMIN_DB:
+        st.session_state.is_auth = True
+        st.session_state.admin_name = ADMIN_DB[saved["user_id"]]
+        st.session_state.current_user_id = saved["user_id"]
+        st.session_state.is_super_admin = (saved["user_id"] in SUPER_ADMIN_IDS)
+
+if not st.session_state.is_auth:
+    st.markdown("<h1 style='text-align: center;'>🛡️ SMART WEALTH AI 5</h1>", unsafe_allow_html=True)
+    _, col2, _ = st.columns([1, 1, 1])
+    with col2:
+        with st.form("Login"):
+            user_key = st.text_input("Enter Mobile ID:", type="password")
+            if st.form_submit_button("LOGIN"):
+                if user_key in ADMIN_DB:
+                    st.session_state.is_auth = True
+                    st.session_state.admin_name = ADMIN_DB[user_key]
+                    st.session_state.current_user_id = user_key
+                    st.session_state.is_super_admin = (user_key in SUPER_ADMIN_IDS)
+                    save_json(SESSION_FILE, {"user_id": user_key})
+                    st.rerun()
+                else: st.error("❌ Invalid Access ID")
+    st.stop()
+
+# ================= 2. ENGINE & SIDEBAR =================
+st_autorefresh(interval=5000, key="v5_stable_sync")
 
 @st.cache_resource(show_spinner=False)
 def get_engine():
@@ -41,7 +69,7 @@ def get_engine():
         nubra = InitNubraSdk(NubraEnv.PROD, env_creds=True)
         def on_msg(msg):
             name = msg.get('indexname')
-            if name: st.session_state.ticks[name] = msg
+            if name and "ticks" in st.session_state: st.session_state.ticks[name] = msg
         socket = websocketdata.NubraDataSocket(client=nubra, on_index_data=on_msg)
         socket.connect()
         socket.subscribe(["NIFTY", "SENSEX", "BANKNIFTY"], data_type="index", exchange="NSE")
@@ -50,154 +78,140 @@ def get_engine():
     except: return None
 
 md = get_engine()
+if "ticks" not in st.session_state: st.session_state.ticks = {}
 
-# ================= 3. ADMIN PANEL =================
 with st.sidebar:
-    if not st.session_state.is_auth:
-        admin_id = st.text_input("Mobile ID")
-        key = st.text_input("Secret Key", type="password")
-        if st.button("AUTHORIZE"):
-            if admin_id in st.session_state.allowed_users and key == "SW@2026":
-                st.session_state.is_auth = True
-                save_settings(True, settings.get("last_index", "NIFTY"), st.session_state.allowed_users)
-                st.rerun()
-    else:
-        st.success("Authorized ✅")
-        new_u = st.text_input("Add Viewer ID")
-        if st.button("➕ Add"):
-            if new_u and new_u not in st.session_state.allowed_users:
-                st.session_state.allowed_users.append(new_u)
-                save_settings(True, settings.get("last_index", "NIFTY"), st.session_state.allowed_users)
-                st.rerun()
-        u_rem = st.selectbox("Remove User", st.session_state.allowed_users)
-        if st.button("❌ Remove"):
-            if u_rem not in ["9304768496"]:
-                st.session_state.allowed_users.remove(u_rem)
-                save_settings(True, settings.get("last_index", "NIFTY"), st.session_state.allowed_users)
-                st.rerun()
-        if st.button("🚪 LOGOUT"):
-            st.session_state.is_auth = False
-            if os.path.exists(STORE_FILE): os.remove(STORE_FILE)
-            st.rerun()
+    st.markdown(f"### 👤 User: **{st.session_state.admin_name}**")
+    index_choice = st.selectbox("Select Index", ["NIFTY", "BANKNIFTY", "SENSEX"])
+    if st.button("🔒 LOGOUT"):
+        if os.path.exists(SESSION_FILE): os.remove(SESSION_FILE)
+        st.session_state.clear()
+        st.rerun()
 
-if not st.session_state.is_auth: st.stop()
+target_exch = "BSE" if index_choice == "SENSEX" else "NSE"
 
-# --- MARKET SELECTION ---
-INDEX_MAP = {"NIFTY": "NSE", "BANKNIFTY": "NSE", "SENSEX": "BSE"}
-idx_list = list(INDEX_MAP.keys())
-saved_idx = settings.get("last_index", "NIFTY")
-symbol = st.sidebar.selectbox("Dashboard", idx_list, index=idx_list.index(saved_idx) if saved_idx in idx_list else 0)
-if symbol != saved_idx: save_settings(True, symbol, st.session_state.allowed_users)
-
-def clean_v(v):
-    if v is None: return 0.0
-    try:
-        val = float(v)
-        return val / 100.0 if abs(val) >= 100000 else val
-    except: return 0.0
-
-# ================= 4. DASHBOARD RENDER =================
+# ================= 3. UI RENDERING =================
 try:
-    res = md.option_chain(symbol, exchange=INDEX_MAP[symbol])
-    chain = res.chain
-    spot, atm = clean_v(chain.current_price), clean_v(chain.at_the_money_strike)
+    result = md.option_chain(index_choice, exchange=target_exch)
+    if not result or not result.chain:
+        st.info("Market data load ho raha hai... ⏳")
+        st.stop()
+
+    chain = result.chain
+    raw_spot = getattr(chain, 'underlying_price', getattr(chain, 'at_the_money_strike', 0))
+    spot = raw_spot / 100 if raw_spot > 100000 else raw_spot
     
-    t_idx = st.session_state.ticks.get(symbol, {})
+    t_idx = st.session_state.ticks.get(index_choice, {})
     live_px = t_idx.get('index_value', 0)/100 or spot
     cur_chg = (live_px - spot)
     cur_pct = (cur_chg / spot * 100) if spot > 0 else 0.0
 
-    # Header Colors (Light)
+    # LIGHT HEADER
     h_bg, h_txt = ("#e8f5e9", "#1b5e20") if cur_chg >= 0 else ("#ffebee", "#b71c1c")
     arrow = "▲" if cur_chg >= 0 else "▼"
 
     st.markdown(f'''<div style="background:{h_bg}; padding:15px; border-radius:10px; text-align:center; border: 2px solid {h_txt};">
         <h1 style="color:{h_txt}; margin:0; font-size:32px; font-weight:bold;">
-            {symbol} {arrow} {live_px:,.2f} <span style="font-size:20px;">({cur_chg:+,.2f} | {cur_pct:+.2f}%)</span>
+            {index_choice} {arrow} {live_px:,.2f} <span style="font-size:20px;">({cur_chg:+,.2f} | {cur_pct:+.2f}%)</span>
         </h1>
     </div>''', unsafe_allow_html=True)
 
-    # --- S/R CALCULATION (POSITION-BASED FIX) ---
-    full_ce = pd.DataFrame([vars(x) for x in chain.ce])
-    full_pe = pd.DataFrame([vars(x) for x in chain.pe])
-    m_df = pd.merge(full_ce, full_pe, on="strike_price", suffixes=("_CE","_PE")).fillna(0)
-    m_df["STRK"] = (m_df["strike_price"]/100).astype(int)
+    # ================= 4. PURANA CALCULATION LOGIC =================
+    df_ce = pd.DataFrame([vars(x) for x in chain.ce])
+    df_pe = pd.DataFrame([vars(x) for x in chain.pe])
+    df = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE","_PE")).fillna(0)
+    df["STRIKE"] = (df["strike_price"]/100).astype(int)
 
-    # Resistance: Live Price ke upar highest CE volume
-    res_zone = m_df[m_df["STRK"] >= live_px]
-    res_stk = int(res_zone.loc[res_zone["volume_CE"].idxmax(), "STRK"]) if not res_zone.empty else int(atm+50)
+    # Stable OI Change Logic (Purane code se)
+    state_key = f"initial_df_{index_choice}"
+    if state_key not in st.session_state:
+        st.session_state[state_key] = df.copy()
 
-    # Support: Live Price ke niche highest PE volume
-    sup_zone = m_df[m_df["STRK"] <= live_px]
-    sup_stk = int(sup_zone.loc[sup_zone["volume_PE"].idxmax(), "STRK"]) if not sup_zone.empty else int(atm-50)
+    def calc_stable_oi(row, side):
+        curr_oi = row[f"open_interest_{side}"]
+        init_df = st.session_state[state_key].set_index("STRIKE")
+        strike = row["STRIKE"]
+        prev_oi = init_df.loc[strike, f"open_interest_{side}"] if strike in init_df.index else curr_oi
+        return curr_oi - prev_oi
 
-    # PCR
-    t_ce_oi = full_ce["open_interest"].sum() or 1
-    t_pe_oi = full_pe["open_interest"].sum() or 1
-    pcr = t_pe_oi / t_ce_oi
-    mood = "🐂 BULLISH" if pcr > 1.15 else "🐻 BEARISH" if pcr < 0.85 else "↔️ SIDEWAYS"
+    df["oi_chg_CE"] = df.apply(lambda r: calc_stable_oi(r, "CE"), axis=1)
+    df["oi_chg_PE"] = df.apply(lambda r: calc_stable_oi(r, "PE"), axis=1)
 
-    st.markdown(f'''<div style="background:#f8fafc; color:#334155; padding:8px; border-radius:8px; text-align:center; font-weight:bold; border: 1px solid #cbd5e1; margin-top:8px;">
-        <span style="color:#0d47a1;">RESISTANCE (Near): {res_stk}</span> | 
-        <span style="font-size:16px;">PCR: {pcr:.2f} ({mood})</span> | 
-        <span style="color:#b71c1c;">SUPPORT (Near): {sup_stk}</span>
-    </div>''', unsafe_allow_html=True)
+    # Max Values for %
+    max_oi_ce, max_oi_pe = df["open_interest_CE"].max(), df["open_interest_PE"].max()
+    max_vol_ce, max_vol_pe = df["volume_CE"].max(), df["volume_PE"].max()
+    max_chg_ce = df["oi_chg_CE"].abs().max() or 1
+    max_chg_pe = df["oi_chg_PE"].abs().max() or 1
 
-    # BIG MOVE SIGNAL
-    pred_msg, pred_color = "", ""
-    if pcr < 0.75 and live_px <= (sup_stk + 35):
-        pred_msg = f"🩸 BIG MOVE: {symbol} PE BUYING BELOW {sup_stk}"
-        pred_color = "#b71c1c"
-    elif pcr > 1.25 and live_px >= (res_stk - 35):
-        pred_msg = f"🚀 BIG MOVE: {symbol} CE BUYING ABOVE {res_stk}"
-        pred_color = "#1b5e20"
+    # Resistance/Support (Based on Max Volume - Near Index Zone)
+    res_stk = int(df.loc[df[df["STRIKE"] >= live_px]["volume_CE"].idxmax(), "STRIKE"])
+    sup_stk = int(df.loc[df[df["STRIKE"] <= live_px]["volume_PE"].idxmax(), "STRIKE"])
+
+    # BIG MOVE Alert
+    t_pe_sum = df["open_interest_PE"].sum() or 1
+    t_ce_sum = df["open_interest_CE"].sum() or 1
+    pcr = t_pe_sum / t_ce_sum
     
-    if pred_msg:
-        st.markdown(f'''<div style="background:{pred_color}; color:white; padding:12px; border-radius:5px; text-align:center; font-size:22px; font-weight:bold; margin:10px 0; border: 2px solid black;">{pred_msg}</div>''', unsafe_allow_html=True)
+    if pcr > 1.25 and live_px >= (res_stk - 30):
+        st.success(f"🚀 BIG MOVE: {index_choice} CE BUYING ABOVE {res_stk}")
+    elif pcr < 0.75 and live_px <= (sup_stk + 30):
+        st.error(f"🩸 BIG MOVE: {index_choice} PE BUYING BELOW {sup_stk}")
 
-    # TABLE RENDER
-    idx_row = (m_df["STRK"] - live_px).abs().idxmin()
-    v_df = m_df.iloc[max(0, idx_row-8):idx_row+9].reset_index(drop=True)
-    
-    mx_v_ce = full_ce["volume"].max() or 1
-    mx_v_pe = full_pe["volume"].max() or 1
-    mx_o_ce = full_ce["open_interest"].max() or 1
-    mx_o_pe = full_pe["open_interest"].max() or 1
+    # ================= 5. TABLE UI (PURANA FMT_VAL LOGIC) =================
+    def fmt_val(val, delta, m_val):
+        pct = (val/m_val*100) if m_val > 0 else 0
+        return f"{val:,.0f}\n({delta:+,})\n{pct:.1f}%"
 
-    def f_oi_chg(curr, prev, base):
-        diff = curr - prev
-        p = (diff / base * 100) if base > 0 else 0.0
-        return f"{diff:+,.0f} ({p:+.1f}%)"
+    def fmt_chg(delta, m_delta):
+        pct = (delta/m_delta*100) if m_delta > 0 else 0
+        return f"{delta:+,}\n{pct:.1f}%"
+
+    atm_strike = df.loc[(df["STRIKE"] - live_px).abs().idxmin(), "STRIKE"]
+    atm_idx = df.index[df["STRIKE"] == atm_strike][0]
+    d_df = df.iloc[max(atm_idx-7,0): atm_idx+8].copy().reset_index(drop=True)
 
     ui = pd.DataFrame()
-    ui["CE OI (%)"] = v_df.apply(lambda r: f"{r['open_interest_CE']:,.0f} ({(r['open_interest_CE']/mx_o_ce)*100:.1f}%)", axis=1)
-    ui["CE OI CHG (%)"] = v_df.apply(lambda r: f_oi_chg(r["open_interest_CE"], r["previous_open_interest_CE"], mx_o_ce), axis=1)
-    ui["CE VOL (%)"] = v_df.apply(lambda r: f"{r['volume_CE']:,.0f} ({(r['volume_CE']/mx_v_ce)*100:.1f}%)", axis=1)
-    ui["STRIKE"] = v_df["STRK"].apply(lambda s: f"⭐ {s} ({arrow}{live_px:,.1f})" if s == atm else str(s))
-    ui["PE VOL (%)"] = v_df.apply(lambda r: f"{r['volume_PE']:,.0f} ({(r['volume_PE']/mx_v_pe)*100:.1f}%)", axis=1)
-    ui["PE OI CHG (%)"] = v_df.apply(lambda r: f_oi_chg(r["open_interest_PE"], r["previous_open_interest_PE"], mx_o_pe), axis=1)
-    ui["PE OI (%)"] = v_df.apply(lambda r: f"{r['open_interest_PE']:,.0f} ({(r['open_interest_PE']/mx_o_pe)*100:.1f}%)", axis=1)
+    ui["CE OI\n(Δ/%)"] = d_df.apply(lambda r: fmt_val(r["open_interest_CE"], r["oi_chg_CE"], max_oi_ce), axis=1)
+    ui["CE OI CHG"] = d_df.apply(lambda r: fmt_chg(r["oi_chg_CE"], max_chg_ce), axis=1)
+    ui["CE VOL\n(%)"] = d_df.apply(lambda r: fmt_val(r["volume_CE"], 0, max_vol_ce), axis=1)
+    ui["STRIKE"] = d_df["STRIKE"].apply(lambda s: f"⭐ {s}" if s == atm_strike else str(s))
+    ui["PE VOL\n(%)"] = d_df.apply(lambda r: fmt_val(r["volume_PE"], 0, max_vol_pe), axis=1)
+    ui["PE OI CHG"] = d_df.apply(lambda r: fmt_chg(r["oi_chg_PE"], max_chg_pe), axis=1)
+    ui["PE OI\n(Δ/%)"] = d_df.apply(lambda r: fmt_val(r["open_interest_PE"], r["oi_chg_PE"], max_oi_pe), axis=1)
 
     def style_table(row):
-        s, orig = [''] * 7, v_df.iloc[row.name]
-        stk = orig["STRK"]
-        s[3] = 'background-color: #f8f9fa; color: black; font-weight: bold;'
-        if stk == atm: s[3] = 'background-color: #fbc02d; border: 2px solid black;'
-        if orig["volume_CE"] >= mx_v_ce * 0.95: s[2] = 'background-color: #1b5e20; color: white;' 
-        elif (orig["volume_CE"]/mx_v_ce) >= 0.70: s[2] = 'background-color: #c8e6c9; color: black;'
-        if (orig["open_interest_CE"]/mx_o_ce) >= 0.70: s[0] = s[1] = 'background-color: #ffcc80; color: black;' 
-        if orig["volume_PE"] >= mx_v_pe * 0.95: s[4] = 'background-color: #b71c1c; color: white;' 
-        elif (orig["volume_PE"]/mx_v_pe) >= 0.70: s[4] = 'background-color: #ffcdd2; color: black;'
-        if (orig["open_interest_PE"]/mx_o_pe) >= 0.70: s[5] = s[6] = 'background-color: #f8bbd0; color: black;' 
-        
-        # Border Lines (Corrected)
-        if stk == res_stk: 
-            for i in range(7): s[i] += '; border-top: 6px solid #0d47a1;'
-        if stk == sup_stk: 
-            for i in range(7): s[i] += '; border-bottom: 6px solid #b71c1c;'
+        s = [''] * 7
+        try:
+            idx = row.name
+            stk = int(d_df.loc[idx, "STRIKE"])
+            # Extract % for coloring
+            c_oi_p = float(row.iloc[0].split('\n')[-1].replace('%',''))
+            c_ch_p = float(row.iloc[1].split('\n')[-1].replace('%',''))
+            c_vo_p = float(row.iloc[2].split('\n')[-1].replace('%',''))
+            p_vo_p = float(row.iloc[4].split('\n')[-1].replace('%',''))
+            p_ch_p = float(row.iloc[5].split('\n')[-1].replace('%',''))
+            p_oi_p = float(row.iloc[6].split('\n')[-1].replace('%',''))
+
+            s[3] = 'background-color:#f8f9fa;color:black;font-weight:bold' 
+            if stk == atm_strike: s[3] = 'background-color:yellow;color:black'
+            
+            if c_oi_p >= 70: s[0] = 'background-color:#1565c0;color:white' # Deep Blue
+            if c_ch_p >= 70: s[1] = 'background-color:#2e7d32;color:white' # Deep Green
+            if p_ch_p >= 70: s[5] = 'background-color:#c62828;color:white' # Deep Red
+            if p_oi_p >= 70: s[6] = 'background-color:#ef6c00;color:white' # Deep Orange
+
+            if c_vo_p >= 75: s[2] = 'background-color:#1b5e20;color:white'
+            if p_vo_p >= 75: s[4] = 'background-color:#b71c1c;color:white'
+
+            if stk == res_stk: 
+                for i in range(7): s[i] += '; border-top: 5px solid #0d47a1;'
+            if stk == sup_stk: 
+                for i in range(7): s[i] += '; border-bottom: 5px solid #b71c1c;'
+        except: pass
         return s
 
+    st.subheader(f"📊 {index_choice} Option Matrix")
     st.table(ui.style.apply(style_table, axis=1))
 
 except Exception as e:
-    st.info(f"Syncing... {e}")
+    st.error(f"Error: {e}")

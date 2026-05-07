@@ -189,7 +189,7 @@ try:
         return f"{val:,.0f}\n({delta:+,})\n{pct:.1f}%"
 
     atm_idx = (df_comb["STRIKE"] - live_px).abs().idxmin()
-    d_df = df_comb.iloc[max(atm_idx-7,0): atm_idx+8].copy().reset_index(drop=True)
+    d_df = df_comb.iloc[max(atm_idx-10,0): atm_idx+11].copy().reset_index(drop=True)
 
     ui = pd.DataFrame()
     ui["CE OI\n(Δ/%)"] = d_df.apply(lambda r: fmt_val(r["open_interest_CE"], r["oi_chg_CE"], max_oi_ce), axis=1)

@@ -30,7 +30,6 @@ def save_json(file_path, data_to_save):
 ADMIN_DB = load_json(USER_FILE, {"9304768496": "Admin Chief", "7982046438": "Admin x"})
 SUPER_ADMIN_IDS = ["9304768496", "7982046438"]
 
-# Global Memory Storage for Persistence
 @st.cache_resource
 def get_global_memory():
     return {"ohlc": {}, "vol": {}, "hist_df": {}}
@@ -39,6 +38,7 @@ memory = get_global_memory()
 
 if "is_auth" not in st.session_state: st.session_state.is_auth = False
 
+# Auto-login Logic
 if not st.session_state.is_auth and os.path.exists(SESSION_FILE):
     saved = load_json(SESSION_FILE, None)
     if saved and saved.get("user_id") in ADMIN_DB:
@@ -59,8 +59,8 @@ if not st.session_state.is_auth:
                 else: st.error("❌ Invalid Access ID")
     st.stop()
 
-# ================= 2. ENGINE & SIDEBAR =================
-st_autorefresh(interval=5000, key="v5_locked_production_master")
+# ================= 2. ENGINE & WORKER =================
+st_autorefresh(interval=5000, key="v5_prod_sync_fixed")
 
 @st.cache_resource(show_spinner=False)
 def get_engine():
@@ -68,7 +68,7 @@ def get_engine():
         from nubra_python_sdk.marketdata.market_data import MarketData
         from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
         from nubra_python_sdk.ticker import websocketdata
-        nubra = InitNubraSdk(NubraEnv.PROD, env_creds=True)
+        nubra = InitNubraSdk(NubraEnv.PROD, env_creds=True) #
         def on_msg(msg):
             name = msg.get('indexname')
             if name:
@@ -83,28 +83,6 @@ def get_engine():
 
 md = get_engine()
 if "ticks" not in st.session_state: st.session_state.ticks = {}
-
-# Background collector for data persistence
-def background_collector(symbol):
-    while True:
-        try:
-            t_data = st.session_state.get('ticks', {}).get(symbol, {})
-            l_px = t_data.get('index_value', 0) / 100
-            if l_px > 0:
-                if symbol not in memory["ohlc"]: memory["ohlc"][symbol] = []
-                if symbol not in memory["vol"]: memory["vol"][symbol] = []
-                if not memory["ohlc"][symbol] or memory["ohlc"][symbol][-1] != l_px:
-                    memory["ohlc"][symbol].append(l_px)
-                    memory["vol"][symbol].append(t_data.get('volume', 0))
-                    if len(memory["ohlc"][symbol]) > 1000:
-                        memory["ohlc"][symbol].pop(0); memory["vol"][symbol].pop(0)
-            time.sleep(1)
-        except: time.sleep(5)
-
-if "worker_running" not in st.session_state:
-    for s in ["NIFTY", "BANKNIFTY", "SENSEX"]:
-        threading.Thread(target=background_collector, args=(s,), daemon=True).start()
-    st.session_state.worker_running = True
 
 matrix_settings = load_json(SETTINGS_FILE, {"last_index": "NIFTY"})
 idx_list = ["NIFTY", "BANKNIFTY", "SENSEX"]
@@ -124,25 +102,33 @@ if st.session_state.is_super_admin:
         if st.button("DELETE"):
             uid_del = u_rem.split('(')[-1].replace(')', ''); del ADMIN_DB[uid_del]; save_json(USER_FILE, ADMIN_DB); st.rerun()
 
-# ================= 3. RENDER CORE =================
+# ================= 3. DATA FETCHING (CRITICAL FIX) =================
 try:
     target_exch = "BSE" if index_choice == "SENSEX" else "NSE"
-    result = md.option_chain(index_choice, exchange=target_exch)
+    result = md.option_chain(index_choice, exchange=target_exch) #
     chain = result.chain
     spot = chain.current_price / 100 if chain.current_price > 100000 else chain.current_price
     live_px = st.session_state.ticks.get(index_choice, {}).get('index_value', 0)/100 or spot
     
+    # Pre-define DataFrames to avoid 'not defined' errors
+    df_ce = pd.DataFrame([vars(x) for x in chain.ce])
+    df_pe = pd.DataFrame([vars(x) for x in chain.pe])
+    df_comb = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE","_PE")).fillna(0)
+    df_comb["STRIKE_VAL"] = (df_comb["strike_price"]/100).astype(int)
+    
+    # S/R Calculations
+    res_stk = int(df_ce.loc[df_ce[df_ce["strike_price"]/100 >= live_px]["volume"].idxmax(), "strike_price"]/100)
+    sup_stk = int(df_pe.loc[df_pe[df_pe["strike_price"]/100 <= live_px]["volume"].idxmax(), "strike_price"]/100)
+    
     ivl = 50 if index_choice == "NIFTY" else 100
     atm_val = int(round(live_px / ivl) * ivl)
-    
-    # Arrow Symbol Logic
     arrow = "▲" if live_px >= spot else "▼"
 
     # Header
     h_bg, h_txt = ("#e8f5e9", "#1b5e20") if live_px >= spot else ("#ffebee", "#b71c1c")
     st.markdown(f'<div style="background:{h_bg}; padding:10px; border-radius:10px; text-align:center; border:2px solid {h_txt};"><h1 style="color:{h_txt}; margin:0; font-size:32px;">{index_choice} {arrow} {live_px:,.2f}</h1></div>', unsafe_allow_html=True)
 
-    # --- ADVANCED CHART LOGIC ---
+    # --- CHART SECTION ---
     st.write("---")
     c1, c2 = st.columns([1, 5])
     with c1:
@@ -155,7 +141,7 @@ try:
         try:
             end_t = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
             start_t = (datetime.utcnow() - timedelta(days=5)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
-            hist_res = md.historical_data({
+            hist_res = md.historical_data({ #
                 "exchange": target_exch, "type": "INDEX", "values": [index_choice],
                 "fields": ["open", "high", "low", "close", "cumulative_volume"],
                 "startDate": start_t, "endDate": end_t, "interval": tf_map[tf_choice],
@@ -168,7 +154,7 @@ try:
                 "low": [p.value/100 for p in raw.low], "close": [p.value/100 for p in raw.close],
                 "vol": [p.value for p in raw.cumulative_volume]
             })
-        except: pass
+        except: st.warning("Syncing candles...")
 
     if hist_key in memory["hist_df"]:
         df_p = memory["hist_df"][hist_key].copy().tail(max_p)
@@ -177,15 +163,12 @@ try:
             if live_px > df_p.iloc[-1]['high']: df_p.loc[df_p.index[-1], 'high'] = live_px
             if live_px < df_p.iloc[-1]['low']: df_p.loc[df_p.index[-1], 'low'] = live_px
 
+        # Technical Indicators
         df_p['MA9'] = df_p['close'].rolling(9).mean()
         df_p['VWAP'] = (df_p['close'] * df_p['vol']).cumsum() / (df_p['vol'].cumsum() + 1)
         df_p['ATR'] = (df_p['high'] - df_p['low']).rolling(10).mean()
         df_p['ST_UP'] = df_p['MA9'] + (df_p['ATR'] * 2.5)
         df_p['ST_DN'] = df_p['MA9'] - (df_p['ATR'] * 2.5)
-
-        df_ce, df_pe = pd.DataFrame([vars(x) for x in chain.ce]), pd.DataFrame([vars(x) for x in chain.pe])
-        res_stk = int(df_ce.loc[df_ce[df_ce["strike_price"]/100 >= live_px]["volume"].idxmax(), "strike_price"]/100)
-        sup_stk = int(df_pe.loc[df_pe[df_pe["strike_price"]/100 <= live_px]["volume"].idxmax(), "strike_price"]/100)
 
         fig = make_subplots(rows=1, cols=1)
         fig.add_trace(go.Candlestick(x=df_p['time'], open=df_p['open'], high=df_p['high'], low=df_p['low'], close=df_p['close'], name="Price"))
@@ -193,10 +176,10 @@ try:
         fig.add_trace(go.Scatter(x=df_p['time'], y=df_p['VWAP'], line=dict(color='orange', width=2, dash='dash'), name="VWAP"))
         fig.add_trace(go.Scatter(x=df_p['time'], y=df_p['ST_UP'], line=dict(color='rgba(255,0,0,0.3)', width=1), name="ST Sell"))
         fig.add_trace(go.Scatter(x=df_p['time'], y=df_p['ST_DN'], line=dict(color='rgba(0,255,0,0.3)', width=1), name="ST Buy"))
-        
         fig.add_hline(y=res_stk, line=dict(color="blue", width=2, dash="dot"), annotation_text="RES")
         fig.add_hline(y=sup_stk, line=dict(color="red", width=2, dash="dot"), annotation_text="SUP")
         
+        # Boring Candles Marker
         boring = abs(df_p['close'] - df_p['open']) / (df_p['high'] - df_p['low'] + 0.001) < 0.45
         fig.add_trace(go.Scatter(x=df_p['time'][boring], y=df_p['close'][boring], mode="markers", marker=dict(color="yellow", size=8, symbol="diamond"), name="Boring"))
 
@@ -208,21 +191,19 @@ try:
             fig.add_vline(x=df_p[df_p['time'].dt.date == d]['time'].min(), line=dict(color="gray", width=1, dash="dash"))
         st.plotly_chart(fig, use_container_width=True)
 
-    # PCR & BEP
+    # PCR Strip
     pcr = df_pe["open_interest"].sum() / df_ce["open_interest"].sum()
     mood = "🐂 BULLISH" if pcr > 1.15 else "🐻 BEARISH" if pcr < 0.85 else "↔️ SIDEWAYS"
     st.markdown(f'''<div style="background:#f8fafc; color:#1e293b; padding:10px; border-radius:8px; text-align:center; font-weight:bold; border: 1px solid #cbd5e1; margin-top:10px;">
         <span style="color:#f59e0b;">CE BEP: {int(spot + 100)}</span> | <span>PCR: {pcr:.2f} ({mood})</span> | <span style="color:#ef4444;">PE BEP: {int(spot - 100)}</span>
     </div>''', unsafe_allow_html=True)
 
-    # --- SNIPER TABLE ---
-    df_comb = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE","_PE")).fillna(0)
-    df_comb["STRIKE_VAL"] = (df_comb["strike_price"]/100).astype(int)
+    # SNIPER TABLE
     s_key = f"init_df_v5_{index_choice}"
     if s_key not in st.session_state: st.session_state[s_key] = df_comb.copy()
-    init_df = st.session_state[s_key].set_index("STRIKE_VAL")
-    df_comb["oi_chg_CE"] = df_comb.apply(lambda r: r["open_interest_CE"] - (init_df.loc[r["STRIKE_VAL"], "open_interest_CE"] if r["STRIKE_VAL"] in init_df.index else r["open_interest_CE"]), axis=1)
-    df_comb["oi_chg_PE"] = df_comb.apply(lambda r: r["open_interest_PE"] - (init_df.loc[r["STRIKE_VAL"], "open_interest_PE"] if r["STRIKE_VAL"] in init_df.index else r["open_interest_PE"]), axis=1)
+    initial_df = st.session_state[s_key].set_index("STRIKE_VAL")
+    df_comb["oi_chg_CE"] = df_comb.apply(lambda r: r["open_interest_CE"] - (initial_df.loc[r["STRIKE_VAL"], "open_interest_CE"] if r["STRIKE_VAL"] in initial_df.index else r["open_interest_CE"]), axis=1)
+    df_comb["oi_chg_PE"] = df_comb.apply(lambda r: r["open_interest_PE"] - (initial_df.loc[r["STRIKE_VAL"], "open_interest_PE"] if r["STRIKE_VAL"] in initial_df.index else r["open_interest_PE"]), axis=1)
 
     max_o_ce, max_o_pe = df_comb["open_interest_CE"].max() or 1, df_comb["open_interest_PE"].max() or 1
     max_v_ce, max_v_pe = df_comb["volume_CE"].max() or 1, df_comb["volume_PE"].max() or 1
@@ -248,9 +229,9 @@ try:
             return float(m.group(1)) if m else 0.0
         if ch_p(row.iloc[0]) >= 75: styles[0] = 'background-color:#1565c0; color:white'
         if ch_p(row.iloc[2]) >= 75: styles[2] = 'background-color:#2e7d32; color:white'
-        if ch_p(row.iloc[4]) >= 75: styles[4] = 'background-color:#c62828; color:white'
+        if ch_p(row.iloc[4]) >= 75: styles[4] = 'background-color:#b71c1c; color:white'
         if ch_p(row.iloc[6]) >= 75: styles[6] = 'background-color:#ef6c00; color:white'
         return styles
 
-    st.table(ui.style.apply(apply_s, axis=1))
+    st.table(ui.style.apply(apply_s, axis=1)) # Fix: Remove extra 'NULL' write calls
 except Exception as e: st.error(f"Execution Error: {e}")

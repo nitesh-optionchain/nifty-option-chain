@@ -1,9 +1,9 @@
 from __future__ import annotations
-import math, os, json, threading, time
+import math, os, json, threading, time, re
 import numpy as np
 import pandas as pd
 import streamlit as st
-from datetime import datetime
+from datetime import datetime, timedelta
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from streamlit_autorefresh import st_autorefresh
@@ -30,14 +30,16 @@ def save_json(file_path, data_to_save):
 ADMIN_DB = load_json(USER_FILE, {"9304768496": "Admin Chief", "7982046438": "Admin x"})
 SUPER_ADMIN_IDS = ["9304768496", "7982046438"]
 
+# --- CRITICAL FIX: Global Memory for Cloud Persistence ---
 @st.cache_resource
 def get_global_memory():
     return {"ohlc": {}, "vol": {}, "hist_df": {}}
 
-memory = get_global_memory() # Ye line error fix karegi
+memory = get_global_memory() 
 
 if "is_auth" not in st.session_state: st.session_state.is_auth = False
 
+# Auto-login fix for Streamlit
 if not st.session_state.is_auth and os.path.exists(SESSION_FILE):
     saved = load_json(SESSION_FILE, None)
     if saved and saved.get("user_id") in ADMIN_DB:
@@ -72,18 +74,24 @@ def get_engine():
         from nubra_python_sdk.marketdata.market_data import MarketData
         from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
         from nubra_python_sdk.ticker import websocketdata
+        
+        # PRO Tip: Use env_creds=True for Streamlit Secrets
         nubra = InitNubraSdk(NubraEnv.PROD, env_creds=True)
+        
         def on_msg(msg):
             name = msg.get('indexname')
             if name:
                 if "ticks" not in st.session_state: st.session_state.ticks = {}
                 st.session_state.ticks[name] = msg
+        
         socket = websocketdata.NubraDataSocket(client=nubra, on_index_data=on_msg)
         socket.connect()
         socket.subscribe(["NIFTY", "SENSEX", "BANKNIFTY"], data_type="index", exchange="NSE")
         threading.Thread(target=socket.keep_running, daemon=True).start()
         return MarketData(nubra)
-    except: return None
+    except Exception as e:
+        st.error(f"Engine Load Failed: {e}")
+        return None
 
 md = get_engine()
 if "ticks" not in st.session_state: st.session_state.ticks = {}
@@ -103,7 +111,6 @@ with st.sidebar:
         if os.path.exists(SESSION_FILE): os.remove(SESSION_FILE)
         st.session_state.clear(); st.rerun()
 
-    # --- ADMIN PANEL RESTORED ---
     if st.session_state.is_super_admin:
         with st.expander("👥 User Management"):
             new_uid = st.text_input("Add ID")
@@ -112,7 +119,7 @@ with st.sidebar:
                 if new_uid and new_uname:
                     ADMIN_DB[new_uid] = new_uname
                     save_json(USER_FILE, ADMIN_DB); st.rerun()
-            u_del = st.selectbox("Remove", [f"{v} ({k})" for k, v in ADMIN_DB.items() if k != st.session_state.current_user_id])
+            u_del = st.selectbox("Remove User", [f"{v} ({k})" for k, v in ADMIN_DB.items() if k != st.session_state.current_user_id])
             if st.button("DELETE"):
                 uid_del = u_del.split('(')[-1].replace(')', '')
                 del ADMIN_DB[uid_del]; save_json(USER_FILE, ADMIN_DB); st.rerun()
@@ -132,7 +139,7 @@ try:
     live_px = t_idx.get('index_value', 0)/100 or spot
     cur_chg = (live_px - spot)
 
-    # Header
+    # Header Logic
     h_bg, h_txt = ("#e8f5e9", "#1b5e20") if cur_chg >= 0 else ("#ffebee", "#b71c1c")
     arrow = "▲" if cur_chg >= 0 else "▼"
     st.markdown(f'''<div style="background:{h_bg}; padding:15px; border-radius:10px; text-align:center; border: 2px solid {h_txt};">
@@ -154,34 +161,45 @@ try:
     with c1:
         tf_choice = st.radio("TIME FRAME", ["1 Min", "5 Min", "15 Min", "30 Min"], index=1)
         tf_map = {"1 Min": "1m", "5 Min": "5m", "15 Min": "15m", "30 Min": "30m"}
-        max_p = 100 
+        max_p = 120 # Kitni candles dikhani hain
 
+    # --- UTC Time Handling for Cloud ---
     hist_key = f"{index_choice}_{tf_choice}"
     if hist_key not in memory["hist_df"]:
         try:
             end_t = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
-            start_t = (datetime.utcnow() - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+            start_t = (datetime.utcnow() - timedelta(days=5)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+            
             hist_res = md.historical_data({
-                "exchange": target_exch, "type": "INDEX", "values": [index_choice],
+                "exchange": target_exch, 
+                "type": "INDEX", 
+                "values": [index_choice],
                 "fields": ["open", "high", "low", "close", "cumulative_volume"],
-                "startDate": start_t, "endDate": end_t, "interval": tf_map[tf_choice],
+                "startDate": start_t, "endDate": end_t, 
+                "interval": tf_map[tf_choice],
                 "intraDay": False, "realTime": False
             })
             raw = hist_res.result[0].values[0][index_choice]
             memory["hist_df"][hist_key] = pd.DataFrame({
                 "time": [pd.to_datetime(p.timestamp, unit="ns").tz_localize("UTC").tz_convert("Asia/Kolkata") for p in raw.close],
-                "open": [p.value/100 for p in raw.open], "high": [p.value/100 for p in raw.high],
-                "low": [p.value/100 for p in raw.low], "close": [p.value/100 for p in raw.close],
+                "open": [p.value/100 for p in raw.open], 
+                "high": [p.value/100 for p in raw.high],
+                "low": [p.value/100 for p in raw.low], 
+                "close": [p.value/100 for p in raw.close],
                 "vol": [p.value for p in raw.cumulative_volume]
             })
         except: st.warning("Syncing candles...")
 
     if hist_key in memory["hist_df"]:
         df_plot = memory["hist_df"][hist_key].copy().tail(max_p)
+        
+        # Real-time Update last candle
         if live_px != df_plot.iloc[-1]['close']:
             df_plot.loc[df_plot.index[-1], 'close'] = live_px
+            if live_px > df_plot.iloc[-1]['high']: df_plot.loc[df_plot.index[-1], 'high'] = live_px
+            if live_px < df_plot.iloc[-1]['low']: df_plot.loc[df_plot.index[-1], 'low'] = live_px
         
-        # Indicators
+        # --- Indicators ---
         df_plot['MA9'] = df_plot['close'].rolling(9).mean()
         df_plot['VWAP'] = (df_plot['close'] * df_plot['vol']).cumsum() / (df_plot['vol'].cumsum() + 1)
         df_plot['ATR'] = (df_plot['high'] - df_plot['low']).rolling(10).mean()
@@ -195,34 +213,30 @@ try:
         fig.add_trace(go.Scatter(x=df_plot['time'], y=df_plot['ST_UP'], line=dict(color='rgba(255,0,0,0.3)'), name="ST Sell"))
         fig.add_trace(go.Scatter(x=df_plot['time'], y=df_plot['ST_DN'], line=dict(color='rgba(0,255,0,0.3)'), name="ST Buy"))
         
-        # S/R Dotted Lines
+        # S/R Lines from processed variables
         fig.add_hline(y=res_stk, line=dict(color="blue", width=2, dash="dot"), annotation_text="RES")
         fig.add_hline(y=sup_stk, line=dict(color="red", width=2, dash="dot"), annotation_text="SUP")
         
-        # Boring Candles Marker (Yellow)
+        # Boring Candles Marker (Body < 45% of Range)
         boring = abs(df_plot['close']-df_plot['open']) / (df_plot['high']-df_plot['low']+0.001) < 0.45
         fig.add_trace(go.Scatter(x=df_plot['time'][boring], y=df_plot['close'][boring], mode="markers", marker=dict(color="yellow", size=8, symbol="diamond"), name="Boring"))
 
-        # --- 4.5 Layout Fix (Gap Removal + Day Separator) ---
+        # --- Layout Fix (Gap Removal + Day Separator) ---
         fig.update_layout(
-            height=500, 
-            margin=dict(l=0,r=0,t=0,b=0), 
+            height=550, margin=dict(l=0,r=0,t=0,b=0), 
             xaxis_rangeslider_visible=False,
             yaxis=dict(autorange=True, fixedrange=False),
             xaxis=dict(
                 type='date',
-                tickformat="%d %b\n%H:%M", # Date aur Time dono dikhayega (e.g. 12 May 11:30)
+                tickformat="%d %b\n%H:%M",
                 rangebreaks=[
                     dict(bounds=["sat", "mon"]), 
                     dict(bounds=[15.5, 9], pattern="hour"), 
                 ]
             )
         )
-
-        # Aaj aur kal ke beech line khichne ka logic
-        unique_days = df_plot['time'].dt.date.unique()
-        for day in unique_days:
-            # Har naye din ki pehli candle par vertical line
+        # Vertical day separator lines
+        for day in df_plot['time'].dt.date.unique():
             day_start = df_plot[df_plot['time'].dt.date == day]['time'].min()
             fig.add_vline(x=day_start, line=dict(color="gray", width=1, dash="dash"))
             
@@ -231,12 +245,12 @@ try:
     # PCR Strip & Alert
     mood = "🐂 BULLISH" if pcr > 1.15 else "🐻 BEARISH" if pcr < 0.85 else "↔️ SIDEWAYS"
     st.markdown(f'''<div style="background:#f8fafc; color:#1e293b; padding:10px; border-radius:8px; text-align:center; font-weight:bold; border: 1px solid #cbd5e1; margin-top:10px;">
-        <span style="color:#f59e0b;">CE BEP: {atm + 100}</span> | <span>PCR: {pcr:.2f} ({mood})</span> | <span style="color:#ef4444;">PE BEP: {atm - 100}</span>
+        <span style="color:#f59e0b;">CE BEP: {int(atm + 100)}</span> | <span>PCR: {pcr:.2f} ({mood})</span> | <span style="color:#ef4444;">PE BEP: {int(atm - 100)}</span>
     </div>''', unsafe_allow_html=True)
 
     alert_color = "#1b5e20" if pcr >= 1.0 else "#b71c1c"
-    alert_text = f"🚀 BIG MOVE: CALL BUY ABOVE {res_stk}" if pcr >= 1.0 else f"🩸 BIG MOVE: PUT BUY BELOW {sup_stk}"
-    st.markdown(f'''<div style="background:{alert_color}; color:white; padding:12px; border-radius:8px; text-align:center; font-weight:bold; font-size:20px; margin-top:10px;">
+    alert_text = f"🚀 CALL ALERT: BUY ABOVE {res_stk}" if pcr >= 1.0 else f"🩸 PUT ALERT: BUY BELOW {sup_stk}"
+    st.markdown(f'''<div style="background:{alert_color}; color:white; padding:12px; border-radius:8px; text-align:center; font-weight:bold; font-size:22px; margin-top:10px;">
         {alert_text}
     </div>''', unsafe_allow_html=True)
 
@@ -248,24 +262,23 @@ try:
     df_comb["oi_chg_CE"] = df_comb.apply(lambda r: r["open_interest_CE"] - (init_df.loc[r["STRIKE_VAL"], "open_interest_CE"] if r["STRIKE_VAL"] in init_df.index else r["open_interest_CE"]), axis=1)
     df_comb["oi_chg_PE"] = df_comb.apply(lambda r: r["open_interest_PE"] - (init_df.loc[r["STRIKE_VAL"], "open_interest_PE"] if r["STRIKE_VAL"] in init_df.index else r["open_interest_PE"]), axis=1)
 
-    max_oi_ce, max_oi_pe = df_comb["open_interest_CE"].max(), df_comb["open_interest_PE"].max()
-    max_vol_ce, max_vol_pe = df_comb["volume_CE"].max(), df_comb["volume_PE"].max()
-    max_chg_ce, max_chg_pe = df_comb["oi_chg_CE"].abs().max() or 1, df_comb["oi_chg_PE"].abs().max() or 1
-
-    def fmt_val(val, delta, m_val):
-        pct = (val/m_val*100) if m_val > 0 else 0
-        return f"{val:,.0f}\n({delta:+,})\n{pct:.1f}%"
-
+    max_oi_ce, max_oi_pe = df_comb["open_interest_CE"].max() or 1, df_comb["open_interest_PE"].max() or 1
+    max_vol_ce, max_vol_pe = df_comb["volume_CE"].max() or 1, df_comb["volume_PE"].max() or 1
+    
     atm_idx = (df_comb["STRIKE_VAL"] - live_px).abs().idxmin()
     d_df = df_comb.iloc[max(atm_idx-10,0): atm_idx+11].copy().reset_index(drop=True)
 
     ui = pd.DataFrame()
+    def fmt_val(val, delta, m_val):
+        pct = (val/m_val*100) if m_val > 0 else 0
+        return f"{val:,.0f}\n({delta:+,})\n{pct:.1f}%"
+
     ui["CE OI\n(Δ/%)"] = d_df.apply(lambda r: fmt_val(r["open_interest_CE"], r["oi_chg_CE"], max_oi_ce), axis=1)
-    ui["CE OI CHG"] = d_df.apply(lambda r: f"{r['oi_chg_CE']:+,}\n{(r['oi_chg_CE']/max_chg_ce*100):.1f}%", axis=1)
+    ui["CE OI CHG"] = d_df["oi_chg_CE"].apply(lambda x: f"{x:+,}")
     ui["CE VOL\n(%)"] = d_df.apply(lambda r: fmt_val(r["volume_CE"], 0, max_vol_ce), axis=1)
-    ui["STRIKE"] = d_df["STRIKE_VAL"].apply(lambda s: f"⭐ {s} ({arrow}{live_px:,.1f})" if s == int(atm) else str(s))
+    ui["STRIKE"] = d_df["STRIKE_VAL"].apply(lambda s: f"⭐ {s} ({live_px:,.1f})" if s == int(atm) else str(s))
     ui["PE VOL\n(%)"] = d_df.apply(lambda r: fmt_val(r["volume_PE"], 0, max_vol_pe), axis=1)
-    ui["PE OI CHG"] = d_df.apply(lambda r: f"{r['oi_chg_PE']:+,}\n{(r['oi_chg_PE']/max_chg_pe*100):.1f}%", axis=1)
+    ui["PE OI CHG"] = d_df["oi_chg_PE"].apply(lambda x: f"{x:+,}")
     ui["PE OI\n(Δ/%)"] = d_df.apply(lambda r: fmt_val(r["open_interest_PE"], r["oi_chg_PE"], max_oi_pe), axis=1)
 
     def style_table(row):
@@ -277,14 +290,18 @@ try:
             for i in range(7): s[i] += '; border-top: 5px solid blue;'
         if stk_val == sup_stk:
             for i in range(7): s[i] += '; border-bottom: 5px solid red;'
-        if float(row.iloc[0].split('\n')[-1].replace('%','')) >= 70: s[0] = 'background-color:#1565c0;color:white'
-        if float(row.iloc[1].split('\n')[-1].replace('%','')) >= 70: s[1] = 'background-color:#2e7d32;color:white'
-        if float(row.iloc[2].split('\n')[-1].replace('%','')) >= 75: s[2] = 'background-color:#1b5e20;color:white'
-        if float(row.iloc[4].split('\n')[-1].replace('%','')) >= 75: s[4] = 'background-color:#b71c1c;color:white'
-        if float(row.iloc[5].split('\n')[-1].replace('%','')) >= 70: s[5] = 'background-color:#c62828;color:white'
-        if float(row.iloc[6].split('\n')[-1].replace('%','')) >= 70: s[6] = 'background-color:#ef6c00;color:white'
+        
+        # Color Intensity Fix
+        def check_p(val):
+            m = re.search(r'([\d\.]+)%', str(val))
+            return float(m.group(1)) if m else 0.0
+            
+        if check_p(row.iloc[0]) >= 75: s[0] = 'background-color:#1565c0;color:white'
+        if check_p(row.iloc[2]) >= 75: s[2] = 'background-color:#1b5e20;color:white'
+        if check_p(row.iloc[4]) >= 75: s[4] = 'background-color:#b71c1c;color:white'
+        if check_p(row.iloc[6]) >= 75: s[6] = 'background-color:#ef6c00;color:white'
         return s
 
     st.table(ui.style.apply(style_table, axis=1))
 except Exception as e:
-    st.info(f"Syncing Matrix... {e}")
+    st.error(f"Execution Error: {e}")

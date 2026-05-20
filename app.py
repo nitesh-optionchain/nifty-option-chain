@@ -1,13 +1,14 @@
 from __future__ import annotations
-import math, os, json, threading, time
+import math, os, json, threading, time, re
 import numpy as np
 import pandas as pd
 import streamlit as st
-from datetime import datetime
+from datetime import datetime, timedelta
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 from streamlit_autorefresh import st_autorefresh
-import streamlit.components.v1 as components
 
-# ================= 1. CONFIG & PERSISTENCE =================
+# ================= 1. CONFIG & SYSTEM SECURITY SYSTEM =================
 st.set_page_config(page_title="SMART WEALTH AI 5", layout="wide")
 
 USER_FILE = "authorized_users.json"
@@ -30,16 +31,21 @@ def save_json(file_path, data_to_save):
 ADMIN_DB = load_json(USER_FILE, {"9304768496": "Admin Chief", "7982046438": "Admin x"})
 SUPER_ADMIN_IDS = ["9304768496", "7982046438"]
 
-if "is_auth" not in st.session_state: st.session_state.is_auth = False
+if "is_auth" not in st.session_state:
+    st.session_state.is_auth = False
+    st.session_state.admin_name = ""
+    st.session_state.current_user_id = ""
+    st.session_state.is_super_admin = False
 
-# --- AUTO-LOGIN RECOVERY ---
+# Session Auto-Recovery Framework (Fixes Auto-Logout on Refresh)
 if not st.session_state.is_auth and os.path.exists(SESSION_FILE):
     saved = load_json(SESSION_FILE, None)
     if saved and saved.get("user_id") in ADMIN_DB:
+        uid = saved["user_id"]
         st.session_state.is_auth = True
-        st.session_state.admin_name = ADMIN_DB[saved["user_id"]]
-        st.session_state.current_user_id = saved["user_id"]
-        st.session_state.is_super_admin = (saved["user_id"] in SUPER_ADMIN_IDS)
+        st.session_state.admin_name = ADMIN_DB[uid]
+        st.session_state.current_user_id = uid
+        st.session_state.is_super_admin = (uid in SUPER_ADMIN_IDS)
 
 if not st.session_state.is_auth:
     st.markdown("<h1 style='text-align: center;'>🛡️ SMART WEALTH AI 5</h1>", unsafe_allow_html=True)
@@ -58,8 +64,8 @@ if not st.session_state.is_auth:
                 else: st.error("❌ Invalid Access ID")
     st.stop()
 
-# ================= 2. ENGINE & SIDEBAR =================
-st_autorefresh(interval=5000, key="v5_ultimate_final_stable")
+# ================= 2. ENGINE & SIDEBAR CONFIG =================
+st_autorefresh(interval=5000, key="v5_ultimate_production_final")
 
 @st.cache_resource(show_spinner=False)
 def get_engine():
@@ -81,7 +87,6 @@ def get_engine():
 md = get_engine()
 if "ticks" not in st.session_state: st.session_state.ticks = {}
 
-# --- PAGE PERSISTENCE ---
 matrix_settings = load_json(SETTINGS_FILE, {"last_index": "NIFTY"})
 idx_list = ["NIFTY", "BANKNIFTY", "SENSEX"]
 saved_idx = matrix_settings.get("last_index", "NIFTY")
@@ -90,39 +95,35 @@ default_idx = idx_list.index(saved_idx) if saved_idx in idx_list else 0
 with st.sidebar:
     st.markdown(f"### 👤 User: **{st.session_state.admin_name}**")
     index_choice = st.selectbox("Select Index", idx_list, index=default_idx)
-    if index_choice != saved_idx:
-        save_json(SETTINGS_FILE, {"last_index": index_choice})
+    if index_choice != saved_idx: save_json(SETTINGS_FILE, {"last_index": index_choice})
     
     if st.button("🔒 LOGOUT"):
         if os.path.exists(SESSION_FILE): os.remove(SESSION_FILE)
-        st.session_state.clear()
-        st.rerun()
+        st.session_state.clear(); st.rerun()
+
+    if st.session_state.is_super_admin:
+        with st.expander("👥 User Management"):
+            new_uid = st.text_input("Add ID")
+            new_uname = st.text_input("Name")
+            if st.button("ADD"):
+                if new_uid and new_uname: ADMIN_DB[new_uid] = new_uname; save_json(USER_FILE, ADMIN_DB); st.rerun()
+            u_options = [f"{v} ({k})" for k, v in ADMIN_DB.items() if k != st.session_state.current_user_id]
+            if u_options:
+                u_del = st.selectbox("Remove User", u_options)
+                if st.button("DELETE"):
+                    uid_del = u_del.split('(')[-1].replace(')', ''); del ADMIN_DB[uid_del]; save_json(USER_FILE, ADMIN_DB); st.rerun()
 
 target_exch = "BSE" if index_choice == "SENSEX" else "NSE"
 
-# --- ADMIN PANEL ---
-if st.session_state.is_super_admin:
-    with st.sidebar.expander("👥 User Management"):
-        new_uid = st.text_input("Add ID")
-        new_uname = st.text_input("Name")
-        if st.button("ADD"):
-            if new_uid and new_uname:
-                ADMIN_DB[new_uid] = new_uname
-                save_json(USER_FILE, ADMIN_DB)
-                st.rerun()
-        u_del = st.selectbox("Remove", [f"{v} ({k})" for k, v in ADMIN_DB.items() if k != st.session_state.current_user_id])
-        if st.button("DELETE"):
-            uid_del = u_del.split('(')[-1].replace(')', '')
-            del ADMIN_DB[uid_del]
-            save_json(USER_FILE, ADMIN_DB)
-            st.rerun()
+@st.cache_resource
+def get_global_memory(): return {"hist_df": {}}
+memory = get_global_memory()
 
-# ================= 3. DASHBOARD RENDER =================
+# ================= 3. ADVANCED CALCULATIONS & DATA PREP =================
 try:
     result = md.option_chain(index_choice, exchange=target_exch)
     if not result or not result.chain:
-        st.info("Syncing Market Matrix... ⏳")
-        st.stop()
+        st.info("Syncing Market Matrix... ⏳"); st.stop()
 
     chain = result.chain
     spot = chain.current_price / 100 if chain.current_price > 100000 else chain.current_price
@@ -133,52 +134,66 @@ try:
     cur_chg = (live_px - spot)
     cur_pct = (cur_chg / spot * 100) if spot > 0 else 0.0
 
-    # Header
+    # Upper Live Indicator Layer
     h_bg, h_txt = ("#e8f5e9", "#1b5e20") if cur_chg >= 0 else ("#ffebee", "#b71c1c")
     arrow = "▲" if cur_chg >= 0 else "▼"
-    st.markdown(f'''<div style="background:{h_bg}; padding:15px; border-radius:10px; text-align:center; border: 2px solid {h_txt};">
-        <h1 style="color:{h_txt}; margin:0; font-size:32px; font-weight:bold;">
-            {index_choice} {arrow} {live_px:,.2f} <span style="font-size:20px;">({cur_chg:+,.2f} | {cur_pct:+.2f}%)</span>
-        </h1>
-    </div>''', unsafe_allow_html=True)
+    st.markdown(f'<div style="background:{h_bg}; padding:15px; border-radius:10px; text-align:center; border: 2px solid {h_txt};"><h1 style="color:{h_txt}; margin:0; font-size:32px; font-weight:bold;">{index_choice} {arrow} {live_px:,.2f} <span style="font-size:20px;">({cur_chg:+,.2f} | {cur_pct:+.2f}%)</span></h1></div>', unsafe_allow_html=True)
 
-    # PCR/BEP Strip
     df_ce = pd.DataFrame([vars(x) for x in chain.ce])
     df_pe = pd.DataFrame([vars(x) for x in chain.pe])
-    pcr = df_pe["open_interest"].sum() / df_ce["open_interest"].sum()
-    mood = "🐂 BULLISH" if pcr > 1.15 else "🐻 BEARISH" if pcr < 0.85 else "↔️ SIDEWAYS"
-    st.markdown(f'''<div style="background:#f8fafc; color:#1e293b; padding:10px; border-radius:8px; text-align:center; font-weight:bold; border: 1px solid #cbd5e1; margin-top:10px;">
-        <span style="color:#f59e0b;">CE BEP: {atm + 100} {arrow}</span> | 
-        <span style="font-size:18px;">PCR: {pcr:.2f} ({mood})</span> | 
-        <span style="color:#ef4444;">PE BEP: {atm - 100} {arrow}</span>
-    </div>''', unsafe_allow_html=True)
-
-    # DATA PREP
     df_comb = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE","_PE")).fillna(0)
     df_comb["STRIKE"] = (df_comb["strike_price"]/100).astype(int)
 
-    # OI Change Stability Fix
-    state_key = f"initial_df_{index_choice}"
-    if state_key not in st.session_state: st.session_state[state_key] = df_comb.copy()
-    
-    def calc_stable_oi(row, side):
-        curr_oi = row[f"open_interest_{side}"]
-        init_df = st.session_state[state_key].set_index("STRIKE")
-        strike = row["STRIKE"]
-        return curr_oi - (init_df.loc[strike, f"open_interest_{side}"] if strike in init_df.index else curr_oi)
+    # Historical Multi-Timeframe Candle System (5m default)
+    hist_key = f"{index_choice}_5m"
+    if hist_key not in memory["hist_df"]:
+        try:
+            end_t = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
+            start_t = (datetime.utcnow() - timedelta(days=5)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+            hist_res = md.historical_data({"exchange": target_exch, "type": "INDEX", "values": [index_choice], "fields": ["open", "high", "low", "close", "cumulative_volume"], "startDate": start_t, "endDate": end_t, "interval": "5m", "intraDay": False, "realTime": False})
+            raw = hist_res.result[0].values[0][index_choice]
+            memory["hist_df"][hist_key] = pd.DataFrame({"time": [pd.to_datetime(p.timestamp, unit="ns").tz_localize("UTC").tz_convert("Asia/Kolkata") for p in raw.close], "open": [p.value/100 for p in raw.open], "high": [p.value/100 for p in raw.high], "low": [p.value/100 for p in raw.low], "close": [p.value/100 for p in raw.close], "vol": [p.value for p in raw.cumulative_volume]})
+        except: pass
 
-    df_comb["oi_chg_CE"] = df_comb.apply(lambda r: calc_stable_oi(r, "CE"), axis=1)
-    df_comb["oi_chg_PE"] = df_comb.apply(lambda r: calc_stable_oi(r, "PE"), axis=1)
+    if hist_key in memory["hist_df"]:
+        df_p = memory["hist_df"][hist_key].copy().tail(100)
+        df_p['MA9'] = df_p['close'].rolling(9).mean()
+        df_p['VWAP'] = (df_p['close'] * df_p['vol']).cumsum() / (df_p['vol'].cumsum() + 1)
+        df_p['ATR'] = (df_p['high'] - df_p['low']).rolling(10).mean()
+        df_p['ST_UP'] = df_p['MA9'] + (df_p['ATR'] * 2.5); df_p['ST_DN'] = df_p['MA9'] - (df_p['ATR'] * 2.5)
 
-    # Big Move Prediction
-    res_stk = int(df_comb.loc[df_comb[df_comb["STRIKE"] >= live_px]["volume_CE"].idxmax(), "STRIKE"])
-    sup_stk = int(df_comb.loc[df_comb[df_comb["STRIKE"] <= live_px]["volume_PE"].idxmax(), "STRIKE"])
-    if pcr > 1.25 and live_px >= (res_stk - 30):
-        st.success(f"🚀 BIG MOVE: {index_choice} CE BUYING ABOVE {res_stk}")
-    elif pcr < 0.75 and live_px <= (sup_stk + 30):
-        st.error(f"🩸 BIG MOVE: {index_choice} PE BUYING BELOW {sup_stk}")
+        fig = make_subplots(rows=1, cols=1)
+        fig.add_trace(go.Candlestick(x=df_p['time'], open=df_p['open'], high=df_p['high'], low=df_p['low'], close=df_p['close'], name="Price"))
+        fig.add_trace(go.Scatter(x=df_p['time'], y=df_p['MA9'], line=dict(color='blue', width=1.5), name="MA9"))
+        fig.add_trace(go.Scatter(x=df_p['time'], y=df_p['VWAP'], line=dict(color='orange', width=1.5, dash='dash'), name="VWAP"))
+        fig.add_trace(go.Scatter(x=df_p['time'], y=df_p['ST_UP'], line=dict(color='rgba(255,0,0,0.2)'), name="ST Sell"))
+        fig.add_trace(go.Scatter(x=df_p['time'], y=df_p['ST_DN'], line=dict(color='rgba(0,255,0,0.2)'), name="ST Buy"))
+        
+        boring = abs(df_p['close'] - df_p['open']) / (df_p['high'] - df_p['low'] + 0.001) < 0.45
+        fig.add_trace(go.Scatter(x=df_p['time'][boring], y=df_p['close'][boring], mode="markers", marker=dict(color="yellow", size=7, symbol="diamond"), name="Boring"))
+        fig.update_layout(height=400, margin=dict(l=0,r=0,t=0,b=0), xaxis_rangeslider_visible=False, xaxis=dict(type='date', rangebreaks=[dict(bounds=[15.5, 9], pattern="hour")]))
+        st.plotly_chart(fig, use_container_width=True)
 
-    # ================= 4. TABLE UI (3-LINE & ATM PRICE FIX) =================
+    # PCR Calculation
+    pcr = df_pe["open_interest"].sum() / df_ce["open_interest"].sum()
+    mood = "🐂 BULLISH" if pcr > 1.15 else "🐻 BEARISH" if pcr < 0.85 else "↔️ SIDEWAYS"
+    st.markdown(f'''<div style="background:#f8fafc; color:#1e293b; padding:10px; border-radius:8px; text-align:center; font-weight:bold; border: 1px solid #cbd5e1; margin-top:5px;">
+        <span style="color:#f59e0b;">CE BEP: {atm + 100}</span> | <span>PCR: {pcr:.2f} ({mood})</span> | <span style="color:#ef4444;">PE BEP: {atm - 100}</span>
+    </div>''', unsafe_allow_html=True)
+
+    # S/R Targets
+    res_stk = int(df_comb.loc[df_comb["volume_CE"].idxmax(), "STRIKE"])
+    sup_stk = int(df_comb.loc[df_comb["volume_PE"].idxmax(), "STRIKE"])
+
+    if pcr > 1.15: st.markdown(f'<div style="background:#1b5e20; color:white; padding:12px; border-radius:8px; text-align:center; font-weight:bold; font-size:22px; margin-top:5px;">🚀 BIG MOVE: CALL BUY ABOVE {res_stk}</div>', unsafe_allow_html=True)
+    elif pcr < 0.85: st.markdown(f'<div style="background:#b71c1c; color:white; padding:12px; border-radius:8px; text-align:center; font-weight:bold; font-size:22px; margin-top:5px;">🩸 BIG MOVE: PUT BUY BELOW {sup_stk}</div>', unsafe_allow_html=True)
+    else: st.markdown(f'<div style="background:#f59e0b; color:white; padding:12px; border-radius:8px; text-align:center; font-weight:bold; font-size:22px; margin-top:5px;">↔️ SIDEWAYS MARKET: NO TRADE</div>', unsafe_allow_html=True)
+
+    # OI Change Calculations
+    df_comb["oi_chg_CE"] = df_comb["open_interest_CE"] - df_comb["previous_open_interest_CE"]
+    df_comb["oi_chg_PE"] = df_comb["open_interest_PE"] - df_comb["previous_open_interest_PE"]
+
+    # ================= 4. TABLE UI WITH INTERNAL SPOT INJECTION =================
     max_oi_ce, max_oi_pe = df_comb["open_interest_CE"].max(), df_comb["open_interest_PE"].max()
     max_vol_ce, max_vol_pe = df_comb["volume_CE"].max(), df_comb["volume_PE"].max()
     max_chg_ce = df_comb["oi_chg_CE"].abs().max() or 1
@@ -191,38 +206,69 @@ try:
     atm_idx = (df_comb["STRIKE"] - live_px).abs().idxmin()
     d_df = df_comb.iloc[max(atm_idx-10,0): atm_idx+11].copy().reset_index(drop=True)
 
+    # Base DataFrame Creation
     ui = pd.DataFrame()
     ui["CE OI\n(Δ/%)"] = d_df.apply(lambda r: fmt_val(r["open_interest_CE"], r["oi_chg_CE"], max_oi_ce), axis=1)
     ui["CE OI CHG"] = d_df.apply(lambda r: f"{r['oi_chg_CE']:+,}\n{(r['oi_chg_CE']/max_chg_ce*100):.1f}%", axis=1)
     ui["CE VOL\n(%)"] = d_df.apply(lambda r: fmt_val(r["volume_CE"], 0, max_vol_ce), axis=1)
-    
-    # --- ATM STRIKE FIX WITH LIVE INDEX ---
-    ui["STRIKE"] = d_df["STRIKE"].apply(lambda s: f"⭐ {s} ({arrow}{live_px:,.1f})" if s == atm else str(s))
-    
+    ui["STRIKE"] = d_df["STRIKE"].astype(str)
     ui["PE VOL\n(%)"] = d_df.apply(lambda r: fmt_val(r["volume_PE"], 0, max_vol_pe), axis=1)
     ui["PE OI CHG"] = d_df.apply(lambda r: f"{r['oi_chg_PE']:+,}\n{(r['oi_chg_PE']/max_chg_pe*100):.1f}%", axis=1)
     ui["PE OI\n(Δ/%)"] = d_df.apply(lambda r: fmt_val(r["open_interest_PE"], r["oi_chg_PE"], max_oi_pe), axis=1)
 
+    # --- PURE DATAFRAME SPOT ROW INJECTION ---
+    # Do strikes ke exact beech me Spot Row Inject karne ka system
+    for i in range(len(d_df) - 1):
+        s1 = float(d_df.loc[i, "STRIKE"])
+        s2 = float(d_df.loc[i+1, "STRIKE"])
+        if (s1 >= live_px > s2) or (s1 <= live_px < s2):
+            spot_row = pd.DataFrame([{
+                "CE OI\n(Δ/%)": "---", "CE OI CHG": "---", "CE VOL\n(%)": "---",
+                "STRIKE": f"🔹 SPOT: {live_px:,.2f}",
+                "PE VOL\n(%)": "---", "PE OI CHG": "---", "PE OI\n(Δ/%)": "---"
+            }])
+            ui = pd.concat([ui.iloc[:i+1], spot_row, ui.iloc[i+1:]]).reset_index(drop=True)
+            break
+
     def style_table(row):
         s, idx = [''] * 7, row.name
-        stk = d_df.loc[idx, "STRIKE"]
-        s[3] = 'background-color:#f8f9fa;color:black;font-weight:bold' 
-        if stk == atm: s[3] = 'background-color:yellow;color:black'
-        # CE Styling
-        if float(row.iloc[0].split('\n')[-1].replace('%','')) >= 70: s[0] = 'background-color:#1565c0;color:white'
-        if float(row.iloc[1].split('\n')[-1].replace('%','')) >= 70: s[1] = 'background-color:#2e7d32;color:white'
-        if float(row.iloc[2].split('\n')[-1].replace('%','')) >= 75: s[2] = 'background-color:#1b5e20;color:white'
-        # PE Styling
-        if float(row.iloc[4].split('\n')[-1].replace('%','')) >= 75: s[4] = 'background-color:#b71c1c;color:white'
-        if float(row.iloc[5].split('\n')[-1].replace('%','')) >= 70: s[5] = 'background-color:#c62828;color:white'
-        if float(row.iloc[6].split('\n')[-1].replace('%','')) >= 70: s[6] = 'background-color:#ef6c00;color:white'
-        # Border
-        if stk == res_stk: 
-            for i in range(7): s[i] += '; border-top: 5px solid blue;'
-        if stk == sup_stk: 
-            for i in range(7): s[i] += '; border-bottom: 5px solid red;'
+        current_strike_str = str(row["STRIKE"])
+        
+        # 1. Floating Spot Row ke liye special background look
+        if "🔹 SPOT" in current_strike_str:
+            return ['background-color: #0284c7; color: white; font-weight: bold; font-size: 14px; text-align: center; border-top: 2px solid #00bcff; border-bottom: 2px solid #00bcff;'] * 7
+
+        try:
+            stk_num = int(re.sub(r'[^0-9]', '', current_strike_str))
+        except:
+            stk_num = 0
+
+        s[3] = 'background-color:#f8f9fa; color:black; font-weight:bold'
+        
+        # 2. ATM Row Highlight (Yellow)
+        if stk_num == int(atm): 
+            s = ['background-color: yellow !important; color: black !important; font-weight: bold;'] * 7
+        else:
+            # 3. 75%+ Heatmap Shading System
+            try:
+                if float(row.iloc[0].split('\n')[-1].replace('%','')) >= 70: s[0] = 'background-color:#1565c0; color:white;'
+                if float(row.iloc[1].split('\n')[-1].replace('%','')) >= 70: s[1] = 'background-color:#2e7d32; color:white;'
+                if float(row.iloc[2].split('\n')[-1].replace('%','')) >= 75: s[2] = 'background-color:#1b5e20; color:white;'
+                if float(row.iloc[4].split('\n')[-1].replace('%','')) >= 75: s[4] = 'background-color:#b71c1c; color:white;'
+                if float(row.iloc[5].split('\n')[-1].replace('%','')) >= 70: s[5] = 'background-color:#c62828; color:white;'
+                if float(row.iloc[6].split('\n')[-1].replace('%','')) >= 70: s[6] = 'background-color:#ef6c00; color:white;'
+            except:
+                pass
+
+        # 4. Strict S/R Long Barrier Lines Left-To-Right
+        if stk_num == res_stk: 
+            for i in range(7): s[i] += '; border-top: 5px solid blue !important;'
+        if stk_num == sup_stk: 
+            for i in range(7): s[i] += '; border-bottom: 5px solid red !important;'
+            
         return s
 
     st.table(ui.style.apply(style_table, axis=1))
+
 except Exception as e:
     st.info(f"Syncing Matrix... {e}")

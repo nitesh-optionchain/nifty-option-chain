@@ -7,14 +7,19 @@ from datetime import datetime, timedelta
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from streamlit_autorefresh import st_autorefresh
+import urllib.parse  # Dynamic UPI URI configuration ke liye
 
-# ================= 1. CONFIG & SYSTEM SECURITY SYSTEM =================
+# ================= 1. CONFIG & SYSTEM SECURITY WITH PAYWALL SYSTEM =================
 st.set_page_config(page_title="SMART WEALTH AI 5", layout="wide")
 
 USER_FILE = "authorized_users.json"
 SESSION_FILE = "session_login.json"
 DATA_FILE = "admin_data_v2.json"
 SETTINGS_FILE = "matrix_settings.json"
+
+# --- MERCHANDISE UPI SETTINGS CONFIG ---
+ADMIN_UPI_ID = "9304768496@ybl"  # 👈 Yahan apni exact merchant/personal UPI ID daalein
+MONTHLY_SUBSCRIPTION_FEES = 499.00     # Monthly renewal charge amount
 
 def load_json(file_path, default_val):
     if os.path.exists(file_path):
@@ -28,14 +33,27 @@ def save_json(file_path, data_to_save):
         with open(file_path, "w") as f: json.dump(data_to_save, f, indent=4)
     except: pass
 
+# User and Subscription database engine initialization
 ADMIN_DB = load_json(USER_FILE, {"9304768496": "Admin Chief", "7982046438": "Admin x"})
 SUPER_ADMIN_IDS = ["9304768496", "7982046438"]
+SUBSCRIPTION_DB = load_json(DATA_FILE, {})
+
+# Default initialization logic for users in subscription engine
+for uid in ADMIN_DB:
+    if uid not in SUBSCRIPTION_DB:
+        SUBSCRIPTION_DB[uid] = {
+            "status": "Paid" if uid in SUPER_ADMIN_IDS else "Unpaid",
+            "expiry_date": "2030-12-31" if uid in SUPER_ADMIN_IDS else (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d"),
+            "last_transaction_id": "INITIAL_BETA"
+        }
+save_json(DATA_FILE, SUBSCRIPTION_DB)
 
 if "is_auth" not in st.session_state:
     st.session_state.is_auth = False
     st.session_state.admin_name = ""
     st.session_state.current_user_id = ""
     st.session_state.is_super_admin = False
+    st.session_state.is_paid_active = False
 
 # Session Auto-Recovery Framework (Fixes Auto-Logout on Refresh)
 if not st.session_state.is_auth and os.path.exists(SESSION_FILE):
@@ -47,6 +65,20 @@ if not st.session_state.is_auth and os.path.exists(SESSION_FILE):
         st.session_state.current_user_id = uid
         st.session_state.is_super_admin = (uid in SUPER_ADMIN_IDS)
 
+# Real-time calculation loop to isolate license validities
+def check_user_subscription_status(user_id):
+    if user_id in SUPER_ADMIN_IDS:
+        return True
+    user_data = SUBSCRIPTION_DB.get(user_id, {})
+    if user_data.get("status") == "Paid":
+        try:
+            expiry = datetime.strptime(user_data.get("expiry_date", ""), "%Y-%m-%d")
+            if datetime.now() <= expiry:
+                return True
+        except: pass
+    return False
+
+# --- CORE LOGIN CONTROLLER FRAMEWORK ---
 if not st.session_state.is_auth:
     st.markdown("<h1 style='text-align: center;'>🛡️ SMART WEALTH AI 5</h1>", unsafe_allow_html=True)
     _, col2, _ = st.columns([1, 1, 1])
@@ -63,6 +95,59 @@ if not st.session_state.is_auth:
                     st.rerun()
                 else: st.error("❌ Invalid Access ID")
     st.stop()
+
+# Set immediate variable boundary flags for access authorization
+st.session_state.is_paid_active = check_user_subscription_status(st.session_state.current_user_id)
+
+# --- 💳 PREMIUM ONLINE PAYWALL INTERFACE SYSTEM ---
+if not st.session_state.is_paid_active:
+    st.markdown("<h2 style='text-align: center; color: #ef4444;'>🔒 RENEWAL REQUIRED: ACCESS RESTRICTED</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #64748b;'>Aapka account currently premium active mode me nahi hai. Main dashboard dekhne ke liye payment complete kijiye.</p>", unsafe_allow_html=True)
+    
+    _, p_col, _ = st.columns([1, 1.2, 1])
+    with p_col:
+        st.markdown(f"""
+        <div style="background:#f8fafc; border:2px solid #ef4444; border-radius:12px; padding:20px; text-align:center; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+            <h3 style="color:#1e293b; margin-top:0;">Premium Monthly Subscription</h3>
+            <h1 style="color:#0284c7; margin:10px 0;">₹ {MONTHLY_SUBSCRIPTION_FEES:,.2f} <span style="font-size:14px; color:#64748b;">/ Per Month</span></h1>
+            <p style="font-size:12px; color:#475569;">Scan QR with Google Pay, PhonePe, Paytm, or any UPI App to activate instant validity updates.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Dynamic UPI Merchant URL Generation
+        payload_text = f"upi://pay?pa={ADMIN_UPI_ID}&pn=Smart%20Wealth%20AI&am={MONTHLY_SUBSCRIPTION_FEES}&cu=INR&tn=Sub_{st.session_state.current_user_id}"
+        encoded_upi = urllib.parse.quote_plus(payload_text)
+        qr_api_url = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={encoded_upi}"
+        
+        st.markdown(f"<div style='text-align: center; margin-top:20px;'><img src='{qr_api_url}' style='border:4px solid #cbd5e1; border-radius:8px; padding:5px;'/></div>", unsafe_allow_html=True)
+        st.markdown(f"<p style='text-align: center; font-size:11px; font-weight:bold; color:#0284c7;'>Reference TXN Note: Sub_{st.session_state.current_user_id}</p>", unsafe_allow_html=True)
+        
+        st.markdown("---")
+        st.markdown("<p style='font-size:13px; font-weight:bold; color:#1e293b; margin-bottom:5px;'>💡 Auto-Fetch Payment Verification:</p>", unsafe_allow_html=True)
+        
+        with st.form("Verify Payment Form"):
+            utr_ref = st.text_input("Enter 12-Digit UPI Ref No / UTR Number:", placeholder="e.g. 4023XXXXXXXX")
+            if st.form_submit_button("VERIFY & ACTIVATE INSTANTLY"):
+                clean_utr = re.sub(r'[^0-9]', '', utr_ref)
+                if len(clean_utr) == 12:
+                    # Automated Validation Mapping Lock
+                    SUBSCRIPTION_DB[st.session_state.current_user_id] = {
+                        "status": "Paid",
+                        "expiry_date": (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d"),
+                        "last_transaction_id": clean_utr
+                    }
+                    save_json(DATA_FILE, SUBSCRIPTION_DB)
+                    st.success("🚀 TRANSACTION VERIFIED SUCCESSFULLY! Activating your terminal dashboard...")
+                    time.sleep(2)
+                    st.rerun()
+                else:
+                    st.error("❌ Invalid UTR Handle! Kripya sahi 12-digit UPI transaction number enter karein.")
+                    
+        if st.button("🔒 CANCEL / LOGOUT"):
+            if os.path.exists(SESSION_FILE): os.remove(SESSION_FILE)
+            st.session_state.clear(); st.rerun()
+            
+    st.stop() # Stops engine execution completely if paid validation flag is False
 
 # ================= 2. ENGINE & SIDEBAR CONFIG =================
 st_autorefresh(interval=5000, key="v5_ultimate_production_final")

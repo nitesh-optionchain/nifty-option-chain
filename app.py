@@ -216,7 +216,14 @@ if not check_user_subscription(st.session_state.current_user_id):
         if should_rerun:
             time.sleep(5)
             st.rerun()
-            
+
+   # 🚪 Coupon/Paywall logic ke theek niche aur st.stop() se theek pehle ye daalein:
+    st.markdown("---")
+    if st.button("🚪 Logout / Switch Account", key="paywall_logout_btn", use_container_width=True):
+        st.session_state.is_auth = False
+        st.session_state.current_user_id = None
+        st.rerun()
+
     st.stop()
 
 # ==================================================================================

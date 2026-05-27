@@ -9,23 +9,17 @@ from plotly.subplots import make_subplots
 from streamlit_autorefresh import st_autorefresh
 import urllib.parse  # Dynamic UPI URI configuration ke liye
 
-# ================= 1. CONFIG & SYSTEM SECURITY WITH ADVANCE VALIDITY QUEUEING =================
+# ================= 1. CONFIG & SYSTEM SECURITY WITH PAYWALL SYSTEM =================
 st.set_page_config(page_title="SMART WEALTH AI 5", layout="wide")
-
-import json, os, re, time
-from datetime import datetime, timedelta
 
 USER_FILE = "authorized_users.json"
 SESSION_FILE = "session_login.json"
 DATA_FILE = "admin_data_v2.json"
 SETTINGS_FILE = "matrix_settings.json"
 
-COUPON_FILE = "dynamic_coupons.json"
-NOTICE_FILE = "admin_notice.json"
-
-# --- 🔒 RAZORPAY CONFIG ---
-RAZORPAY_PAGE_URL = "https://rzp.io/rzp/s2h4HIZo"
-WEBHOOK_SECRET = "my_super_secret_token_123"
+# --- MERCHANDISE UPI SETTINGS CONFIG ---
+ADMIN_UPI_ID = "9304768496@ybl"  # 👈 Yahan apni exact merchant/personal UPI ID daalein
+MONTHLY_SUBSCRIPTION_FEES = 499.00     # Monthly renewal charge amount
 
 def load_json(file_path, default_val):
     if os.path.exists(file_path):
@@ -39,88 +33,29 @@ def save_json(file_path, data_to_save):
         with open(file_path, "w") as f: json.dump(data_to_save, f, indent=4)
     except: pass
 
+# User and Subscription database engine initialization
 ADMIN_DB = load_json(USER_FILE, {"9304768496": "Admin Chief", "7982046438": "Admin x"})
 SUPER_ADMIN_IDS = ["9304768496", "7982046438"]
 SUBSCRIPTION_DB = load_json(DATA_FILE, {})
 
-LIVE_COUPONS = load_json(COUPON_FILE, {"BONUS15": 15, "DOUBLE30": 30})  
-NOTICE_BOARD = load_json(NOTICE_FILE, {"message": "", "active": False})
-
-# Default database initializer
+# Default initialization logic for users in subscription engine
 for uid in ADMIN_DB:
     if uid not in SUBSCRIPTION_DB:
         SUBSCRIPTION_DB[uid] = {
             "status": "Paid" if uid in SUPER_ADMIN_IDS else "Unpaid",
             "expiry_date": "2030-12-31" if uid in SUPER_ADMIN_IDS else (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d"),
-            "pending_approval": False,
-            "submitted_mobile": "",
-            "active_coupon": ""  
+            "last_transaction_id": "INITIAL_BETA"
         }
 save_json(DATA_FILE, SUBSCRIPTION_DB)
-
-# --- 🚀 BACKGROUND AUTO-FETCH HANDLER (THE WEBHOOK RECEIVER) ---
-query_params = st.query_params
-if "razorpay_webhook_trigger" in query_params:
-    try:
-        import base64
-        payload_b64 = query_params.get("payload", "")
-        if payload_b64:
-            payload_raw = base64.b64decode(payload_b64).decode('utf-8')
-            data = json.loads(payload_raw)
-            
-            notes = data['payload']['payment']['entity'].get('notes', {})
-            user_mobile = None
-            
-            for k, v in notes.items():
-                if "mobile" in k.lower() or "id" in k.lower(): user_mobile = str(v).strip()
-                
-            if not user_mobile:
-                entity_str = json.dumps(data)
-                mobiles_found = re.findall(r'\b\d{10}\b', entity_str)
-                if mobiles_found: user_mobile = mobiles_found[0]
-
-            if user_mobile in SUBSCRIPTION_DB:
-                # 1. Total base days calculation (Default 30 days)
-                days_to_add = 30
-                applied_coupon = SUBSCRIPTION_DB[user_mobile].get("active_coupon", "")
-                
-                if applied_coupon in LIVE_COUPONS:
-                    days_to_add += int(LIVE_COUPONS[applied_coupon])
-                
-                # 2. 🔥 ADVANCE PLAN QUEUEING LOGIC 🔥
-                current_expiry_str = SUBSCRIPTION_DB[user_mobile].get("expiry_date", "")
-                today = datetime.now()
-                
-                try:
-                    current_expiry = datetime.strptime(current_expiry_str, "%Y-%m-%d")
-                    # Agar user active hai aur uski expiry date aaj se badi hai, toh purani date se aage badhao
-                    if current_expiry > today:
-                        base_start_date = current_expiry
-                    else:
-                        base_start_date = today
-                except:
-                    base_start_date = today
-                
-                # Final calculation and injection
-                new_expiry_date = (base_start_date + timedelta(days=days_to_add)).strftime("%Y-%m-%d")
-                
-                SUBSCRIPTION_DB[user_mobile]["status"] = "Paid"
-                SUBSCRIPTION_DB[user_mobile]["expiry_date"] = new_expiry_date
-                SUBSCRIPTION_DB[user_mobile]["active_coupon"] = ""  # Reset
-                save_json(DATA_FILE, SUBSCRIPTION_DB)
-                st.success("WEBHOOK_PROCESSED_SUCCESSFULLY")
-                st.stop()
-    except Exception as e:
-        st.error(f"Webhook Error: {e}")
-        st.stop()
 
 if "is_auth" not in st.session_state:
     st.session_state.is_auth = False
     st.session_state.admin_name = ""
     st.session_state.current_user_id = ""
     st.session_state.is_super_admin = False
+    st.session_state.is_paid_active = False
 
-# Auto session recovery
+# Session Auto-Recovery Framework (Fixes Auto-Logout on Refresh)
 if not st.session_state.is_auth and os.path.exists(SESSION_FILE):
     saved = load_json(SESSION_FILE, None)
     if saved and saved.get("user_id") in ADMIN_DB:
@@ -130,159 +65,18 @@ if not st.session_state.is_auth and os.path.exists(SESSION_FILE):
         st.session_state.current_user_id = uid
         st.session_state.is_super_admin = (uid in SUPER_ADMIN_IDS)
 
-def check_user_subscription(user_id):
-    if user_id in SUPER_ADMIN_IDS: return True
-    ud = SUBSCRIPTION_DB.get(user_id, {})
-    if ud.get("status") == "Paid":
+# Real-time calculation loop to isolate license validities
+def check_user_subscription_status(user_id):
+    if user_id in SUPER_ADMIN_IDS:
+        return True
+    user_data = SUBSCRIPTION_DB.get(user_id, {})
+    if user_data.get("status") == "Paid":
         try:
-            if datetime.now() <= datetime.strptime(ud.get("expiry_date", ""), "%Y-%m-%d"): return True
+            expiry = datetime.strptime(user_data.get("expiry_date", ""), "%Y-%m-%d")
+            if datetime.now() <= expiry:
+                return True
         except: pass
     return False
-
-# Login Panel UI
-if not st.session_state.is_auth:
-    st.markdown("<h1 style='text-align: center;'>🛡️ SMART WEALTH AI 5</h1>", unsafe_allow_html=True)
-    _, col2, _ = st.columns([1, 1, 1])
-    with col2:
-        with st.form("Login"):
-            user_key = st.text_input("Enter Mobile ID:", type="password")
-            if st.form_submit_button("LOGIN"):
-                if user_key in ADMIN_DB:
-                    st.session_state.is_auth = True
-                    st.session_state.admin_name = ADMIN_DB[user_key]
-                    st.session_state.current_user_id = user_key
-                    st.session_state.is_super_admin = (user_key in SUPER_ADMIN_IDS)
-                    save_json(SESSION_FILE, {"user_id": user_key})
-                    st.rerun()
-                else: st.error("❌ Invalid Access ID")
-    st.stop()
-
-# --- 🔒 AUTOMATED PAYWALL INTERFACE ---
-if not check_user_subscription(st.session_state.current_user_id):
-    current_uid = st.session_state.current_user_id
-    
-    st.markdown("<h2 style='text-align: center; color: #ef4444;'>🔒 PREMIUM SUBSCRIPTION REQUIRED</h2>", unsafe_allow_html=True)
-    
-    # 🔥 LIVE NOTICE BOARD RE-LOADING LOGIC 🔥
-    LIVE_NOTICE = load_json(NOTICE_FILE, {"message": "", "active": False})
-    if LIVE_NOTICE.get("active") and LIVE_NOTICE.get("message") != "":
-        st.markdown(f"""
-        <div style="background-color: #fef08a; border-left: 6px solid #eab308; padding: 15px; border-radius: 8px; text-align: center; margin: 15px auto; max-width: 800px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-            <span style="font-size: 24px; vertical-align: middle;">📢</span> 
-            <strong style="color: #854d0e; font-size: 16px; margin-left: 8px;">
-                {LIVE_NOTICE['message']}
-            </strong>
-        </div>
-        """, unsafe_allow_html=True)
-
-    _, p_col, _ = st.columns([1, 1.2, 1])
-    with p_col:
-        coupon_code = st.text_input("🎫 Have an Offer Code? Enter here:", value="", placeholder="e.g. BONUS15", key="paywall_coupon_box").strip().upper()
-        
-        should_rerun = True  # Controlled trigger for loop
-        
-        if coupon_code in LIVE_COUPONS:
-            extra_days = LIVE_COUPONS[coupon_code]
-            if SUBSCRIPTION_DB[current_uid].get("active_coupon") != coupon_code:
-                SUBSCRIPTION_DB[current_uid]["active_coupon"] = coupon_code
-                save_json(DATA_FILE, SUBSCRIPTION_DB)
-            
-            st.toast(f"🎉 Code '{coupon_code}' Applied!", icon="✅")
-            validity_html = f'<h4 style="color:#16a34a; text-align:center; margin:0;">🎁 Offer Activated: Get {30 + extra_days} Days Access (30 + {extra_days} Days Extra!)</h4>'
-            should_rerun = False  # DO NOT AUTO-REFRESH WHEN COUPON IS ACTIVE TO PREVENT RAZORPAY CRASH
-        else:
-            if coupon_code != "":
-                st.error("❌ Invalid or Expired Code")
-            validity_html = f'<h4 style="color:#64748b; text-align:center; margin:0;">Standard Validity: 30 Days Access</h4>'
-
-        st.markdown(f"""
-        <div style="background:#f8fafc; border:2px solid #0284c7; border-radius:12px; padding:25px; text-align:center; margin-bottom: 20px; margin-top: 10px;">
-            <h3 style="color:#1e293b; margin:0;">Smart Wealth AI Premium Access</h3>
-            <h1 style="color:#0284c7; margin:5px 0;">₹ 499.00</h1>
-            {validity_html}
-            <p style="font-size: 13px; color: #b91c1c; font-weight: bold; margin-top:15px; margin-bottom:15px;">
-                ⚠️ ALERT: Razorpay par payment karte waqt form mein apni Mobile ID [ {current_uid} ] enter karein!
-            </p>
-            <a href="{RAZORPAY_PAGE_URL}" target="_blank">
-                <button style="background-color:#0284c7; color:white; border:none; padding:14px 24px; border-radius:6px; font-weight:bold; width:100%; cursor:pointer; font-size:16px; box-shadow: 0 4px 6px -1px rgba(2, 132, 199, 0.4);">
-                    🚀 CLICK TO SCAN & PAY ₹499
-                </button>
-            </a>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        st.info("🔄 Payment hote hi Razorpay piche se signal bhejkar is page ko automatic unlock kar dega.")
-        
-        if should_rerun:
-            time.sleep(5)
-            st.rerun()
-
-   # 🚪 Coupon/Paywall logic ke theek niche aur st.stop() se theek pehle ye daalein:
-    st.markdown("---")
-    if st.button("🚪 Logout / Switch Account", key="paywall_logout_btn", use_container_width=True):
-        st.session_state.is_auth = False
-        st.session_state.current_user_id = None
-        st.rerun()
-
-    st.stop()
-
-# ==================================================================================
-# SIDEBAR / SUPER ADMIN CONTROL SHEET
-# ==================================================================================
-if st.session_state.is_super_admin:
-    st.sidebar.markdown("## 🛠️ ADMIN MASTER PANEL")
-    
-    # 📁 SECTION A: DYNAMIC COUPON MANAGER & NOTICE BOARD
-    with st.sidebar.expander("🎫 Offer Coupons & Notice Board", expanded=False):
-        st.markdown("### 📢 Broadcast Offer Message")
-        
-        # Live file se notice data read karein
-        ADMIN_NOTICE = load_json(NOTICE_FILE, {"message": "", "active": False})
-        
-        notice_text = st.text_area("Enter Offer Message:", value=ADMIN_NOTICE.get("message", ""), placeholder="e.g. Festive Offer: Use Code BONUS15 to get 15 Days Extra Validity!")
-        
-        col_n1, col_n2 = st.columns(2)
-        with col_n1:
-            if st.button("📢 PUBLISH NOTICE", use_container_width=True):
-                ADMIN_NOTICE["message"] = notice_text
-                ADMIN_NOTICE["active"] = True
-                save_json(NOTICE_FILE, ADMIN_NOTICE)
-                st.success("Notice Published!")
-                time.sleep(1); st.rerun()
-        with col_n2:
-            if st.button("🗑️ DELETE NOTICE", use_container_width=True):
-                ADMIN_NOTICE["message"] = ""
-                ADMIN_NOTICE["active"] = False
-                save_json(NOTICE_FILE, ADMIN_NOTICE)
-                st.success("Notice Removed!")
-                time.sleep(1); st.rerun()
-                
-        st.markdown("---")
-        st.markdown("### ➕ Add New Offer Code")
-        new_code = st.text_input("Offer Code:", placeholder="e.g. BONUS15").strip().upper()
-        new_days = st.number_input("Extra Validity Days to Add:", min_value=1, max_value=365, value=15)
-        
-        if st.button("💾 SAVE NEW CODE", use_container_width=True):
-            if new_code:
-                LIVE_COUPONS[new_code] = int(new_days)
-                save_json(COUPON_FILE, LIVE_COUPONS)
-                st.success(f"Code {new_code} active for +{new_days} Extra Days!")
-                time.sleep(1); st.rerun()
-            else: st.error("Code can't be empty!")
-            
-        st.markdown("---")
-        st.markdown("### 🗑️ Active Offers (Click to Remove)")
-        if LIVE_COUPONS:
-            for code, days in list(LIVE_COUPONS.items()):
-                c_col1, c_col2 = st.columns([2, 1])
-                c_col1.markdown(f"**{code}** → +{days} Extra Days")
-                if c_col2.button("❌ Remove", key=f"del_{code}"):
-                    del LIVE_COUPONS[code]
-                    save_json(COUPON_FILE, LIVE_COUPONS)
-                    st.toast(f"Code {code} Deleted!")
-                    time.sleep(1); st.rerun()
-        else:
-            st.info("No active codes.")
 
 # --- CORE LOGIN CONTROLLER FRAMEWORK ---
 if not st.session_state.is_auth:
@@ -303,22 +97,7 @@ if not st.session_state.is_auth:
     st.stop()
 
 # Set immediate variable boundary flags for access authorization
-# ==================================================================================
-# 📢 LIVE NOTICE BOARD DISPLAY (HAR REFRESH PAR LIVE CHECK HOGA)
-# ==================================================================================
-LIVE_NOTICE = load_json(NOTICE_FILE, {"message": "", "active": False})
-if LIVE_NOTICE.get("active") and LIVE_NOTICE.get("message") != "":
-    st.markdown(f"""
-    <div style="background-color: #fef08a; border-left: 6px solid #eab308; padding: 15px; border-radius: 8px; text-align: center; margin: 15px auto; max-width: 1000px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-        <span style="font-size: 24px; vertical-align: middle;">📢</span> 
-        <strong style="color: #854d0e; font-size: 16px; margin-left: 8px; font-family: sans-serif;">
-            {LIVE_NOTICE['message']}
-        </strong>
-    </div>
-    """, unsafe_allow_html=True)
-# ==================================================================================
-
-st.session_state.is_paid_active = check_user_subscription(st.session_state.current_user_id)
+st.session_state.is_paid_active = check_user_subscription_status(st.session_state.current_user_id)
 
 # --- 💳 PREMIUM ONLINE PAYWALL INTERFACE SYSTEM ---
 if not st.session_state.is_paid_active:
@@ -450,19 +229,12 @@ try:
     df_comb = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE","_PE")).fillna(0)
     df_comb["STRIKE"] = (df_comb["strike_price"]/100).astype(int)
 
- # 🔥 DYNAMIC TIMEFRAME SELECTOR SYSTEM 🔥
-    st.markdown("### ⏱️ Select Chart Timeframe")
-    tf_choice = st.selectbox("Timeframe badlein:", options=["5m", "10m", "15m", "30m"], index=0, key=f"tf_select_{index_choice}")
-
-    # Historical Multi-Timeframe Candle System
-    hist_key = f"{index_choice}_{tf_choice}"
+    # Historical Multi-Timeframe Candle System (5m default)
+    hist_key = f"{index_choice}_5m"
     if hist_key not in memory["hist_df"]:
         try:
-            end_t = datetime.now().strftime("%Y-%m-%dT%H:%M:%S.000Z")
-            start_t = (datetime.now() - timedelta(days=5)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
-            hist_res = md.historical_data({"exchange": target_exch, "type": "INDEX", "values": [index_choice], "fields": ["open", "high", "low", "close", "cumulative_volume"], "startDate": start_t, "endDate": end_t, "interval": tf_choice, "intraDay": False, "realTime": False})
-            end_t = datetime.now().strftime("%Y-%m-%dT%H:%M:%S.000Z")
-            start_t = (datetime.now() - timedelta(days=5)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+            end_t = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
+            start_t = (datetime.utcnow() - timedelta(days=5)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
             hist_res = md.historical_data({"exchange": target_exch, "type": "INDEX", "values": [index_choice], "fields": ["open", "high", "low", "close", "cumulative_volume"], "startDate": start_t, "endDate": end_t, "interval": "5m", "intraDay": False, "realTime": False})
             raw = hist_res.result[0].values[0][index_choice]
             memory["hist_df"][hist_key] = pd.DataFrame({"time": [pd.to_datetime(p.timestamp, unit="ns").tz_localize("UTC").tz_convert("Asia/Kolkata") for p in raw.close], "open": [p.value/100 for p in raw.open], "high": [p.value/100 for p in raw.high], "low": [p.value/100 for p in raw.low], "close": [p.value/100 for p in raw.close], "vol": [p.value for p in raw.cumulative_volume]})
@@ -585,47 +357,3 @@ try:
 
 except Exception as e:
     st.info(f"Syncing Matrix... {e}")
-
-# ==================================================================================
-# 🎫 ALL-IN-ONE SIDEBAR OFFERS & ADVANCE BOOKING SYSTEM (FOR LOGGED IN USERS)
-# ==================================================================================
-if st.session_state.is_auth:
-    # HAR 10 SECOND MEIN REFRESH
-    st_autorefresh(interval=10 * 1000, key="data_feed_refresh")
-    
-    # 🚪 NEW ID SE LOGOUT/RESET KARNE KE LIYE BUTTON
-    st.sidebar.markdown("---")
-    if st.sidebar.button("🚪 Logout / Switch Account", key="switch_account_btn"):
-        st.session_state.is_auth = False
-        st.session_state.current_user_id = None
-        st.rerun()
-        
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("### 🎫 ACTIVE OFFER ZONE")    
-    # Text placeholder message
-    if st.session_state.is_super_admin:
-        st.sidebar.info("💡 Chief, aap Admin hain. Users ko yahan Offers aur Coupon Apply ka option dikhega.")
-    else:
-        st.sidebar.info("✨ Premium Member Option: Aap chalte huyen plan me bhi offer book kar sakte hain. Din aapki purani expiry ke baad judenge!")
-        
-   # User input box for coupon
-    paid_coupon = st.sidebar.text_input("Enter Active Offer Code:", key="coupon_input_unique")
-    
-    if paid_coupon in LIVE_COUPONS:
-        p_days = LIVE_COUPONS[paid_coupon]
-        # User profile me coupon set karein
-        SUBSCRIPTION_DB[st.session_state.current_user_id]["active_validity"] += p_days
-        save_json(DATA_FILE, SUBSCRIPTION_DB)
-        
-        st.sidebar.success(f"🎉 Code Applied! +{p_days} EXTRA DAYS")
-        
-        st.sidebar.markdown(f"""
-        <a href="{RAZORPAY_PAGE_URL}" target="_blank">
-            <button style="width:100%; background-color:#ff4b4b; color:white; border:none; padding:10px; border-radius:5px; font-weight:bold; cursor:pointer;">
-                🚀 UPGRADE TO PREMIUM (PAY NOW)
-            </button>
-        </a>
-        """, unsafe_allow_html=True)
-    else:
-        if paid_coupon != "":
-            st.sidebar.error("❌ Invalid or Expired Code")

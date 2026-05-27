@@ -583,12 +583,18 @@ except Exception as e:
 # 🎫 ALL-IN-ONE SIDEBAR OFFERS & ADVANCE BOOKING SYSTEM (FOR LOGGED IN USERS)
 # ==================================================================================
 if st.session_state.is_auth:
-    # 🔥 HAR 10 SECOND MEIN DASHBOARD AUR DATA FEED KO AUTOMATIC REFRESH KARNE KE LIYE 🔥
+    # HAR 10 SECOND MEIN REFRESH
     st_autorefresh(interval=10 * 1000, key="data_feed_refresh")
     
+    # 🚪 NEW ID SE LOGOUT/RESET KARNE KE LIYE BUTTON
     st.sidebar.markdown("---")
-    st.sidebar.markdown("### 🎫 ACTIVE OFFER ZONE")
-    
+    if st.sidebar.button("🚪 Logout / Switch Account", key="switch_account_btn"):
+        st.session_state.is_auth = False
+        st.session_state.current_user_id = None
+        st.rerun()
+        
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 🎫 ACTIVE OFFER ZONE")    
     # Text placeholder message
     if st.session_state.is_super_admin:
         st.sidebar.info("💡 Chief, aap Admin hain. Users ko yahan Offers aur Coupon Apply ka option dikhega.")

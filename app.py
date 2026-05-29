@@ -9,6 +9,16 @@ from plotly.subplots import make_subplots
 from streamlit_autorefresh import st_autorefresh
 import urllib.parse  # Dynamic UPI URI configuration ke liye
 from nubra_python_sdk.ticker import websocketdata  # 🚀 Live candle data streaming ke liye
+import streamlit as st
+import os
+
+# 🚨 Streamlit Secrets bypass pipeline (Full-Proof Version)
+if "MOBILE_NO" not in st.secrets.__dict__:
+    st.secrets.__dict__["MOBILE_NO"] = "9304768496"  # <-- Apna asli mobile no quotes me daalein
+if "MPIN" not in st.secrets.__dict__:
+    st.secrets.__dict__["MPIN"] = "3974"            # <-- Apna asli MPIN quotes me daalein
+if "env_creds" not in st.secrets.__dict__:
+    st.secrets.__dict__["env_creds"] = True
 
 @st.cache_data(ttl=300)  # 5 Minute tak data RAM me rahega
 def fetch_and_clean_historical_data(symbol, asset_type, start_date, end_date, interval="1d"):

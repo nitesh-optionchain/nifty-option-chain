@@ -35,8 +35,10 @@ def fetch_and_clean_historical_data(symbol, asset_type, start_date, end_date, in
         elif "nubra_client" in st.session_state and st.session_state.nubra_client is not None:
             active_client = st.session_state.nubra_client
         else:
-            # Ek dum fresh client initialize karein `.env` variables ke sath
-            active_client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
+            # 🟢 CLOUD PAR ENGINE CONNECTIVITY LOCK FIX
+            user_mobile = st.secrets["MOBILE_NO"]
+            user_mpin = st.secrets["MPIN"]
+            active_client = InitNubraSdk(user_mobile, user_mpin, "PROD")
             st.session_state.nubra = active_client
 
         md_instance = MarketData(active_client)
@@ -888,4 +890,3 @@ if st.session_state.is_auth:
     else:
         if paid_coupon != "":
             st.sidebar.error("❌ Invalid or Expired Code")
-

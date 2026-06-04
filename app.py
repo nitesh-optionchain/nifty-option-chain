@@ -374,17 +374,31 @@ try:
 
     st.table(ui.style.apply(style_table, axis=1))
 
-   # 👑 ================= 5. PRE-MARKET TARGET ZONE LEVEL SYSTEM (LABEL CORRECTION) =================
+   # 👑 ================= 5. PRE-MARKET TARGET ZONE LEVEL SYSTEM (PERMANENT ANCHOR FIX) =================
     st.markdown("---")
     st.markdown("### 🌅 MORNING PRE-MARKET ZONE MONITOR (9:15 AM SETUP)")
     
+    # 🛡️ GLOBAL ENGINE ANCHOR: Cloud par session memory lock lagayein taaki dynamic changes block ho sakein
+    anchor_key_high = f"anchor_high_{index_choice}"
+    anchor_key_low = f"anchor_low_{index_choice}"
+    anchor_key_close = f"anchor_close_{index_choice}"
+
+    # Agar API perfect chal raha hai toh pichle din ka high/low/close data load karega
     if hist_key in memory["hist_df"] and not memory["hist_df"][hist_key].empty:
         last_day = memory["hist_df"][hist_key].iloc[-1]
         p_high, p_low, p_close = last_day['high'], last_day['low'], last_day['close']
     else:
-        p_high, p_low, p_close = live_px * 1.008, live_px * 0.992, live_px
+        # 🎯 FALLBACK LOCK SYSTEM: Agar API fail hota hai, toh subah pehli baar jo rate milega use memory me freeze kar dega
+        if anchor_key_high not in st.session_state:
+            st.session_state[anchor_key_high] = live_px * 1.008
+            st.session_state[anchor_key_low] = live_px * 0.992
+            st.session_state[anchor_key_close] = live_px
+            
+        p_high = st.session_state[anchor_key_high]
+        p_low = st.session_state[anchor_key_low]
+        p_close = st.session_state[anchor_key_close]
 
-    # Classic Floor Pivot Range Math Core
+    # Classic Floor Pivot Range Math Core (Ab ye static input par hi chalega)
     pivot_point = (p_high + p_low + p_close) / 3
     r1 = (2 * pivot_point) - p_low
     s1 = (2 * pivot_point) - p_high
@@ -394,7 +408,6 @@ try:
     # Rendering mathematical targets over custom grid structure
     m_col1, m_col2, m_col3, m_col4, m_col5, m_col6 = st.columns(6)
     with m_col1:
-        # 🎯 FIX: Label ko R3 se R2 kiya gaya hai numerical alignment ke mutabik
         st.metric(label="🔴 R2 RESISTANCE (Extreme Breakout)", value=f"{r2:,.2f}")
     with m_col2:
         st.metric(label="🛑 R1 RESISTANCE (Seller Zone)", value=f"{r1:,.2f}")
@@ -405,7 +418,15 @@ try:
     with m_col5:
         st.metric(label="🟢 S2 SUPPORT (Stop-Loss Floor)", value=f"{s2:,.2f}")
     with m_col6:
-        current_time_str = datetime.now().strftime("%H:%M")
+        # Server timezone aware engine connection
+        try:
+            import pytz
+            ist = pytz.timezone('Asia/Kolkata')
+            current_time_str = datetime.now(ist).strftime("%H:%M")
+        except:
+            ist_time = datetime.utcnow() + timedelta(hours=5, minutes=30)
+            current_time_str = ist_time.strftime("%H:%M")
+
         if "09:00" <= current_time_str < "09:15":
             market_state_label = "🎯 PRE-OPEN ORDERS"
             state_color = "#38bdf8"

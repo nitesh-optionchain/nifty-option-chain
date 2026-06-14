@@ -1,14 +1,23 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.graph_objects as gr
-from plotly.subplots import make_subplots
-from datetime import datetime, timedelta
-import os
+import plotly.graph_objects as go
 
-# ⚙️ 1. PAGE SETUP
-st.set_page_config(layout="wide", page_title="Advanced TradingView Terminal")
-st.title("🎯 TV Terminal + Institutional Option Chain Zones")
+# ==============================================================================
+# 🔐 NUBRA LOGIN SESSION CHECK (AUTOMATIC SYNC FROM APP.PY)
+# ==============================================================================
+if 'nubra_session' in st.session_state and st.session_state['nubra_session'] is not None:
+    nubra = st.session_state['nubra_session']
+    from nubra_python_sdk.marketdata.market_data import MarketData
+    md = MarketData(nubra)
+else:
+    st.warning("⚠️ कृपया पहले मुख्य पेज (app) पर जाकर लॉगिन पूरा करें, उसके बाद इस चार्ट पेज को खोलें!")
+    st.info("💡 साइडबार में सबसे ऊपर वाले 'app' बटन पर क्लिक करके पहले ऑप्शन चेन लोड होने दें।")
+    st.stop()
+
+# ==============================================================================
+# 📊 इसके नीचे आपका पुराना सारा चार्ट का कोड (Plotly, Levels, Data Fetching) रहेगा
+# ==============================================================================
 
 # 📂 HARD-DRIVE STORAGE SYSTEM (स्कैनर ऐप के साथ सिंक)
 STORAGE_FILE = "tracked_stocks.txt"

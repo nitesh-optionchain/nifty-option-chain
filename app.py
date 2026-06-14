@@ -169,6 +169,7 @@ def get_engine():
         socket.connect()
         socket.subscribe(["NIFTY", "SENSEX", "BANKNIFTY", "INDIAVIX"], data_type="index", exchange="NSE")
         threading.Thread(target=socket.keep_running, daemon=True).start()
+        st.session_state['nubra_session'] = nubra
         return MarketData(nubra)
     except: return None
 

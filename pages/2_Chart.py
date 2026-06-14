@@ -2,19 +2,39 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+# Native Official SDK Modules
+from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
+from nubra_python_sdk.marketdata.market_data import MarketData
 
 # ==============================================================================
-# 🔐 NUBRA LOGIN SESSION CHECK (AUTOMATIC SYNC FROM APP.PY)
+# 🔐 NUBRA LOGIN SESSION CHECK & HYBRID SYNC ENGINE (FIXED NONETYPE ERROR)
 # ==============================================================================
+nubra = None
+md = None
+
+# Step A: Pehle app.py ke shared session state se validation check karein
 if 'nubra_session' in st.session_state and st.session_state['nubra_session'] is not None:
-    nubra = st.session_state['nubra_session']
-    from nubra_python_sdk.marketdata.market_data import MarketData
-    md = MarketData(nubra)
-else:
-    st.warning("⚠️ कृपया पहले मुख्य पेज (app) पर जाकर लॉगिन पूरा करें, उसके बाद इस चार्ट पेज को खोलें!")
-    st.info("💡 साइडबार में सबसे ऊपर वाले 'app' बटन पर क्लिक करके पहले ऑप्शन चेन लोड होने दें।")
-    st.stop()
+    try:
+        nubra = st.session_state['nubra_session']
+        md = MarketData(nubra)
+    except Exception:
+        nubra = None
 
+# Step B: SAFE BACKUP FALLBACK (Agar shared session drop ho jaye toh .env se automatic link karein)
+if nubra is None or md is None:
+    try:
+        # Aapke root folder ki .env file se automatic session recovery trigger karein
+        nubra = InitNubraSdk(NubraEnv.PROD, env_creds=True)
+        st.session_state['nubra_session'] = nubra
+        md = MarketData(nubra)
+    except Exception as recovery_err:
+        st.warning("⚠️ कृपया पहले मुख्य पेज (app) पर जाकर लॉगिन पूरा करें, उसके बाद इस चार्ट पेज को खोलें!")
+        st.info("💡 साइडबार में सबसे ऊपर वाले 'app' बटन पर क्लिक करके पहले ऑप्शन चेन लोड होने दें।")
+        st.stop()
+
+# ==============================================================================
+# 📊 इसके नीचे आपका पुराना सारा चार्ट का कोड (Plotly, Levels, md.option_chain) रहेगा
+# ==============================================================================
 # ==============================================================================
 # 📊 इसके नीचे आपका पुराना सारा चार्ट का कोड (Plotly, Levels, Data Fetching) रहेगा
 # ==============================================================================

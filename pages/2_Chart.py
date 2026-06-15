@@ -7,26 +7,47 @@ from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
 
 # ==============================================================================
-# 🚀 STEP 1: AUTOMATIC INDEPENDENT LOGIN (Zero Session State Needed!)
+# 🚀 STEP 1: FORCE CLOUD SECRETS INDEPENDENT ENGINE (100% FIX)
 # ==============================================================================
 @st.cache_resource
 def login_chart_page():
+    from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
+    from nubra_python_sdk.marketdata.market_data import MarketData
+    
     try:
-        if "PHONE_NO" in st.secrets and "MPIN" in st.secrets:
-            nubra_client = InitNubraSdk(NubraEnv.PROD, phone_no=st.secrets["PHONE_NO"], mpin=st.secrets["MPIN"])
+        # Check explicit keys inside Streamlit Cloud Secrets Engine
+        cloud_phone = st.secrets.get("PHONE_NO")
+        cloud_mpin = st.secrets.get("MPIN")
+        
+        if cloud_phone and cloud_mpin:
+            # Force string conversion to clean spaces or int mismatches
+            phone_str = str(cloud_phone).strip()
+            mpin_str = str(cloud_mpin).strip()
+            
+            nubra_client = InitNubraSdk(
+                NubraEnv.PROD, 
+                phone_no=phone_str, 
+                mpin=mpin_str
+            )
             return MarketData(nubra_client)
-    except Exception:
-        pass
+        else:
+            # Fallback if secrets are missing from context
+            st.error("⚠️ Streamlit Cloud Secrets me PHONE_NO ya MPIN nahi mila!")
+            
+    except Exception as e:
+        # Prints exact handshake error onto screen for quick debug
+        st.error(f"❌ Nubra Authentication Failed: {e}")
+        
     return None
 
 # STEP 2: Client Active Karein
 md = login_chart_page()
 
 if md is None:
-    st.error("❌ Cloud Settings Error: Please check Cloud Secrets!")
+    st.warning("💡 Tip: Agar Secrets save kar diye hain, toh dashboard ko 'Reboot App' karke check karein.")
     st.stop()
 
-# ==============================================================================
+
 
 # ==============================================================================
 # 📊 इसके नीचे आपका पुराना सारा चार्ट का कोड (Plotly, Levels, md.option_chain) रहेगा

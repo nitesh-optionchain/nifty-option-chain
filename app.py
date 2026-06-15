@@ -279,7 +279,7 @@ try:
     df_comb["STRIKE"] = (df_comb["strike_price"]/100).astype(int)
 
 # ==============================================================================
-# 📊 SAFE MAIN DATA PIPELINE (FIXES UNAUTHORIZED ON APP.PY)
+# 📊 SAFE MAIN DATA PIPELINE (FIXES SYNTAX ERROR ON APP.PY)
 # ==============================================================================
 if hist_key not in memory["hist_df"]:
     try:
@@ -289,7 +289,6 @@ if hist_key not in memory["hist_df"]:
                 from nubra_python_sdk.marketdata.market_data import MarketData
                 md = MarketData(nubra_client)
             
-            # 🎯 CORE FIX: Aapka asli data pipeline parameters ke sath
             end_t = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
             start_t = (datetime.utcnow() - timedelta(days=5)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
             

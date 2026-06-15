@@ -294,23 +294,35 @@ except Exception as e:
                     from nubra_python_sdk.marketdata.market_data import MarketData
                     md = MarketData(nubra_client)
                 
-                end_t = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
-                start_t = (datetime.utcnow() - timedelta(days=5)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
-                
-                hist_res = md.historical_data({
-                    "exchange": target_exch,
-                    "type": "INDEX",
-                    "values": [index_choice],
-                    "fields": ["open", "high", "low", "close", "cumulative_volume"],
-                    "startDate": start_t,
-                    "endDate": end_t,
-                    "interval": "5m",
-                    "intraDay": False,
-                    "realTime": False
-                })
-                
-                raw = hist_res.result[0].values[0][index_choice]
-                memory["hist_df"][hist_key] = pd.DataFrame({"time": [pd.to_datetime(p.time) for p in raw]})
+                # 🎯 1. TIMEFRAME FIX: 7 days gap taaki weekends/holidays ka data range miss na ho
+            end_t = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
+            start_t = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+            
+            # 🎯 2. HISTORICAL DATA CALL
+            hist_res = md.historical_data({
+                "exchange": target_exch,
+                "type": "INDEX",
+                "values": [index_choice],
+                "fields": ["open", "high", "low", "close", "cumulative_volume"],
+                "startDate": start_t,
+                "endDate": end_t,
+                "interval": "5m",
+                "intraDay": False,
+                "realTime": False
+            })
+            
+            # 🎯 3. FULL DATA FRAME CONVERSION FIX (SABHI COLUMNS KE SATH)
+            raw = hist_res.result[0].values[0][index_choice]
+            memory["hist_df"][hist_key] = pd.DataFrame([
+                {
+                    "time": pd.to_datetime(p.time),
+                    "open": float(p.open),
+                    "high": float(p.high),
+                    "low": float(p.low),
+                    "close": float(p.close),
+                    "volume": int(p.cumulative_volume)
+                } for p in raw
+            ])
 
         except Exception as main_api_err:
             if "Unauthorized" in str(main_api_err):

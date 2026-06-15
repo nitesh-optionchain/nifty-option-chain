@@ -2,10 +2,12 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
-import os  # 🔥 CRITICAL FIX: OS module ko sabse upar ensure karein
+import os
+# 🔥 CRITICAL FIX: datetime aur timedelta dono ko yahan ensure karein
+from datetime import datetime, timedelta  
 
 # 📂 HARD-DRIVE STORAGE SYSTEM PATH FOR CLOUD
-STORAGE_FILE = "tracked_stocks.txt"  # 🔥 CRITICAL FIX: Storage file variable strictly top par rahega
+STORAGE_FILE = "tracked_stocks.txt"
 
 # ==============================================================================
 # 🚀 STEP 1: OS ENVIRONMENT INJECTION ENGINE (Force Cloud Login)
@@ -39,6 +41,8 @@ md = login_chart_page()
 if md is None:
     st.warning("💡 Tip: Secrets check karke, ek baar console se 'Reboot App' karein.")
     st.stop()
+
+# ==============================================================================
 
 # ==============================================================================
 # 📂 STEP 3: PERSISTED STOCKS FUNCTION (Line 50-65 safe block)

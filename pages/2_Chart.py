@@ -152,17 +152,6 @@ with st.sidebar.expander("Draw Manual Lines"):
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
 
-if "nubra_session" not in st.session_state:
-    with st.spinner("Connecting to Live Market Server..."):
-        try:
-            st.session_state.nubra_session = InitNubraSdk(NubraEnv.PROD, env_creds=True)
-            st.success("✅ Secure Connection Established!")
-        except Exception as login_err:
-            st.error(f"Authentication Failed: {login_err}")
-            st.stop()
-
-nubra_client = st.session_state.nubra_session
-market_data = MarketData(nubra_client)
 
 # ==============================================================================
 # 🧠 4. MATHEMATICAL INDICATORS COMPUTATION ENGINE (FLEXIBLE WRAPPER)

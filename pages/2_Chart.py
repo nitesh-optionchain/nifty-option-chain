@@ -245,17 +245,23 @@ def calculate_indicators(df, mult_value, period_value, rsi_pd_value):
 
     return df
 
-# 🚀 5. DATA PIPELINE FETCHING
+# 🚀 5. DATA PIPELINE FETCHING (HYBRID TOKEN AUTO-BYPASS MODE)
 with st.spinner(f"Requesting chart dataset for {target_symbol}..."):
     end_dt = datetime.utcnow()
     lookback_days = 60 if interval == "1d" else 7
-    start_dt = end_dt - timedelta(days=lookback_days) 
+    start_dt = end_dt - timedelta(days=lookback_days)
     
     api_type = "INDEX" if target_symbol in ["NIFTY", "BANKNIFTY", "SENSEX"] else "STOCK"
     exchange_type = "BSE" if target_symbol == "SENSEX" else "NSE"
     
     try:
-        response = market_data.historical_data({
+        # 🎯 CRITICAL SYNC: Agar core terminal state me active user token hai, toh use force-inject karein
+        if 'nubra_session' in st.session_state and st.session_state['nubra_session'] is not None:
+            from nubra_python_sdk.marketdata.market_data import MarketData
+            md = MarketData(st.session_state['nubra_session'])
+        
+        # 🔥 MASTER BYPASS CALL: market_data ki jagah ab validated 'md' object se call jayega
+        response = md.historical_data({
             "exchange": exchange_type,
             "type": api_type,
             "values": [target_symbol],
@@ -266,8 +272,16 @@ with st.spinner(f"Requesting chart dataset for {target_symbol}..."):
             "intraDay": False,
             "realTime": False
         })
+        
     except Exception as e:
-        st.error(f"API Error: {e}")
+        # Check if authorization failed midway, guide user to flush cache nicely
+        if "Unauthorized" in str(e):
+            st.info("🔄 Live token refresh query active... Change asset or refresh once.")
+            st.cache_resource.clear()
+            if 'nubra_session' in st.session_state:
+                st.session_state['nubra_session'] = None
+        else:
+            st.error(f"API Error: {e}")
         st.stop()
 
 # 📊 6. PARSING ENGINE

@@ -273,66 +273,21 @@ try:
     </div>
     """, unsafe_allow_html=True)
 
-    # --- Line 276-279 tak aapka purana combination code ---
     df_ce = pd.DataFrame([vars(x) for x in chain.ce])
     df_pe = pd.DataFrame([vars(x) for x in chain.pe])
-    df_comb = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE", "_PE")).fillna(0)
+    df_comb = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE","_PE")).fillna(0)
     df_comb["STRIKE"] = (df_comb["strike_price"]/100).astype(int)
 
-# 🎯 FIX HERE: Agar iske upar 'try:' shuru hua tha, toh pehle use band karein:
-except Exception as e:
-    st.error(f"Error in data combining: {e}")
-
-# ==============================================================================
-# 📊 SAFE MAIN DATA PIPELINE (FIXES THE SYNTAX ERROR PERMANENTLY)
-# ==============================================================================
+    # Historical Database Pipeline Sync (Pre-market calculation base maps)
+    hist_key = f"{index_choice}_5m"
     if hist_key not in memory["hist_df"]:
         try:
-            with st.spinner("⏳ Fetching live option chain matrix..."):
-                if 'nubra_session' in st.session_state and st.session_state['nubra_session'] is not None:
-                    nubra_client = st.session_state['nubra_session']
-                    from nubra_python_sdk.marketdata.market_data import MarketData
-                    md = MarketData(nubra_client)
-                
-                # 🎯 1. TIMEFRAME FIX: 7 days gap taaki weekends/holidays ka data range miss na ho
             end_t = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
-            start_t = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
-            
-            # 🎯 2. HISTORICAL DATA CALL
-            hist_res = md.historical_data({
-                "exchange": target_exch,
-                "type": "INDEX",
-                "values": [index_choice],
-                "fields": ["open", "high", "low", "close", "cumulative_volume"],
-                "startDate": start_t,
-                "endDate": end_t,
-                "interval": "5m",
-                "intraDay": False,
-                "realTime": False
-            })
-            
-            # 🎯 3. FULL DATA FRAME CONVERSION FIX (SABHI COLUMNS KE SATH)
+            start_t = (datetime.utcnow() - timedelta(days=5)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+            hist_res = md.historical_data({"exchange": target_exch, "type": "INDEX", "values": [index_choice], "fields": ["open", "high", "low", "close", "cumulative_volume"], "startDate": start_t, "endDate": end_t, "interval": "5m", "intraDay": False, "realTime": False})
             raw = hist_res.result[0].values[0][index_choice]
-            memory["hist_df"][hist_key] = pd.DataFrame([
-                {
-                    "time": pd.to_datetime(p.time),
-                    "open": float(p.open),
-                    "high": float(p.high),
-                    "low": float(p.low),
-                    "close": float(p.close),
-                    "volume": int(p.cumulative_volume)
-                } for p in raw
-            ])
-
-        except Exception as main_api_err:
-            if "Unauthorized" in str(main_api_err):
-                st.info("🔄 Dynamic Token Refresh Active... Please wait or refresh the page once.")
-                st.cache_resource.clear()
-                if 'nubra_session' in st.session_state:
-                    st.session_state['nubra_session'] = None
-                st.rerun()
-            else:
-                st.error(f"Live Stream Error: {main_api_err}")
+            memory["hist_df"][hist_key] = pd.DataFrame({"time": [pd.to_datetime(p.timestamp, unit="ns").tz_localize("UTC").tz_convert("Asia/Kolkata") for p in raw.close], "open": [p.value/100 for p in raw.open], "high": [p.value/100 for p in raw.high], "low": [p.value/100 for p in raw.low], "close": [p.value/100 for p in raw.close], "vol": [p.value for p in raw.cumulative_volume]})
+        except: pass
 
     # PCR Calculation
     pcr = df_pe["open_interest"].sum() / df_ce["open_interest"].sum()

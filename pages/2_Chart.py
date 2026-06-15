@@ -2,31 +2,27 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
-# Native Official SDK Modules
-from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
-from nubra_python_sdk.marketdata.market_data import MarketData
+import os  # 🔥 CRITICAL FIX: OS module ko sabse upar ensure karein
+
+# 📂 HARD-DRIVE STORAGE SYSTEM PATH FOR CLOUD
+STORAGE_FILE = "tracked_stocks.txt"  # 🔥 CRITICAL FIX: Storage file variable strictly top par rahega
 
 # ==============================================================================
-# 🚀 STEP 1: OS ENVIRONMENT INJECTION ENGINE (100% FIXED PARAMETER ERROR)
+# 🚀 STEP 1: OS ENVIRONMENT INJECTION ENGINE (Force Cloud Login)
 # ==============================================================================
 @st.cache_resource
 def login_chart_page():
-    import os
-    import streamlit as st
     from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
     from nubra_python_sdk.marketdata.market_data import MarketData
     
     try:
-        # 1. Fetch from Streamlit Cloud Secrets Console
         cloud_phone = st.secrets.get("PHONE_NO")
         cloud_mpin = st.secrets.get("MPIN")
         
         if cloud_phone and cloud_mpin:
-            # 2. 🔥 FORCE INJECT: Direct Server Ke System Environment Me Data Daalna
             os.environ["PHONE_NO"] = str(cloud_phone).strip()
             os.environ["MPIN"] = str(cloud_mpin).strip()
             
-            # 3. SDK Call: Ab parameters bypass ho gaye, pure environment copy reads chalegi!
             nubra_client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
             return MarketData(nubra_client)
         else:
@@ -41,9 +37,29 @@ def login_chart_page():
 md = login_chart_page()
 
 if md is None:
-    st.warning("💡 Tip: Agar Secrets save hain, toh ek baar push karke console se 'Reboot App' karein.")
+    st.warning("💡 Tip: Secrets check karke, ek baar console se 'Reboot App' karein.")
     st.stop()
 
+# ==============================================================================
+# 📂 STEP 3: PERSISTED STOCKS FUNCTION (Line 50-65 safe block)
+# ==============================================================================
+def load_persisted_stocks():
+    base_list = ["NIFTY", "BANKNIFTY", "SENSEX"]
+    try:
+        if os.path.exists(STORAGE_FILE):  # Ab yahan OS aur Storage File dono milenge!
+            with open(STORAGE_FILE, "r") as f:
+                persisted = [line.strip() for line in f.readlines() if line.strip()]
+                for stock in persisted:
+                    if stock not in base_list:
+                        base_list.append(stock)
+    except Exception:
+        pass
+    return base_list
+
+all_available_assets = load_persisted_stocks()
+
+# ==============================================================================
+# 📊 Iske neeche aapka purana saara chart ka asli code chalega...
 
 # ==============================================================================
 # 📊 इसके नीचे आपका पुराना सारा चार्ट का कोड (Plotly, Levels, md.option_chain) रहेगा

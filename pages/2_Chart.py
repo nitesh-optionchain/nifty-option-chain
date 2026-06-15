@@ -7,44 +7,26 @@ from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
 
 # ==============================================================================
-# 🔐 NUBRA LOGIN SESSION CHECK & CLOUD SECRETS SYNC ENGINE
+# 🚀 STEP 1: AUTOMATIC INDEPENDENT LOGIN (Zero Session State Needed!)
 # ==============================================================================
-nubra = None
-md = None
-
-# Step 1: Pehle app.py ke shared session state se check karein
-if 'nubra_session' in st.session_state and st.session_state['nubra_session'] is not None:
+@st.cache_resource
+def login_chart_page():
     try:
-        nubra = st.session_state['nubra_session']
-        md = MarketData(nubra)
-    except Exception:
-        nubra = None
-
-# Step 2: CLOUD SECRETS DIRECT INJECTION (Fix for Cloud Deployment)
-if nubra is None or md is None:
-    try:
-        # Agar Streamlit Cloud ke secrets active hain, toh wahan se direct credentials pass karein
         if "PHONE_NO" in st.secrets and "MPIN" in st.secrets:
-            # Direct text injection bypass mapping
-            nubra = InitNubraSdk(
-                NubraEnv.PROD, 
-                phone_no=st.secrets["PHONE_NO"], 
-                mpin=st.secrets["MPIN"]
-            )
-            st.session_state['nubra_session'] = nubra
-            md = MarketData(nubra)
-    except Exception as cloud_err:
-        nubra = None
-
-# Step 3: Local PC .env Fallback Backup
-if nubra is None or md is None:
-    try:
-        nubra = InitNubraSdk(NubraEnv.PROD, env_creds=True)
-        st.session_state['nubra_session'] = nubra
-        md = MarketData(nubra)
+            nubra_client = InitNubraSdk(NubraEnv.PROD, phone_no=st.secrets["PHONE_NO"], mpin=st.secrets["MPIN"])
+            return MarketData(nubra_client)
     except Exception:
-        st.warning("⚠️ कृपया पहले मुख्य पेज (app) पर जाकर लॉगिन पूरा करें!")
-        st.stop()
+        pass
+    return None
+
+# STEP 2: Client Active Karein
+md = login_chart_page()
+
+if md is None:
+    st.error("❌ Cloud Settings Error: Please check Cloud Secrets!")
+    st.stop()
+
+# ==============================================================================
 
 # ==============================================================================
 # 📊 इसके नीचे आपका पुराना सारा चार्ट का कोड (Plotly, Levels, md.option_chain) रहेगा

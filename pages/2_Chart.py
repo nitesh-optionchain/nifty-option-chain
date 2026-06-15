@@ -10,37 +10,25 @@ from datetime import datetime, timedelta
 STORAGE_FILE = "tracked_stocks.txt"
 
 # ==============================================================================
-# 🚀 STEP 1: AUTONOMOUS CORE LOGIN ENGINE (100% INDEPENDENT BYPASS)
+# 🚀 STEP 1: DIRECT CORE SESSION LINKER (NO MORE DOUBLE LOGIN LAFDA)
 # ==============================================================================
-@st.cache_resource(ttl=28800) # 🔥 8 Hours Token Sticky Cache
 def get_authorized_market_client():
-    import os
-    import streamlit as st
-    from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
     from nubra_python_sdk.marketdata.market_data import MarketData
+    import streamlit as st
     
-    try:
-        # Direct backup injection from Streamlit Cloud Console Secrets
-        cloud_phone = st.secrets.get("PHONE_NO")
-        cloud_mpin = st.secrets.get("MPIN")
-        
-        if cloud_phone and cloud_mpin:
-            os.environ["PHONE_NO"] = str(cloud_phone).strip()
-            os.environ["MPIN"] = str(cloud_mpin).strip()
-            
-            # Direct Handshake token bypass
-            core_client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
-            if core_client is not None:
-                return MarketData(core_client)
-    except Exception:
-        pass
+    # Strictly main page ke session token ko direct use karein bina kisi dynamic override ke
+    if 'nubra_session' in st.session_state and st.session_state['nubra_session'] is not None:
+        try:
+            return MarketData(st.session_state['nubra_session'])
+        except Exception:
+            pass
     return None
 
-# STEP 2: Main data engine active karein
+# STEP 2: Client Active Karein
 md = get_authorized_market_client()
 
 if md is None:
-    st.error("❌ Cloud Validation Refused: Please check your Secrets Console Entry!")
+    st.error("❌ Core Session Missing: Please open the main page first, complete login, then switch here!")
     st.stop()
 # ==============================================================================
 
@@ -220,7 +208,7 @@ def calculate_indicators(df, mult_value, period_value, rsi_pd_value):
 
     return df
 
-# 🚀 5. DATA PIPELINE FETCHING (DIRECT HIGH-SPEED ROUTE)
+# 🚀 5. DATA PIPELINE FETCHING
 with st.spinner(f"Requesting chart dataset for {target_symbol}..."):
     end_dt = datetime.utcnow()
     lookback_days = 60 if interval == "1d" else 7
@@ -230,7 +218,7 @@ with st.spinner(f"Requesting chart dataset for {target_symbol}..."):
     exchange_type = "BSE" if target_symbol == "SENSEX" else "NSE"
     
     try:
-        # 🔥 DIRECT ACTION: Kisi session state ki zaroorat nahi, seedha global 'md' hit karega
+        # 🔥 Direct call from validated md instance
         response = md.historical_data({
             "exchange": exchange_type,
             "type": api_type,
@@ -244,7 +232,7 @@ with st.spinner(f"Requesting chart dataset for {target_symbol}..."):
         })
         
     except Exception as e:
-        st.error(f"⚠️ Broker API Data Refused: {e}")
+        st.error(f"❌ API Error: {e}")
         st.stop()
 
 # 📊 6. PARSING ENGINE

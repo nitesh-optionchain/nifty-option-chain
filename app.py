@@ -278,16 +278,45 @@ try:
     df_comb = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE","_PE")).fillna(0)
     df_comb["STRIKE"] = (df_comb["strike_price"]/100).astype(int)
 
-    # Historical Database Pipeline Sync (Pre-market calculation base maps)
-    hist_key = f"{index_choice}_5m"
-    if hist_key not in memory["hist_df"]:
-        try:
+# ==============================================================================
+# 📊 SAFE MAIN DATA PIPELINE (FIXES UNAUTHORIZED ON APP.PY)
+# ==============================================================================
+if hist_key not in memory["hist_df"]:
+    try:
+        with st.spinner("⏳ Fetching live option chain matrix..."):
+            if 'nubra_session' in st.session_state and st.session_state['nubra_session'] is not None:
+                nubra_client = st.session_state['nubra_session']
+                from nubra_python_sdk.marketdata.market_data import MarketData
+                md = MarketData(nubra_client)
+            
+            # 🎯 CORE FIX: Aapka asli data pipeline parameters ke sath
             end_t = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
             start_t = (datetime.utcnow() - timedelta(days=5)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
-            hist_res = md.historical_data({"exchange": target_exch, "type": "INDEX", "values": [index_choice], "fields": ["open", "high", "low", "close", "cumulative_volume"], "startDate": start_t, "endDate": end_t, "interval": "5m", "intraDay": False, "realTime": False})
+            
+            hist_res = md.historical_data({
+                "exchange": target_exch,
+                "type": "INDEX",
+                "values": [index_choice],
+                "fields": ["open", "high", "low", "close", "cumulative_volume"],
+                "startDate": start_t,
+                "endDate": end_t,
+                "interval": "5m",
+                "intraDay": False,
+                "realTime": False
+            })
+            
             raw = hist_res.result[0].values[0][index_choice]
-            memory["hist_df"][hist_key] = pd.DataFrame({"time": [pd.to_datetime(p.timestamp, unit="ns").tz_localize("UTC").tz_convert("Asia/Kolkata") for p in raw.close], "open": [p.value/100 for p in raw.open], "high": [p.value/100 for p in raw.high], "low": [p.value/100 for p in raw.low], "close": [p.value/100 for p in raw.close], "vol": [p.value for p in raw.cumulative_volume]})
-        except: pass
+            memory["hist_df"][hist_key] = pd.DataFrame({"time": [pd.to_datetime(p.time) for p in raw]})
+
+    except Exception as main_api_err:
+        if "Unauthorized" in str(main_api_err):
+            st.info("🔄 Dynamic Token Refresh Active... Please wait or refresh the page once.")
+            st.cache_resource.clear()
+            if 'nubra_session' in st.session_state:
+                st.session_state['nubra_session'] = None
+            st.rerun()
+        else:
+            st.error(f"Live Stream Error: {main_api_err}")
 
     # PCR Calculation
     pcr = df_pe["open_interest"].sum() / df_ce["open_interest"].sum()

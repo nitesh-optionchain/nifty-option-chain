@@ -10,38 +10,52 @@ from datetime import datetime, timedelta
 STORAGE_FILE = "tracked_stocks.txt"
 
 # ==============================================================================
-# 🚀 STEP 1: OS ENVIRONMENT INJECTION ENGINE (Force Cloud Login)
+# 🚀 STEP 1: HYBRID AUTHORIZATION TUNNEL ENGINE (MASTER CACHE INSTANCE)
 # ==============================================================================
-@st.cache_resource
-def login_chart_page():
+@st.cache_resource(ttl=28800) # 🔥 Master Fix: 8 Hours Token Sticky Cache (9:15 AM to 3:30 PM Safe Zone)
+def _create_cached_market_client(phone, mpin):
+    import os
     from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
     from nubra_python_sdk.marketdata.market_data import MarketData
-    
     try:
-        cloud_phone = st.secrets.get("PHONE_NO")
-        cloud_mpin = st.secrets.get("MPIN")
-        
-        if cloud_phone and cloud_mpin:
-            os.environ["PHONE_NO"] = str(cloud_phone).strip()
-            os.environ["MPIN"] = str(cloud_mpin).strip()
+        os.environ["PHONE_NO"] = str(phone).strip()
+        os.environ["MPIN"] = str(mpin).strip()
+        client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
+        return MarketData(client)
+    except Exception:
+        return None
+
+def get_authorized_market_client():
+    from nubra_python_sdk.marketdata.market_data import MarketData
+    
+    # Block A: Pehle check karein agar main app.py ka live container token accessible hai
+    if 'nubra_session' in st.session_state and st.session_state['nubra_session'] is not None:
+        try:
+            return MarketData(st.session_state['nubra_session'])
+        except Exception:
+            pass
+
+    # Block B: Cloud Backchannel Sync Engine (Using the sticky cache function)
+    cloud_phone = st.secrets.get("PHONE_NO")
+    cloud_mpin = st.secrets.get("MPIN")
+    
+    if cloud_phone and cloud_mpin:
+        cached_md = _create_cached_market_client(cloud_phone, cloud_mpin)
+        if cached_md is not None:
+            return cached_md
             
-            nubra_client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
-            return MarketData(nubra_client)
-        else:
-            st.error("⚠️ Streamlit Cloud Secrets panel me PHONE_NO ya MPIN nahi mila!")
-            
-    except Exception as e:
-        st.error(f"❌ OS Handshake Failed: {e}")
-        
     return None
 
-# STEP 2: Client Active Karein
-md = login_chart_page()
+# STEP 2: Main data engine active karein
+md = get_authorized_market_client()
 
 if md is None:
-    st.warning("💡 Tip: Secrets check karke, ek baar console se 'Reboot App' karein.")
+    st.error("❌ Authorization Framework Refused. Please login on 'app' main page first!")
     st.stop()
+# ==============================================================================
 
+# ==============================================================================
+# 📊 Iske neeche aapka purana saara chart ka code (md.option_chain) chalega
 # ==============================================================================
 
 # ==============================================================================

@@ -10,4 +10,4 @@ pytz
 aiohttp
 msgspec
 py_greek_pricing
-requests
+

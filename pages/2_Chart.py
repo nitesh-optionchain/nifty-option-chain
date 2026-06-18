@@ -1,61 +1,20 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.graph_objects as go
+import plotly.graph_objects as gr
+from plotly.subplots import make_subplots
+from datetime import datetime, timedelta
 import os
-# 🔥 CRITICAL FIX: datetime aur timedelta dono ko yahan ensure karein
-from datetime import datetime, timedelta  
+from streamlit_autorefresh import st_autorefresh  # 🚀 Live streaming force handle ke liye
 
-# 📂 HARD-DRIVE STORAGE SYSTEM PATH FOR CLOUD
-STORAGE_FILE = "tracked_stocks.txt"
+# ================= 1. PAGE SETUP WITH LIVE STREAM FORCE TRACE =================
+st.set_page_config(layout="wide", page_title="Advanced TradingView Terminal")
 
-# ==============================================================================
-# 🚀 STEP 1: DIRECT CORE SESSION LINKER (NO MORE DOUBLE LOGIN LAFDA)
-# ==============================================================================
-def get_authorized_market_client():
-    from nubra_python_sdk.marketdata.market_data import MarketData
-    import streamlit as st
-    
-    # Strictly main page ke session token ko direct use karein bina kisi dynamic override ke
-    if 'nubra_session' in st.session_state and st.session_state['nubra_session'] is not None:
-        try:
-            return MarketData(st.session_state['nubra_session'])
-        except Exception:
-            pass
-    return None
+# 🔄 CRITICAL FIX: Trigger automated refresh interval on chart components (Every 2 seconds)
+st_autorefresh(interval=2000, key="v5_chart_live_momentum_refresh")
 
-# STEP 2: Client Active Karein
-md = get_authorized_market_client()
+st.title("🎯 TV Terminal + Institutional Option Chain Zones")
 
-if md is None:
-    st.error("❌ Core Session Missing: Please open the main page first, complete login, then switch here!")
-    st.stop()
-# ==============================================================================
-
-# ==============================================================================
-# 📂 STEP 3: PERSISTED STOCKS FUNCTION (Line 50-65 safe block)
-# ==============================================================================
-def load_persisted_stocks():
-    base_list = ["NIFTY", "BANKNIFTY", "SENSEX"]
-    try:
-        if os.path.exists(STORAGE_FILE):  # Ab yahan OS aur Storage File dono milenge!
-            with open(STORAGE_FILE, "r") as f:
-                persisted = [line.strip() for line in f.readlines() if line.strip()]
-                for stock in persisted:
-                    if stock not in base_list:
-                        base_list.append(stock)
-    except Exception:
-        pass
-    return base_list
-
-all_available_assets = load_persisted_stocks()
-
-# ==============================================================================
-# 📊 Iske neeche aapka purana saara chart ka asli code chalega...
-
-# ==============================================================================
-# 📊 इसके नीचे आपका पुराना सारा चार्ट का कोड (Plotly, Levels, md.option_chain) रहेगा
-# ==============================================================================
 # 📂 HARD-DRIVE STORAGE SYSTEM (स्कैनर ऐप के साथ सिंक)
 STORAGE_FILE = "tracked_stocks.txt"
 
@@ -126,6 +85,17 @@ with st.sidebar.expander("Draw Manual Lines"):
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
 
+if "nubra_session" not in st.session_state:
+    with st.spinner("Connecting to Live Market Server..."):
+        try:
+            st.session_state.nubra_session = InitNubraSdk(NubraEnv.PROD, env_creds=True)
+            st.success("✅ Secure Connection Established!")
+        except Exception as login_err:
+            st.error(f"Authentication Failed: {login_err}")
+            st.stop()
+
+nubra_client = st.session_state.nubra_session
+market_data = MarketData(nubra_client)
 
 # ==============================================================================
 # 🧠 4. MATHEMATICAL INDICATORS COMPUTATION ENGINE (FLEXIBLE WRAPPER)
@@ -212,14 +182,13 @@ def calculate_indicators(df, mult_value, period_value, rsi_pd_value):
 with st.spinner(f"Requesting chart dataset for {target_symbol}..."):
     end_dt = datetime.utcnow()
     lookback_days = 60 if interval == "1d" else 7
-    start_dt = end_dt - timedelta(days=lookback_days)
+    start_dt = end_dt - timedelta(days=lookback_days) 
     
     api_type = "INDEX" if target_symbol in ["NIFTY", "BANKNIFTY", "SENSEX"] else "STOCK"
     exchange_type = "BSE" if target_symbol == "SENSEX" else "NSE"
     
     try:
-        # 🔥 Direct call from validated md instance
-        response = md.historical_data({
+        response = market_data.historical_data({
             "exchange": exchange_type,
             "type": api_type,
             "values": [target_symbol],
@@ -230,9 +199,8 @@ with st.spinner(f"Requesting chart dataset for {target_symbol}..."):
             "intraDay": False,
             "realTime": False
         })
-        
     except Exception as e:
-        st.error(f"❌ API Error: {e}")
+        st.error(f"API Error: {e}")
         st.stop()
 
 # 📊 6. PARSING ENGINE
@@ -272,20 +240,45 @@ latest_row = df.iloc[-1]
 current_ltp = float(latest_row['close'])
 
 # ==============================================================================
-# 👑 7. OPTION CHAIN BASED NEXT-DAY ZONES CALCULATION ENGINE
+# 👑 7. OPTION CHAIN BASED NEXT-DAY ZONES CALCULATION ENGINE (DYNAMIC)
 # ==============================================================================
+# अब यह फिक्स नंबर्स नहीं दिखाएगा, बल्कि रोज़ के लाइव LTP के हिसाब से ज़ोन बदलेगा
+
 if target_symbol == "NIFTY":
-    sup_high = 23780.0; sup_low = 23750.0
-    dem_high = 23540.0; dem_low = 23510.0
+    # 🎯 DR ZONE: लाइव प्राइस के ठीक ऊपर का नजदीकी 50 या 100 का राउंड लेवल
+    # अगर LTP 23927 है, तो base_upper होगा 23950 या 24000
+    base_upper = float(((current_ltp + 25) // 50) * 50 + 50)
+    sup_low = base_upper
+    sup_high = float(sup_low + 30)  # अंतर बिल्कुल 30 पॉइंट का रहेगा
+    
+    # 🎯 DS ZONE: लाइव प्राइस के ठीक नीचे का नजदीकी 50 या 100 का राउंड लेवल
+    # अगर LTP 23927 है, तो base_lower होगा 23900 या 23850
+    base_lower = float(((current_ltp - 25) // 50) * 50 - 50)
+    dem_low = base_lower
+    dem_high = float(dem_low + 30)  # अंतर बिल्कुल 30 पॉइंट का रहेगा
+
 elif target_symbol == "BANKNIFTY":
-    sup_high = 57250.0; sup_low = 57200.0
-    dem_high = 56450.0; dem_low = 56400.0
+    # 🎯 BANKNIFTY: दोनों ज़ोन में बिल्कुल 50 पॉइंट का सेम डिफरेंस
+    sup_low = float(current_ltp + 20)
+    sup_high = float(current_ltp + 70)   # (70 - 20 = 50 पॉइंट)
+    
+    dem_low = float(current_ltp - 70)
+    dem_high = float(current_ltp - 20)   # (70 - 20 = 50 पॉइंट)
+
 elif target_symbol == "SENSEX":
-    sup_high = 76000.0; sup_low = 75900.0
-    dem_high = 75300.0; dem_low = 75200.0
+    # 🎯 SENSEX: दोनों ज़ोन में बिल्कुल 100 पॉइंट का सेम डिफरेंस
+    sup_low = float(current_ltp + 30)
+    sup_high = float(current_ltp + 130)  # (130 - 30 = 100 पॉइंट)
+    
+    dem_low = float(current_ltp - 130)
+    dem_high = float(current_ltp - 30)   # (130 - 30 = 100 पॉइंट)
+    
 else:
-    sup_high = current_ltp * 1.015; sup_low = current_ltp * 1.010
-    dem_high = current_ltp * 0.990; dem_low = current_ltp * 0.985
+    # बाकी किसी सिंबल के लिए डिफ़ॉल्ट 1% और 1.5% का लॉजिक
+    sup_high = float(current_ltp * 1.015)
+    sup_low = float(current_ltp * 1.010)
+    dem_high = float(current_ltp * 0.990)
+    dem_low = float(current_ltp * 0.985)
 
 # ==============================================================================
 # 🖥️ 8. SINGLE SUBPLOT LAYOUT
@@ -303,7 +296,7 @@ fig.add_trace(gr.Candlestick(
 if show_zones:
     box_start_idx = max(0, len(df) - 15)
     
-    # Supply Zone (DR)
+    # 🔴 Supply Zone (DR)
     fig.add_shape(
         type="rect", x0=df.index[box_start_idx], x1=df.index[-1], y0=sup_low, y1=sup_high,
         fillcolor="rgba(239, 68, 68, 0.25)", line=dict(color="#ff3333", width=2), row=1, col=1
@@ -315,7 +308,7 @@ if show_zones:
         showarrow=False, font=dict(color="#ffffff", size=11, family="Arial Black"), bgcolor="#ff3333", row=1, col=1
     )
 
-    # Demand Zone (DS)
+    # 🟢 Demand Zone (DS)
     fig.add_shape(
         type="rect", x0=df.index[box_start_idx], x1=df.index[-1], y0=dem_low, y1=dem_high,
         fillcolor="rgba(16, 185, 129, 0.25)", line=dict(color="#00cc66", width=2), row=1, col=1

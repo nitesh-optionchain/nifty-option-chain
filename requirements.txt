@@ -1,7 +1,6 @@
 streamlit
 pandas
 plotly
-numpy
 streamlit-autorefresh
 python-dotenv
 pydantic

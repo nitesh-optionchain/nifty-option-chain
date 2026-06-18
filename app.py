@@ -155,44 +155,22 @@ st_autorefresh(interval=5000, key="v5_ultimate_production_final")
 
 @st.cache_resource(show_spinner=False)
 def get_engine():
-    # 🎯 STEP 1: LINK WITH CHART PAGE (Bypass Socket Connection)
-    if 'nubra_session' in st.session_state and st.session_state['nubra_session'] is not None:
-        from nubra_python_sdk.marketdata.market_data import MarketData
-        return MarketData(st.session_state['nubra_session'])
-        
     try:
         from nubra_python_sdk.marketdata.market_data import MarketData
         from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
         from nubra_python_sdk.ticker import websocketdata
-        
-        # 🛡️ CLOUD BYPASS ENGINE INITIALIZATION
-        # Pehle check karega ki Streamlit Secrets me keys hain ya nahi
-        import os
-        if 'NUBRA_API_KEY' in st.secrets:
-            # Agar cloud par chal raha hai toh credentials manually inject karein
-            os.environ["NUBRA_API_KEY"] = st.secrets["NUBRA_API_KEY"]
-            os.environ["NUBRA_SECRET_KEY"] = st.secrets["NUBRA_SECRET_KEY"]
-            os.environ["NUBRA_USERNAME"] = st.secrets["NUBRA_USERNAME"]
-            os.environ["NUBRA_PASSWORD"] = st.secrets["NUBRA_PASSWORD"]
-
         nubra = InitNubraSdk(NubraEnv.PROD, env_creds=True)
-        
-        # Websocket configuration socket connect
+        def on_msg(msg):
+            name = msg.get('indexname')
+            if name and "ticks" in st.session_state: st.session_state.ticks[name] = msg
+            if msg.get('indexname') == 'INDIAVIX' and "ticks" in st.session_state:
+                st.session_state.ticks['INDIAVIX'] = msg
         socket = websocketdata.NubraDataSocket(client=nubra, on_index_data=on_msg)
         socket.connect()
-        socket.subscribe(["NIFTY", "SENSEX", "BANKNIFTY", "INDIAVIX"], data_type="index")
-        
-        t = threading.Thread(target=socket.keep_running, daemon=True)
-        t.start()
-        time.sleep(1) # Handshake buffer
-        
-        # 🎯 STEP 2: SAVE TO GLOBAL MEMORY
-        st.session_state['nubra_session'] = nubra
+        socket.subscribe(["NIFTY", "SENSEX", "BANKNIFTY", "INDIAVIX"], data_type="index", exchange="NSE")
+        threading.Thread(target=socket.keep_running, daemon=True).start()
         return MarketData(nubra)
-        
-    except Exception as e:
-        st.error(f"Engine connection failed: {e}")
-        return None
+    except: return None
 
 md = get_engine()
 if "ticks" not in st.session_state: st.session_state.ticks = {}

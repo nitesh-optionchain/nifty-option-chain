@@ -2,12 +2,9 @@ streamlit
 pandas
 plotly
 numpy
-pandas_ta
 streamlit-autorefresh
 python-dotenv
 pydantic
 pytz
 aiohttp
 msgspec
-
-

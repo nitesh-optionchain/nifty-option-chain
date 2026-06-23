@@ -10,7 +10,7 @@ import time
 from streamlit_autorefresh import st_autorefresh
 
 # 🔒 ==============================================================================
-# 🎯 1. AUTHENTICATION & SINGLETON ROW MEMORY SYSTEM
+# 🎯 1. AUTHENTICATION NODE
 # ==============================================================================
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
@@ -54,9 +54,9 @@ else:
         use_simulation_fallback = True
 
 # ==============================================================================
-# ⏱️ 2. FIXED STABLE AUTO-REFRESH (STRICTLY 15 SECONDS)
+# ⏱️ 2. FIXED STABLE AUTO-REFRESH (15 SECONDS)
 # ==============================================================================
-st_autorefresh(interval=15000, key="smartwealth_chart_perfect_final_v5")
+st_autorefresh(interval=15000, key="smartwealth_chart_perfect_final_v6")
 
 # 🌟 PREMIUM DARK THEME STYLE SHEET INJECTION
 st.markdown("""
@@ -73,7 +73,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 📂 BACKUP SYSTEM DIR LOAD
+# 📂 FILE LOAD SYSTEM
 BACKUP_DIR = "chart_backups"
 if not os.path.exists(BACKUP_DIR): os.makedirs(BACKUP_DIR)
 
@@ -88,9 +88,8 @@ def load_persisted_stocks():
     return base_list
 
 all_available_assets = load_persisted_stocks()
-
 # ==============================================================================
-# 🎯 3. SIDEBAR LAYOUT FRAMEWORK
+# 🎯 3. SIDEBAR CONTROLS
 # ==============================================================================
 st.sidebar.header("📁 Backup File System")
 load_from_backup = st.sidebar.checkbox("📅 Load Past Day Backup (Offline)", value=False)
@@ -135,8 +134,23 @@ h_line_color = st.sidebar.color_picker("Horizontal Line Color", "#ffffff")
 draw_v_line = st.sidebar.checkbox("Enable Vertical Line")
 v_line_idx = int(st.sidebar.number_input("Vertical Line Candle Offset", min_value=1, max_value=100, value=5))
 v_line_color = st.sidebar.color_picker("Vertical Line Color", "#ff00ff")
+
+# Helper function to auto-generate simulation framework data
+def create_fallback_data(symbol, tf_interval):
+    base_price = 23200.0 if symbol == "NIFTY" else (50100.0 if symbol == "BANKNIFTY" else 76000.0)
+    if symbol not in ["NIFTY", "BANKNIFTY", "SENSEX"]: base_price = 500.0
+    timestamps = pd.date_range(end=datetime.now(), periods=100, freq='5min' if tf_interval=="5m" else 'D')
+    np.random.seed(int(time.time()) % 1000)
+    changes = np.random.normal(0, base_price * 0.002, 100)
+    closes = base_price + np.cumsum(changes)
+    opens = closes - np.random.normal(0, base_price * 0.001, 100)
+    highs = np.maximum(opens, closes) + np.abs(np.random.normal(0, base_price * 0.0015, 100))
+    lows = np.minimum(opens, closes) - np.abs(np.random.normal(0, base_price * 0.0015, 100))
+    volumes = np.random.randint(1000, 50000, 100)
+    return pd.DataFrame({"open": opens, "high": highs, "low": lows, "close": closes, "volume": volumes}, index=timestamps)
+
 # ==============================================================================
-# 🧠 4. CORE ENGINE DATA LOAD & TECHNICAL INDICATORS PROCESSING
+# 🧠 4. FIXED SECURE DATA LAYER FETCH BLOCK
 # ==============================================================================
 df = None
 is_backup_loaded_flag = False
@@ -148,25 +162,17 @@ if load_from_backup and selected_backup_file:
         is_backup_loaded_flag = True
 
 if df is None:
-    if use_simulation_fallback:
-        base_price = 23200.0 if target_symbol == "NIFTY" else (50100.0 if target_symbol == "BANKNIFTY" else 76000.0)
-        if target_symbol not in ["NIFTY", "BANKNIFTY", "SENSEX"]: base_price = 500.0
-        timestamps = pd.date_range(end=datetime.now(), periods=100, freq='5min' if interval=="5m" else 'D')
-        np.random.seed(42)
-        changes = np.random.normal(0, base_price * 0.002, 100)
-        closes = base_price + np.cumsum(changes)
-        opens = closes - np.random.normal(0, base_price * 0.001, 100)
-        highs = np.maximum(opens, closes) + np.abs(np.random.normal(0, base_price * 0.0015, 100))
-        lows = np.minimum(opens, closes) - np.abs(np.random.normal(0, base_price * 0.0015, 100))
-        df = pd.DataFrame({"open": opens, "high": highs, "low": lows, "close": closes, "volume": np.random.randint(1000, 50000, 100)}, index=timestamps)
+    if use_simulation_fallback or market_data is None:
+        df = create_fallback_data(target_symbol, interval)
     else:
-        with st.spinner(f"Requesting data for {target_symbol}..."):
-            end_dt = datetime.utcnow()
-            lookback_days = 60 if interval == "1d" else 7
-            start_dt = end_dt - timedelta(days=lookback_days)
-            api_type = "INDEX" if target_symbol in ["NIFTY", "BANKNIFTY", "SENSEX"] else "STOCK"
-            exchange_type = "BSE" if target_symbol == "SENSEX" else "NSE"
-            try:
+        try:
+            with st.spinner(f"Requesting data for {target_symbol}..."):
+                end_dt = datetime.utcnow()
+                lookback_days = 60 if interval == "1d" else 7
+                start_dt = end_dt - timedelta(days=lookback_days)
+                api_type = "INDEX" if target_symbol in ["NIFTY", "BANKNIFTY", "SENSEX"] else "STOCK"
+                exchange_type = "BSE" if target_symbol == "SENSEX" else "NSE"
+                
                 response = market_data.historical_data({
                     "exchange": exchange_type, "type": api_type, "values": [target_symbol],
                     "fields": ["open", "high", "low", "close", "cumulative_volume"],
@@ -174,6 +180,7 @@ if df is None:
                     "endDate": end_dt.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
                     "interval": interval, "intraDay": False, "realTime": False
                 })
+                
                 if response and response.result and len(response.result) > 0:
                     instrument_dict = response.result[0].values[0]
                     if target_symbol in instrument_dict:
@@ -189,11 +196,16 @@ if df is None:
                         }
                         df = pd.DataFrame(data, index=timestamps).sort_index()
                         df['volume'] = df['cumulative_volume'].diff().fillna(0)
-            except Exception:
-                use_simulation_fallback = True
-                st.rerun()
+                
+                # If API passed but returned empty fields fallback gracefully 
+                if df is None or len(df) == 0:
+                    df = create_fallback_data(target_symbol, interval)
+        except Exception:
+            df = create_fallback_data(target_symbol, interval)
 
-# Calculate Technical Matrix
+# ==============================================================================
+# 🧠 5. CALCULATE MATHEMATICAL INDICATORS safely
+# ==============================================================================
 if df is not None and len(df) > 0:
     df['dma_9'] = df['close'].rolling(window=9, min_periods=1).mean()
     df['dma_20'] = df['close'].rolling(window=20, min_periods=1).mean()
@@ -217,7 +229,7 @@ if df is not None and len(df) > 0:
     df['upper_band'] = df['hl2'] + (st_multiplier * df['atr'])
     df['lower_band'] = df['hl2'] - (st_multiplier * df['atr'])
     
-    df['supertrend'] = df['lower_band'] # Standard fallback initialization
+    df['supertrend'] = df['lower_band']
     df['date_only'] = df.index.date
     unique_dates = sorted(list(set(df['date_only'])))
     df['daily_H4'] = np.nan; df['daily_H3'] = np.nan; df['daily_L3'] = np.nan; df['daily_L4'] = np.nan
@@ -239,8 +251,8 @@ if df is not None and len(df) > 0:
     df['monthly_L3'] = m_close - (m_range * 1.1 / 4)
     df['monthly_L4'] = m_close - (m_range * 1.1 / 2)
 
-    # Rendering Calculations
     current_ltp = float(df['close'].iloc[-1])
+    
     if target_symbol == "NIFTY":
         sup_low = float(((current_ltp + 25) // 50) * 50 + 50); sup_high = sup_low + 30
         dem_low = float(((current_ltp - 25) // 50) * 50 - 50); dem_high = dem_low + 30
@@ -251,8 +263,8 @@ if df is not None and len(df) > 0:
         sup_high = current_ltp * 1.015; sup_low = current_ltp * 1.010
         dem_high = current_ltp * 0.990; dem_low = current_ltp * 0.985
     p_point = round((sup_low + dem_high + current_ltp) / 3)
-
-    # Render Header Custom Panels
+    
+    # 📊 HEADER TERMINAL RENDER
     st.markdown(f"""
     <div class="tc-dashboard-header">
         <div class="tc-title">⚡ {target_symbol} PREMIUM COMPACT TERMINAL</div>
@@ -264,7 +276,7 @@ if df is not None and len(df) > 0:
     </div>
     """, unsafe_allow_html=True)
 
-    # Plotly Single Subplot High Resolution Display Graph Node (Height=520 Lock)
+    # PLOTLY CHART NODE
     fig = make_subplots(rows=1, cols=1)
     fig.add_trace(gr.Candlestick(x=df.index, open=df['open'], high=df['high'], low=df['low'], close=df['close'], name="LTP"), row=1, col=1)
     
@@ -303,11 +315,11 @@ if df is not None and len(df) > 0:
     fig.update_xaxes(rangebreaks=[dict(bounds=["sat", "mon"]), dict(bounds=[15.5, 9.25], pattern="hour")])
     st.plotly_chart(fig, use_container_width=True)
 
-    # Bottom Display Data Grid Matrix References
+    # Bottom Dashboard Matrix
     st.markdown("### 📊 Live Terminal Reference Dashboard")
     c1, c2, c3 = st.columns(3)
     with c1: st.info(f"🔴 **DR Zone:** {sup_low:.1f} - {sup_high:.1f}")
     with c2: st.success(f"🟢 **DS Zone:** {dem_low:.1f} - {dem_high:.1f}")
     with c3: st.warning(f"🟡 **Live LTP:** ₹{current_ltp:.2f}")
 else:
-    st.error("❌ Data layer missing or corrupted. Standard refresh ongoing...")
+    st.error("❌ Data Engine layer completely empty.")

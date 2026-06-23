@@ -6,10 +6,10 @@ import plotly.graph_objects as gr
 from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
 import os
-from streamlit_autorefresh import st_autorefresh
+import time
 
 # 🔒 ==============================================================================
-# 🎯 COMPLETE SAFE AUTH & DIRECT DATA REDIRECT SHIELD
+# 🎯 STABLE AUTHENTICATION NODE WITH CRASH PROTECTION
 # ==============================================================================
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
@@ -52,10 +52,7 @@ else:
         except Exception:
             use_simulation_fallback = True
 
-# ================= 1. AUTOMATIC REFRESH CYCLES (15 SECONDS FOR LOW NETWORK OVERHEAD) =================
-st_autorefresh(interval=15000, key="smartwealth_chart_stable_refresh_v5")
-
-# 🌟 CUSTOM MINIMALISTIC DARK THEME FOR SCREEN PROTECTION
+# 🌟 PREMIUM DARK THEME STYLE SHEET INJECTION
 st.markdown("""
     <style>
         .block-container {
@@ -75,24 +72,9 @@ st.markdown("""
             align-items: center;
             gap: 12px;
         }
-        .tc-title {
-            color: #f3f4f6;
-            font-size: 18px;
-            font-weight: 800;
-            margin: 0;
-        }
-        .tc-metrics-container {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
-        .tc-badge {
-            padding: 5px 12px;
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: 700;
-            display: inline-block;
-        }
+        .tc-title { color: #f3f4f6; font-size: 18px; font-weight: 800; margin: 0; }
+        .tc-metrics-container { display: flex; gap: 10px; flex-wrap: wrap; }
+        .tc-badge { padding: 5px 12px; border-radius: 4px; font-size: 12px; font-weight: 700; display: inline-block; }
         .badge-ce { background-color: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
         .badge-pe { background-color: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3); }
         .badge-pp { background-color: rgba(234, 179, 8, 0.12); color: #fde047; border: 1px solid rgba(234, 179, 8, 0.2); }
@@ -100,7 +82,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# 📂 FILE DATA SYSTEM INITIALIZATION
+# 📂 BACKUP FILE INITIALIZATION
 BACKUP_DIR = "chart_backups"
 if not os.path.exists(BACKUP_DIR):
     os.makedirs(BACKUP_DIR)
@@ -113,14 +95,13 @@ def load_persisted_stocks():
         with open(STORAGE_FILE, "r") as f:
             persisted = [line.strip() for line in f.readlines() if line.strip()]
             for stock in persisted:
-                if stock not in base_list:
-                    base_list.append(stock)
+                if stock not in base_list: base_list.append(stock)
     return base_list
 
 all_available_assets = load_persisted_stocks()
 
 # ==============================================================================
-# 🎯 2. SIDEBAR CONFIGURATIONS
+# 🎯 2. SIDEBAR CONTROLS LAYOUT
 # ==============================================================================
 st.sidebar.header("📁 Backup File System")
 load_from_backup = st.sidebar.checkbox("📅 Load Past Day Backup (Offline)", value=False)
@@ -136,13 +117,7 @@ if load_from_backup:
 st.sidebar.header("⚙️ Assets & Timeframe")
 target_symbol = st.sidebar.selectbox("🔤 Select Asset", all_available_assets, index=0)
 
-timeframe_mapping = {
-    "5 Minutes": "5m",
-    "10 Minutes": "10m",
-    "15 Minutes": "15m",
-    "30 Minutes": "30m",
-    "Daily": "1d"
-}
+timeframe_mapping = {"5 Minutes": "5m", "10 Minutes": "10m", "15 Minutes": "15m", "30 Minutes": "30m", "Daily": "1d"}
 selected_tf_label = st.sidebar.selectbox("⏱️ Select Timeframe", list(timeframe_mapping.keys()), index=2)
 interval = timeframe_mapping[selected_tf_label]
 
@@ -172,11 +147,10 @@ with st.sidebar.expander("Draw Manual Lines"):
     draw_h_line = st.checkbox("Enable Horizontal Line")
     h_line_value = st.number_input("Horizontal Price Value", value=0.0)
     h_line_color = st.color_picker("Horizontal Line Color", "#ffffff")
-    
     draw_v_line = st.checkbox("Enable Vertical Line")
-    v_line_idx = st.number_input("Vertical Line Candle Offset", min_value=1, max_value=100, value=5)
+    v_line_idx = int(st.sidebar.number_input("Vertical Line Candle Offset", min_value=1, max_value=100, value=5))
     v_line_color = st.color_picker("Vertical Line Color", "#ff00ff")
-# pages/2_chart.py (PART 2 - Calculations, Simulation Engine & Plotly View Grid)
+# pages/2_chart.py (PART 2 - Fragment Engine, Calculations & Plotly Layout View)
 
 # ==============================================================================
 # 🧠 4. MATHEMATICAL INDICATORS COMPUTATION ENGINE
@@ -264,34 +238,41 @@ def calculate_indicators(df, mult_value, period_value, rsi_pd_value, interval):
     return df
 
 # ==============================================================================
-# 🚀 5. DATA LOADING ENGINE (WITH AUTO BYPASS SIMULATION ENGINE)
+# 🧠 5. SEAMLESS FALLBACK VECTOR DATA MAKER
 # ==============================================================================
-df = None
-is_backup_loaded_flag = False
+def get_simulation_dataframe(target_symbol, interval):
+    base_price = 23200.0 if target_symbol == "NIFTY" else (50100.0 if target_symbol == "BANKNIFTY" else 76000.0)
+    if target_symbol not in ["NIFTY", "BANKNIFTY", "SENSEX"]: base_price = 500.0
+    timestamps = pd.date_range(end=datetime.now(), periods=100, freq='5min' if interval=="5m" else 'D')
+    np.random.seed(int(time.time()) % 1000) # Dynamic seed to allow variation on refresh
+    changes = np.random.normal(0, base_price * 0.002, 100)
+    closes = base_price + np.cumsum(changes)
+    opens = closes - np.random.normal(0, base_price * 0.001, 100)
+    highs = np.maximum(opens, closes) + np.abs(np.random.normal(0, base_price * 0.0015, 100))
+    lows = np.minimum(opens, closes) - np.abs(np.random.normal(0, base_price * 0.0015, 100))
+    volumes = np.random.randint(1000, 50000, 100)
+    sim_df = pd.DataFrame({"open": opens, "high": highs, "low": lows, "close": closes, "volume": volumes}, index=timestamps)
+    return sim_df
 
-if load_from_backup and selected_backup_file:
-    backup_path = os.path.join(BACKUP_DIR, selected_backup_file)
-    if os.path.exists(backup_path):
-        df = pd.read_csv(backup_path, index_col=0, parse_dates=True)
-        is_backup_loaded_flag = True
-        st.sidebar.success(f"Loaded Offline: {selected_backup_file}")
+# ==============================================================================
+# ⚡ 6. STREAMLIT FRAGMENT CONTAINER (ELIMINATES PAGE DULLNESS/FLICKER)
+# ==============================================================================
+@st.fragment(run_every=15)
+def render_isolated_chart_fragment(target_symbol, interval, use_simulation_fallback):
+    df = None
+    is_backup_loaded_flag = False
 
-if df is None:
-    if use_simulation_fallback:
-        base_price = 23200.0 if target_symbol == "NIFTY" else (50100.0 if target_symbol == "BANKNIFTY" else 76000.0)
-        if target_symbol not in ["NIFTY", "BANKNIFTY", "SENSEX"]: base_price = 500.0
-        timestamps = pd.date_range(end=datetime.now(), periods=100, freq='5min' if interval=="5m" else 'D')
-        np.random.seed(42)
-        changes = np.random.normal(0, base_price * 0.002, 100)
-        closes = base_price + np.cumsum(changes)
-        opens = closes - np.random.normal(0, base_price * 0.001, 100)
-        highs = np.maximum(opens, closes) + np.abs(np.random.normal(0, base_price * 0.0015, 100))
-        lows = np.minimum(opens, closes) - np.abs(np.random.normal(0, base_price * 0.0015, 100))
-        volumes = np.random.randint(1000, 50000, 100)
-        df = pd.DataFrame({"open": opens, "high": highs, "low": lows, "close": closes, "volume": volumes}, index=timestamps)
-        df = calculate_indicators(df, st_multiplier, st_period, rsi_period, interval)
-    else:
-        with st.spinner(f"Requesting live chart dataset for {target_symbol}..."):
+    if load_from_backup and selected_backup_file:
+        backup_path = os.path.join(BACKUP_DIR, selected_backup_file)
+        if os.path.exists(backup_path):
+            df = pd.read_csv(backup_path, index_col=0, parse_dates=True)
+            is_backup_loaded_flag = True
+
+    if df is None:
+        if use_simulation_fallback:
+            df = get_simulation_dataframe(target_symbol, interval)
+            df = calculate_indicators(df, st_multiplier, st_period, rsi_period, interval)
+        else:
             end_dt = datetime.utcnow()
             lookback_days = 60 if interval == "1d" else 7
             start_dt = end_dt - timedelta(days=lookback_days) 
@@ -326,143 +307,106 @@ if df is None:
                         df['volume'] = df['cumulative_volume'].diff().fillna(0)
                         df = calculate_indicators(df, st_multiplier, st_period, rsi_period, interval)
             except Exception:
-                base_price = 23200.0 if target_symbol == "NIFTY" else (50100.0 if target_symbol == "BANKNIFTY" else 76000.0)
-                if target_symbol not in ["NIFTY", "BANKNIFTY", "SENSEX"]: base_price = 500.0
-                timestamps = pd.date_range(end=datetime.now(), periods=100, freq='5min' if interval=="5m" else 'D')
-                np.random.seed(42)
-                changes = np.random.normal(0, base_price * 0.002, 100)
-                closes = base_price + np.cumsum(changes)
-                opens = closes - np.random.normal(0, base_price * 0.001, 100)
-                highs = np.maximum(opens, closes) + np.abs(np.random.normal(0, base_price * 0.0015, 100))
-                lows = np.minimum(opens, closes) - np.abs(np.random.normal(0, base_price * 0.0015, 100))
-                volumes = np.random.randint(1000, 50000, 100)
-                df = pd.DataFrame({"open": opens, "high": highs, "low": lows, "close": closes, "volume": volumes}, index=timestamps)
+                df = get_simulation_dataframe(target_symbol, interval)
                 df = calculate_indicators(df, st_multiplier, st_period, rsi_period, interval)
 
-if df is None or len(df) == 0:
-    st.error(f"❌ '{target_symbol}' ke liye koi data stream nahi mila.")
-    st.stop()
+    if df is None or len(df) == 0:
+        st.error(f"❌ '{target_symbol}' ke liye koi data stream nahi mila.")
+        return
 
-latest_row = df.iloc[-1]
-current_ltp = float(latest_row['close'])
+    latest_row = df.iloc[-1]
+    current_ltp = float(latest_row['close'])
 
-# ==============================================================================
-# 👑 7. ACCURATE RATIO PRECISE ZONES
-# ==============================================================================
-if target_symbol == "NIFTY":
-    base_upper = float(((current_ltp + 25) // 50) * 50 + 50)
-    sup_low = base_upper
-    sup_high = float(sup_low + 30)
-    base_lower = float(((current_ltp - 25) // 50) * 50 - 50)
-    dem_low = base_lower
-    dem_high = float(dem_low + 30)
-elif target_symbol == "BANKNIFTY":
-    base_upper = float(((current_ltp + 50) // 100) * 100 + 100)
-    sup_low = base_upper
-    sup_high = float(base_upper + (current_ltp * 0.003))
-    base_lower = float(((current_ltp - 50) // 100) * 100 - 100)
-    dem_high = base_lower
-    dem_low = float(base_lower - (current_ltp * 0.003))
-elif target_symbol == "SENSEX":
-    base_upper = float(((current_ltp + 50) // 100) * 100 + 100)
-    sup_low = base_upper
-    sup_high = float(base_upper + (current_ltp * 0.0025))
-    base_lower = float(((current_ltp - 50) // 100) * 100 - 100)
-    dem_high = base_lower
-    dem_low = float(base_lower - (current_ltp * 0.0025))
-else:
-    sup_high = float(current_ltp * 1.015)
-    sup_low = float(current_ltp * 1.010)
-    dem_high = float(current_ltp * 0.990)
-    dem_low = float(current_ltp * 0.985)
+    if target_symbol == "NIFTY":
+        base_upper = float(((current_ltp + 25) // 50) * 50 + 50); sup_low = base_upper; sup_high = float(sup_low + 30)
+        base_lower = float(((current_ltp - 25) // 50) * 50 - 50); dem_low = base_lower; dem_high = float(dem_low + 30)
+    elif target_symbol == "BANKNIFTY":
+        base_upper = float(((current_ltp + 50) // 100) * 100 + 100); sup_low = base_upper; sup_high = float(base_upper + (current_ltp * 0.003))
+        base_lower = float(((current_ltp - 50) // 100) * 100 - 100); dem_high = base_lower; dem_low = float(base_lower - (current_ltp * 0.003))
+    elif target_symbol == "SENSEX":
+        base_upper = float(((current_ltp + 50) // 100) * 100 + 100); sup_low = base_upper; sup_high = float(base_upper + (current_ltp * 0.0025))
+        base_lower = float(((current_ltp - 50) // 100) * 100 - 100); dem_high = base_lower; dem_low = float(base_lower - (current_ltp * 0.0025))
+    else:
+        sup_high = float(current_ltp * 1.015); sup_low = float(current_ltp * 1.010)
+        dem_high = float(current_ltp * 0.990); dem_low = float(current_ltp * 0.985)
 
-p_point = round((sup_low + dem_high + current_ltp) / 3)
+    p_point = round((sup_low + dem_high + current_ltp) / 3)
 
-# ==============================================================================
-# 🌟 HTML PANEL RENDERING
-# ==============================================================================
-tf_modes = {"5m": "", "10m": "", "15m": "", "30m": "", "1d": ""}
-tf_modes[interval] = "active"
+    status_title = f"📁 BACKUP: {selected_backup_file}" if is_backup_loaded_flag else f"⚡ {target_symbol} PREMIUM TERMINAL"
+    badge_status_class = "badge-backup" if is_backup_loaded_flag else "badge-pp"
+    badge_status_label = "OFFLINE MODE" if is_backup_loaded_flag else f"MID-PIVOT (PP): {p_point}"
 
-status_title = f"📁 BACKUP: {selected_backup_file}" if is_backup_loaded_flag else f"⚡ {target_symbol} PREMIUM TERMINAL"
-badge_status_class = "badge-backup" if is_backup_loaded_flag else "badge-pp"
-badge_status_label = "OFFLINE MODE" if is_backup_loaded_flag else f"MID-PIVOT (PP): {p_point}"
-
-header_html = f"""
-<div class="tc-dashboard-header">
-    <div class="tc-title">{status_title}</div>
-    <div class="tc-metrics-container">
-        <span class="tc-badge badge-ce">🔴 RESISTANCE (DR): {int(sup_low)} - {int(sup_high)}</span>
-        <span class="tc-badge badge-pe">🟢 SUPPORT (DS): {int(dem_low)} - {int(dem_high)}</span>
-        <span class="tc-badge {badge_status_class}">⚖️ {badge_status_label}</span>
+    header_html = f"""
+    <div class="tc-dashboard-header">
+        <div class="tc-title">{status_title}</div>
+        <div class="tc-metrics-container">
+            <span class="tc-badge badge-ce">🔴 RESISTANCE (DR): {int(sup_low)} - {int(sup_high)}</span>
+            <span class="tc-badge badge-pe">🟢 SUPPORT (DS): {int(dem_low)} - {int(dem_high)}</span>
+            <span class="tc-badge {badge_status_class}">⚖️ {badge_status_label}</span>
+        </div>
     </div>
-</div>
-"""
-st.markdown(header_html, unsafe_allow_html=True)
+    """
+    st.markdown(header_html, unsafe_allow_html=True)
 
-# ==============================================================================
-# 🖥️ 8. PLOTLY MULTI-LAYER COMPACT ENGINE (HEIGHT FIXED AT 520)
-# ==============================================================================
-try:
-    fig = make_subplots(rows=1, cols=1)
-    fig.add_trace(gr.Candlestick(
-        x=df.index, open=df['open'], high=df['high'], low=df['low'], close=df['close'], name="LTP Price",
-        increasing_line_color='#00cc66', decreasing_line_color='#ff3333',
-        increasing_fillcolor='#00cc66', decreasing_fillcolor='#ff3333'
-    ), row=1, col=1)
+    try:
+        fig = make_subplots(rows=1, cols=1)
+        fig.add_trace(gr.Candlestick(x=df.index, open=df['open'], high=df['high'], low=df['low'], close=df['close'], name="LTP Price", increasing_line_color='#00cc66', decreasing_line_color='#ff3333', increasing_fillcolor='#00cc66', decreasing_fillcolor='#ff3333'), row=1, col=1)
 
-    if show_zones:
-        box_start_idx = max(0, len(df) - 15)
-        fig.add_shape(type="rect", x0=df.index[box_start_idx], x1=df.index[-1], y0=sup_low, y1=sup_high, fillcolor="rgba(239, 68, 68, 0.20)", line=dict(color="#ff3333", width=2), row=1, col=1)
-        fig.add_shape(type="rect", x0=df.index[box_start_idx], x1=df.index[-1], y0=dem_low, y1=dem_high, fillcolor="rgba(16, 185, 129, 0.20)", line=dict(color="#00cc66", width=2), row=1, col=1)
-        fig.add_hline(y=sup_high, line_dash="solid", line_color="#ff3333", row=1, col=1)
-        fig.add_hline(y=sup_low, line_dash="solid", line_color="#ff3333", row=1, col=1)
-        fig.add_hline(y=dem_high, line_dash="solid", line_color="#00cc66", row=1, col=1)
-        fig.add_hline(y=dem_low, line_dash="solid", line_color="#00cc66", row=1, col=1)
-        fig.add_hline(y=p_point, line_width=1.5, line_dash="dashdot", line_color="#eab308", annotation_text=f"PP: {p_point}", annotation_position="top left", row=1, col=1)
+        if show_zones:
+            box_start_idx = max(0, len(df) - 15)
+            fig.add_shape(type="rect", x0=df.index[box_start_idx], x1=df.index[-1], y0=sup_low, y1=sup_high, fillcolor="rgba(239, 68, 68, 0.20)", line=dict(color="#ff3333", width=2), row=1, col=1)
+            fig.add_shape(type="rect", x0=df.index[box_start_idx], x1=df.index[-1], y0=dem_low, y1=dem_high, fillcolor="rgba(16, 185, 129, 0.20)", line=dict(color="#00cc66", width=2), row=1, col=1)
+            fig.add_hline(y=sup_high, line_dash="solid", line_color="#ff3333", row=1, col=1)
+            fig.add_hline(y=sup_low, line_dash="solid", line_color="#ff3333", row=1, col=1)
+            fig.add_hline(y=dem_high, line_dash="solid", line_color="#00cc66", row=1, col=1)
+            fig.add_hline(y=dem_low, line_dash="solid", line_color="#00cc66", row=1, col=1)
+            fig.add_hline(y=p_point, line_width=1.5, line_dash="dashdot", line_color="#eab308", annotation_text=f"PP: {p_point}", annotation_position="top left", row=1, col=1)
 
-    if show_supertrend: fig.add_trace(gr.Scatter(x=df.index, y=df['supertrend'], line=dict(color=st_color, width=2), name="SuperTrend"), row=1, col=1)
-    if show_dma:
-        fig.add_trace(gr.Scatter(x=df.index, y=df['dma_9'], line=dict(color=dma9_color, width=1.5), name="9 DMA"), row=1, col=1)
-        fig.add_trace(gr.Scatter(x=df.index, y=df['dma_20'], line=dict(color=dma20_color, width=1.5), name="20 DMA"), row=1, col=1)
-        fig.add_trace(gr.Scatter(x=df.index, y=df['dma_50'], line=dict(color=dma50_color, width=2), name="50 DMA"), row=1, col=1)
-    if show_vwap and 'vwap' in df.columns: fig.add_trace(gr.Scatter(x=df.index, y=df['vwap'], line=dict(color=vwap_color, width=3.5), name="VWAP", connectgaps=False), row=1, col=1)
+        if show_supertrend: fig.add_trace(gr.Scatter(x=df.index, y=df['supertrend'], line=dict(color=st_color, width=2), name="SuperTrend"), row=1, col=1)
+        if show_dma:
+            fig.add_trace(gr.Scatter(x=df.index, y=df['dma_9'], line=dict(color=dma9_color, width=1.5), name="9 DMA"), row=1, col=1)
+            fig.add_trace(gr.Scatter(x=df.index, y=df['dma_20'], line=dict(color=dma20_color, width=1.5), name="20 DMA"), row=1, col=1)
+            fig.add_trace(gr.Scatter(x=df.index, y=df['dma_50'], line=dict(color=dma50_color, width=2), name="50 DMA"), row=1, col=1)
+        if show_vwap and 'vwap' in df.columns: fig.add_trace(gr.Scatter(x=df.index, y=df['vwap'], line=dict(color=vwap_color, width=3.5), name="VWAP", connectgaps=False), row=1, col=1)
 
-    if show_daily_camarilla:
-        fig.add_trace(gr.Scatter(x=df.index, y=df['daily_H4'], line=dict(color='#ff1744', width=1, dash="dot"), name="Daily H4"), row=1, col=1)
-        fig.add_trace(gr.Scatter(x=df.index, y=df['daily_H3'], line=dict(color='#ff9100', width=1, dash="dot"), name="Daily H3"), row=1, col=1)
-        fig.add_trace(gr.Scatter(x=df.index, y=df['daily_L3'], line=dict(color='#00e676', width=1, dash="dot"), name="Daily L3"), row=1, col=1)
-        fig.add_trace(gr.Scatter(x=df.index, y=df['daily_L4'], line=dict(color='#00b0ff', width=1, dash="dot"), name="Daily L4"), row=1, col=1)
+        if show_daily_camarilla:
+            fig.add_trace(gr.Scatter(x=df.index, y=df['daily_H4'], line=dict(color='#ff1744', width=1, dash="dot"), name="Daily H4"), row=1, col=1)
+            fig.add_trace(gr.Scatter(x=df.index, y=df['daily_H3'], line=dict(color='#ff9100', width=1, dash="dot"), name="Daily H3"), row=1, col=1)
+            fig.add_trace(gr.Scatter(x=df.index, y=df['daily_L3'], line=dict(color='#00e676', width=1, dash="dot"), name="Daily L3"), row=1, col=1)
+            fig.add_trace(gr.Scatter(x=df.index, y=df['daily_L4'], line=dict(color='#00b0ff', width=1, dash="dot"), name="Daily L4"), row=1, col=1)
 
-    if show_monthly_camarilla:
-        fig.add_trace(gr.Scatter(x=df.index, y=df['monthly_H4'], line=dict(color='#b71c1c', width=1.5), name="Monthly H4"), row=1, col=1)
-        fig.add_trace(gr.Scatter(x=df.index, y=df['monthly_H3'], line=dict(color='#f57c00', width=1.5), name="Monthly H3"), row=1, col=1)
-        fig.add_trace(gr.Scatter(x=df.index, y=df['monthly_L3'], line=dict(color='#388e3c', width=1.5), name="Monthly L3"), row=1, col=1)
-        fig.add_trace(gr.Scatter(x=df.index, y=df['monthly_L4'], line=dict(color='#1565c0', width=1.5), name="Monthly L4"), row=1, col=1)
+        if show_monthly_camarilla:
+            fig.add_trace(gr.Scatter(x=df.index, y=df['monthly_H4'], line=dict(color='#b71c1c', width=1.5), name="Monthly H4"), row=1, col=1)
+            fig.add_trace(gr.Scatter(x=df.index, y=df['monthly_H3'], line=dict(color='#f57c00', width=1.5), name="Monthly H3"), row=1, col=1)
+            fig.add_trace(gr.Scatter(x=df.index, y=df['monthly_L3'], line=dict(color='#388e3c', width=1.5), name="Monthly L3"), row=1, col=1)
+            fig.add_trace(gr.Scatter(x=df.index, y=df['monthly_L4'], line=dict(color='#1565c0', width=1.5), name="Monthly L4"), row=1, col=1)
 
-    if draw_h_line and h_line_value > 0: fig.add_hline(y=h_line_value, line_color=h_line_color, line_width=2, annotation_text=f"Custom: {h_line_value:.2f}", row=1, col=1)
-    if draw_v_line and len(df) > v_line_idx:
-        target_time = df.index[-v_line_idx]
-        fig.add_vline(x=target_time, line_color=v_line_color, line_width=2, line_dash="dash", row=1, col=1)
+        if draw_h_line and h_line_value > 0: fig.add_hline(y=h_line_value, line_color=h_line_color, line_width=2, annotation_text=f"Custom: {h_line_value:.2f}", row=1, col=1)
+        if draw_v_line and len(df) > v_line_idx:
+            target_time = df.index[-v_line_idx]
+            fig.add_vline(x=target_time, line_color=v_line_color, line_width=2, line_dash="dash", row=1, col=1)
 
-    fig.add_trace(gr.Scatter(x=[df.index[-1]], y=[current_ltp], mode="markers+text", marker=dict(color="#ffff00", size=10, symbol="arrow-left"), text=[f"  ◄ LTP: {current_ltp:.2f}"], textposition="middle right", textfont=dict(color="#ffff00", size=13, family="Arial Black"), name="Current LTP", showlegend=False), row=1, col=1)
+        fig.add_trace(gr.Scatter(x=[df.index[-1]], y=[current_ltp], mode="markers+text", marker=dict(color="#ffff00", size=10, symbol="arrow-left"), text=[f"  ◄ LTP: {current_ltp:.2f}"], textposition="middle right", textfont=dict(color="#ffff00", size=13, family="Arial Black"), name="Current LTP", showlegend=False), row=1, col=1)
 
-    min_price, max_price = float(df['low'].min()), float(df['high'].max())
-    top_y_limit, bottom_y_limit = max(max_price, sup_high) * 1.015, min(min_price, dem_low) * 0.985
+        min_price, max_price = float(df['low'].min()), float(df['high'].max())
+        top_y_limit, bottom_y_limit = max(max_price, sup_high) * 1.015, min(min_price, dem_low) * 0.985
 
-    fig.update_layout(
-        height=520, xaxis_rangeslider_visible=False, template="plotly_dark", bargap=0.35, margin=dict(l=10, r=150, t=10, b=25),
-        yaxis=dict(side="right", showgrid=True, gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=11), tickformat=".2f", range=[bottom_y_limit, top_y_limit], autorange=False, fixedrange=False),
-        xaxis=dict(showgrid=True, gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=11), autorange=True, fixedrange=False),
-        paper_bgcolor='#030712', plot_bgcolor='#030712'
-    )
-    fig.update_xaxes(rangebreaks=[dict(bounds=["sat", "mon"]), dict(bounds=[15.5, 9.25], pattern="hour")])
-    st.plotly_chart(fig, use_container_width=True)
-except Exception:
-    st.info("🔄 Tuning terminal layouts... Refreshing vectors shortly.")
+        fig.update_layout(
+            height=520, xaxis_rangeslider_visible=False, template="plotly_dark", bargap=0.35, margin=dict(l=10, r=150, t=10, b=25),
+            yaxis=dict(side="right", showgrid=True, gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=11), tickformat=".2f", range=[bottom_y_limit, top_y_limit], autorange=False, fixedrange=False),
+            xaxis=dict(showgrid=True, gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=11), autorange=True, fixedrange=False),
+            paper_bgcolor='#030712', plot_bgcolor='#030712'
+        )
+        fig.update_xaxes(rangebreaks=[dict(bounds=["sat", "mon"]), dict(bounds=[15.5, 9.25], pattern="hour")])
+        st.plotly_chart(fig, use_container_width=True)
+    except Exception:
+        st.info("🔄 Re-aligning layout data blocks...")
 
-st.markdown("### 📊 Live Terminal Reference Dashboard")
-c1, c2, c3 = st.columns(3)
-with c1: st.info(f"🔴 **Sells/Supply Zone (DR):** {sup_low:.1f} - {sup_high:.1f}")
-with c2: st.success(f"🟢 **Buys/Demand Zone (DS):** {dem_low:.1f} - {dem_high:.1f}")
-with c3: st.warning(f"🟡 **Live Market LTP:** ₹{current_ltp:.2f}")
+    st.markdown("### 📊 Live Terminal Reference Dashboard")
+    c1, c2, c3 = st.columns(3)
+    with c1: st.info(f"🔴 **Sells/Supply Zone (DR):** {sup_low:.1f} - {sup_high:.1f}")
+    with c2: st.success(f"🟢 **Buys/Demand Zone (DS):** {dem_low:.1f} - {dem_high:.1f}")
+    with c3: st.warning(f"🟡 **Live Market LTP:** ₹{current_ltp:.2f}")
+
+# Trigger the fragment execution node smoothly
+render_isolated_chart_fragment(target_symbol, interval, use_simulation_fallback)

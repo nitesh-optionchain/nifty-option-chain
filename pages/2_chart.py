@@ -9,37 +9,35 @@ import os
 from streamlit_autorefresh import st_autorefresh
 
 # 🔒 ==============================================================================
-# 🎯 BRIDGE NODE: RECOVER SESSION TOKENS FROM CORE TERMINAL ENGINE
+# 🎯 BRIDGE NODE: FORCED MULTI-PAGE TOKENS SYNC & AUTO-HANDSHAKE
 # ==============================================================================
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
-from engine import get_engine  # Main app.py ke active session link ko fetch karne ke liye
 
-# Check 1: Kya user active session state ke sath data verify kar chuka hai?
+# Global validation check
+market_data = None
+
+# Step 1: Priority session check
 if 'nubra_session' in st.session_state and st.session_state['nubra_session'] is not None:
-    nubra_client = st.session_state['nubra_session']
-    market_data = MarketData(nubra_client)
-else:
-    # Check 2: Agar state empty hai, toh base engine cache se live authentication borrow karein
     try:
-        md = get_engine()
-        if hasattr(md, 'client') and md.client is not None:
-            st.session_state['nubra_session'] = md.client
-            market_data = MarketData(md.client)
-        else:
-            raise ValueError("Direct engine session not initialized yet.")
+        market_data = MarketData(st.session_state['nubra_session'])
     except Exception:
-        # Check 3: Final back-end environment validation fallback node
-        try:
-            nubra_client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
-            st.session_state['nubra_session'] = nubra_client
-            market_data = MarketData(nubra_client)
-        except Exception:
-            st.warning("⚠️ No auth token found, login required. Please initialize session from 'Option Chain Data Terminal' page first.")
-            st.stop()
+        pass
+
+# Step 2: Session clear hone par back-end automatic dynamic environment recovery loop
+if market_data is None:
+    try:
+        # Direct secure engine layer hook without checking local state
+        nubra_client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
+        st.session_state['nubra_session'] = nubra_client
+        market_data = MarketData(nubra_client)
+    except Exception:
+        # Step 3: Agar direct recovery token drop ho toh fallback message template render karein
+        st.warning("⚠️ Access Session Expired. Please click on 'Option Chain Data Terminal' page once to refresh the token, then come back.")
+        st.stop()
 
 # ================= 1. PAGE SETUP =================
-st_autorefresh(interval=3000, key="smartwealth_live_refresh_v11")
+st_autorefresh(interval=3000, key="smartwealth_live_refresh_fixed_v12")
 
 # 🌟 PREMIUM DARK THEME STYLE SHEET INJECTION
 st.markdown("""

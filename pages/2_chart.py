@@ -49,14 +49,16 @@ if not st.session_state['chart_auth_verified']:
 
 market_data = None
 
-if st.session_state['chart_page_session'] != "SIMULATION_ACTIVE":
-    try:
-        from nubra_python_sdk.marketdata.market_data import MarketData
-        market_data = MarketData(st.session_state['chart_page_session'])
+try:
+    from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
+    from nubra_python_sdk.marketdata.market_data import MarketData
 
-    except Exception as e:
-        st.error(f"MarketData Init Error: {e}")
-        market_data = None
+    client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
+    market_data = MarketData(client)
+
+except Exception as e:
+    st.error(f"Chart Login Error: {e}")
+    market_data = None
 
 # ==============================================================================
 # ⏱️ 2. REFRESH CONTROL (SET TO STABLE 25 SECONDS)
@@ -184,7 +186,6 @@ else:
                 "interval": interval, "intraDay": True, "realTime": True
             })
 
-            st.write(response)
             
             if response and response.result and len(response.result) > 0:
                 instrument_dict = response.result[0].values[0]

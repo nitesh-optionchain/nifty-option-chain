@@ -8,11 +8,38 @@ from datetime import datetime, timedelta
 import os
 from streamlit_autorefresh import st_autorefresh
 
-# ================= 1. PAGE SETUP =================
-st.set_page_config(layout="wide", page_title="SmartWealth Premium Terminal")
+# 🔒 ==============================================================================
+# 🎯 BRIDGE NODE: RECOVER SESSION TOKENS FROM CORE TERMINAL ENGINE
+# ==============================================================================
+from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
+from nubra_python_sdk.marketdata.market_data import MarketData
+from engine import get_engine  # Main app.py ke active session link ko fetch karne ke liye
 
-# Automated refresh interval (Every 3 seconds for dynamic streaming stability)
-st_autorefresh(interval=3000, key="smartwealth_live_refresh_v10")
+# Check 1: Kya user active session state ke sath data verify kar chuka hai?
+if 'nubra_session' in st.session_state and st.session_state['nubra_session'] is not None:
+    nubra_client = st.session_state['nubra_session']
+    market_data = MarketData(nubra_client)
+else:
+    # Check 2: Agar state empty hai, toh base engine cache se live authentication borrow karein
+    try:
+        md = get_engine()
+        if hasattr(md, 'client') and md.client is not None:
+            st.session_state['nubra_session'] = md.client
+            market_data = MarketData(md.client)
+        else:
+            raise ValueError("Direct engine session not initialized yet.")
+    except Exception:
+        # Check 3: Final back-end environment validation fallback node
+        try:
+            nubra_client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
+            st.session_state['nubra_session'] = nubra_client
+            market_data = MarketData(nubra_client)
+        except Exception:
+            st.warning("⚠️ No auth token found, login required. Please initialize session from 'Option Chain Data Terminal' page first.")
+            st.stop()
+
+# ================= 1. PAGE SETUP =================
+st_autorefresh(interval=3000, key="smartwealth_live_refresh_v11")
 
 # 🌟 PREMIUM DARK THEME STYLE SHEET INJECTION
 st.markdown("""
@@ -22,7 +49,6 @@ st.markdown("""
             padding-bottom: 1rem !important;
             max-width: 100% !important;
         }
-        
         .tc-dashboard-header {
             background: linear-gradient(135deg, #111827 0%, #030712 100%);
             border: 1px solid #1f2937;
@@ -46,7 +72,6 @@ st.markdown("""
             gap: 8px;
             letter-spacing: 0.5px;
         }
-        
         .tc-metrics-container {
             display: flex;
             gap: 12px;
@@ -65,30 +90,6 @@ st.markdown("""
         .badge-pe { background-color: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.4); }
         .badge-pp { background-color: rgba(234, 179, 8, 0.12); color: #fde047; border: 1px solid rgba(234, 179, 8, 0.3); }
         .badge-backup { background-color: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); }
-        
-        .tf-button-row {
-            display: flex;
-            gap: 6px;
-            background-color: #090d16;
-            padding: 4px;
-            border-radius: 6px;
-            border: 1px solid #1f2937;
-        }
-        .tf-btn {
-            background: transparent;
-            border: none;
-            color: #9ca3af;
-            padding: 6px 14px;
-            font-size: 12px;
-            font-weight: 800;
-            cursor: pointer;
-            border-radius: 4px;
-        }
-        .tf-btn.active {
-            background-color: #2563eb;
-            color: #ffffff;
-            box-shadow: 0 2px 6px rgba(37, 99, 235, 0.4);
-        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -171,36 +172,6 @@ with st.sidebar.expander("Draw Manual Lines"):
 # pages/2_chart.py (PART 2 - Calculations, Auto-Backup Engine & Plotly View)
 
 # ==============================================================================
-# 🎯 3. MULTI-PAGE SECURE SESSION INTER-CONNECTION NODE
-# ==============================================================================
-from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
-from nubra_python_sdk.marketdata.market_data import MarketData
-from engine import get_engine # Automatically links to the engine shared in app.py
-
-# First priority: Check if main app session state already holds the authorization
-if 'nubra_session' in st.session_state and st.session_state['nubra_session'] is not None:
-    nubra_client = st.session_state['nubra_session']
-    market_data = MarketData(nubra_client)
-else:
-    # Second priority: Safe fallback to global core engine memory
-    try:
-        md = get_engine()
-        if hasattr(md, 'client') and md.client is not None:
-            st.session_state['nubra_session'] = md.client
-            market_data = MarketData(md.client)
-        else:
-            raise ValueError("Global Engine connection not initialized yet.")
-    except Exception as shared_err:
-        with st.spinner("Synchronizing data matrix with main terminal... ⏳"):
-            try:
-                # Third priority: Secure background auto-handshake if everything fails
-                nubra_client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
-                st.session_state['nubra_session'] = nubra_client
-                market_data = MarketData(nubra_client)
-            except Exception as login_err:
-                st.error("❌ Authentication Bridge Lost. Please refresh or re-auth on Option Chain Main Terminal.")
-                st.stop()
-# ==============================================================================
 # 🧠 4. MATHEMATICAL INDICATORS COMPUTATION ENGINE
 # ==============================================================================
 def calculate_indicators(df, mult_value, period_value, rsi_pd_value, interval):
@@ -208,7 +179,6 @@ def calculate_indicators(df, mult_value, period_value, rsi_pd_value, interval):
     df['dma_20'] = df['close'].rolling(window=20, min_periods=1).mean()
     df['dma_50'] = df['close'].rolling(window=50, min_periods=1).mean()
     
-    # 💧 SAFE INTRA-DAY VWAP CALCULATOR WITH TIMEFRAME GUARD
     if 'volume' in df.columns and interval != "1d":
         df['volume_clean'] = df['volume'].fillna(0)
         typical_price = (df['high'] + df['low'] + df['close']) / 3
@@ -217,8 +187,6 @@ def calculate_indicators(df, mult_value, period_value, rsi_pd_value, interval):
         cum_v = df['volume_clean'].cumsum()
         
         df['vwap'] = np.where(cum_v > 0, cum_pv / cum_v, df['close'])
-        
-        # dynamic array calculation filter to prevent distortion
         min_c, max_c = df['close'].min(), df['close'].max()
         df['vwap'] = np.where((df['vwap'] < min_c * 0.95) | (df['vwap'] > max_c * 1.05), np.nan, df['vwap'])
     else:
@@ -289,7 +257,7 @@ def calculate_indicators(df, mult_value, period_value, rsi_pd_value, interval):
     return df
 
 # ==============================================================================
-# 🚀 5. DATA LOADING & CONDITIONAL BACKUP ENGINE
+# 🚀 5. DATA LOADING ENGINE
 # ==============================================================================
 df = None
 is_backup_loaded_flag = False
@@ -348,11 +316,9 @@ if df is None:
                         file_date = now_ist.strftime("%Y_%m_%d")
                         backup_name = f"{target_symbol}_{interval}_{file_date}.csv"
                         full_backup_path = os.path.join(BACKUP_DIR, backup_name)
-                        
                         if not os.path.exists(full_backup_path):
                             df.to_csv(full_backup_path)
                             st.sidebar.info(f"💾 Auto-Backup Created: {backup_name}")
-                            
         except Exception as e:
             st.error(f"API System Error: {e}")
             st.stop()
@@ -414,19 +380,12 @@ header_html = f"""
         <span class="tc-badge badge-pe">🟢 SUPPORT (DS): {int(dem_low)} - {int(dem_high)}</span>
         <span class="tc-badge {badge_status_class}">⚖️ {badge_status_label}</span>
     </div>
-    <div class="tf-button-row">
-        <button class="tf-btn {tf_modes['5m']}">5M</button>
-        <button class="tf-btn {tf_modes['10m']}">10M</button>
-        <button class="tf-btn {tf_modes['15m']}">15M</button>
-        <button class="tf-btn {tf_modes['30m']}">30M</button>
-        <button class="tf-btn {tf_modes['1d']}">1D</button>
-    </div>
 </div>
 """
 st.markdown(header_html, unsafe_allow_html=True)
 
 # ==============================================================================
-# 🖥️ 8. SINGLE SUBPLOT LAYOUT
+# 🖥️ 8. SINGLE SUBPLOT LAYOUT WITH HIGH DR COVERAGE & ZOOM RANGE FIXES
 # ==============================================================================
 fig = make_subplots(rows=1, cols=1)
 
@@ -445,7 +404,7 @@ if show_zones:
     fig.add_hline(y=sup_high, line_dash="solid", line_color="#ff3333", row=1, col=1)
     fig.add_hline(y=sup_low, line_dash="solid", line_color="#ff3333", row=1, col=1)
     fig.add_annotation(
-        x=df.index[max(0, len(df)-7)], y=(sup_high + sup_low)/2, text=f"DR ZONE: {int(sup_low)} - {int(sup_high)}",
+        x=df.index[max(0, len(df)-7)], y=(sup_high + sup_low)/2, text=f"DR ZONE",
         showarrow=False, font=dict(color="#ffffff", size=11, family="Arial Black"), bgcolor="#ff3333", row=1, col=1
     )
 
@@ -456,7 +415,7 @@ if show_zones:
     fig.add_hline(y=dem_high, line_dash="solid", line_color="#00cc66", row=1, col=1)
     fig.add_hline(y=dem_low, line_dash="solid", line_color="#00cc66", row=1, col=1)
     fig.add_annotation(
-        x=df.index[max(0, len(df)-7)], y=(dem_low + dem_high)/2, text=f"DS ZONE: {int(dem_low)} - {int(dem_high)}",
+        x=df.index[max(0, len(df)-7)], y=(dem_low + dem_high)/2, text=f"DS ZONE",
         showarrow=False, font=dict(color="#ffffff", size=11, family="Arial Black"), bgcolor="#00cc66", row=1, col=1
     )
 
@@ -475,10 +434,10 @@ if show_vwap and 'vwap' in df.columns:
     fig.add_trace(gr.Scatter(x=df.index, y=df['vwap'], line=dict(color=vwap_color, width=3.5), name="VWAP", connectgaps=False), row=1, col=1)
 
 if show_daily_camarilla:
-    fig.add_trace(gr.Scatter(x=df.index, y=df['daily_H4'], line=dict(color='#ff1744', width=1, dash="dot"), name="Daily H4 (Res)"), row=1, col=1)
-    fig.add_trace(gr.Scatter(x=df.index, y=df['daily_H3'], line=dict(color='#ff9100', width=1, dash="dot"), name="Daily H3 (Breakout)"), row=1, col=1)
-    fig.add_trace(gr.Scatter(x=df.index, y=df['daily_L3'], line=dict(color='#00e676', width=1, dash="dot"), name="Daily L3 (Reversal)"), row=1, col=1)
-    fig.add_trace(gr.Scatter(x=df.index, y=df['daily_L4'], line=dict(color='#00b0ff', width=1, dash="dot"), name="Daily L4 (Supp)"), row=1, col=1)
+    fig.add_trace(gr.Scatter(x=df.index, y=df['daily_H4'], line=dict(color='#ff1744', width=1, dash="dot"), name="Daily H4"), row=1, col=1)
+    fig.add_trace(gr.Scatter(x=df.index, y=df['daily_H3'], line=dict(color='#ff9100', width=1, dash="dot"), name="Daily H3"), row=1, col=1)
+    fig.add_trace(gr.Scatter(x=df.index, y=df['daily_L3'], line=dict(color='#00e676', width=1, dash="dot"), name="Daily L3"), row=1, col=1)
+    fig.add_trace(gr.Scatter(x=df.index, y=df['daily_L4'], line=dict(color='#00b0ff', width=1, dash="dot"), name="Daily L4"), row=1, col=1)
 
 if show_monthly_camarilla:
     fig.add_trace(gr.Scatter(x=df.index, y=df['monthly_H4'], line=dict(color='#b71c1c', width=1.5), name="Monthly H4"), row=1, col=1)
@@ -488,13 +447,11 @@ if show_monthly_camarilla:
 
 if draw_h_line and h_line_value > 0:
     fig.add_hline(y=h_line_value, line_color=h_line_color, line_width=2, 
-                  annotation_text=f"Custom Level: {h_line_value:.2f}", 
-                  annotation_position="top right", row=1, col=1)
+                  annotation_text=f"Custom: {h_line_value:.2f}", row=1, col=1)
 
 if draw_v_line and len(df) > v_line_idx:
     target_time = df.index[-v_line_idx]
-    fig.add_vline(x=target_time, line_color=v_line_color, line_width=2, line_dash="dash",
-                  annotation_text="Time Marker", annotation_position="top left", row=1, col=1)
+    fig.add_vline(x=target_time, line_color=v_line_color, line_width=2, line_dash="dash", row=1, col=1)
 
 fig.add_trace(gr.Scatter(
     x=[df.index[-1]], y=[current_ltp], mode="markers+text",
@@ -504,14 +461,10 @@ fig.add_trace(gr.Scatter(
     name="Current LTP", showlegend=False
 ), row=1, col=1)
 
-# ==============================================================================
-# 🚀 🔥 VISIBILITY DYNAMIC RANGE ENGINE (FIXED FOR TOP DR ZONE COVERAGE)
-# ==============================================================================
-# Extract the core candles pricing peaks
+# Dynamic visible axis height calculator to avoid DR cutting at top edge
 min_price = float(df['low'].min())
 max_price = float(df['high'].max())
 
-# 🔥 SMART RANGE ADAPTER: Agar next day zones toggled hain to max grid height ko sup_high se 1.5% extra padding dekar scale badha denge
 if show_zones:
     top_y_limit = max(max_price, sup_high) * 1.015
     bottom_y_limit = min(min_price, dem_low) * 0.985
@@ -532,7 +485,7 @@ fig.update_layout(
         gridcolor="#1e293b",
         tickfont=dict(color="#94a3b8", size=11),
         tickformat=".2f",
-        range=[bottom_y_limit, top_y_limit], # Fixed exact adaptive visible spectrum array bounds mapping
+        range=[bottom_y_limit, top_y_limit],
         autorange=False, 
         fixedrange=False
     ),

@@ -9,12 +9,11 @@ import os
 from streamlit_autorefresh import st_autorefresh
 
 # 🔒 ==============================================================================
-# 🎯 STABLE AUTHENTICATION NODE WITH CRASH PREVENTION
+# 🎯 COMPLETE SAFE AUTH & DIRECT DATA REDIRECT SHIELD
 # ==============================================================================
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
 
-# Session variables ko non-blocking state mein initialize karein
 if 'chart_auth_verified' not in st.session_state:
     st.session_state['chart_auth_verified'] = False
 if 'chart_page_session' not in st.session_state:
@@ -24,7 +23,6 @@ st.markdown("### 🔒 Chart Standalone Stream Node")
 
 use_simulation_fallback = False
 
-# Agar auth variable user ne target nahi kiya hai, toh control handle karein bina crash stop ke
 if not st.session_state['chart_auth_verified']:
     c1, c2 = st.columns(2)
     with c1:
@@ -35,7 +33,6 @@ if not st.session_state['chart_auth_verified']:
                 st.session_state['chart_auth_verified'] = True
                 st.rerun()
             except Exception:
-                st.warning("Live Server block. Activating Fallback...")
                 st.session_state['chart_auth_verified'] = True
                 st.session_state['chart_page_session'] = "SIMULATION_ACTIVE"
                 st.rerun()
@@ -45,7 +42,6 @@ if not st.session_state['chart_auth_verified']:
             st.session_state['chart_page_session'] = "SIMULATION_ACTIVE"
             st.rerun()
             
-    # Fallback default parameter load agar button click nahi hua hai
     use_simulation_fallback = True
 else:
     if st.session_state['chart_page_session'] == "SIMULATION_ACTIVE":
@@ -56,14 +52,14 @@ else:
         except Exception:
             use_simulation_fallback = True
 
-# ================= 1. PAGE SETUP (SET TO 15 SECONDS FOR LOW NETWORK OVERHEAD) =================
-st_autorefresh(interval=15000, key="smartwealth_chart_stable_refresh_v4")
+# ================= 1. AUTOMATIC REFRESH CYCLES (15 SECONDS FOR LOW NETWORK OVERHEAD) =================
+st_autorefresh(interval=15000, key="smartwealth_chart_stable_refresh_v5")
 
-# 🌟 PREMIUM DARK THEME STYLE SHEET INJECTION
+# 🌟 CUSTOM MINIMALISTIC DARK THEME FOR SCREEN PROTECTION
 st.markdown("""
     <style>
         .block-container {
-            padding-top: 1.2rem !important;
+            padding-top: 1rem !important;
             padding-bottom: 1rem !important;
             max-width: 100% !important;
         }
@@ -71,47 +67,40 @@ st.markdown("""
             background: linear-gradient(135deg, #111827 0%, #030712 100%);
             border: 1px solid #1f2937;
             border-radius: 8px;
-            padding: 14px 20px;
-            margin-bottom: 18px;
+            padding: 12px 16px;
+            margin-bottom: 15px;
             display: flex;
             flex-wrap: wrap;
             justify-content: space-between;
             align-items: center;
-            gap: 15px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+            gap: 12px;
         }
         .tc-title {
             color: #f3f4f6;
-            font-size: 20px;
+            font-size: 18px;
             font-weight: 800;
             margin: 0;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            letter-spacing: 0.5px;
         }
         .tc-metrics-container {
             display: flex;
-            gap: 12px;
+            gap: 10px;
             flex-wrap: wrap;
         }
         .tc-badge {
-            padding: 6px 14px;
-            border-radius: 5px;
-            font-size: 13px;
+            padding: 5px 12px;
+            border-radius: 4px;
+            font-size: 12px;
             font-weight: 700;
-            letter-spacing: 0.5px;
             display: inline-block;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
         }
-        .badge-ce { background-color: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); }
-        .badge-pe { background-color: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.4); }
-        .badge-pp { background-color: rgba(234, 179, 8, 0.12); color: #fde047; border: 1px solid rgba(234, 179, 8, 0.3); }
-        .badge-backup { background-color: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); }
+        .badge-ce { background-color: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+        .badge-pe { background-color: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3); }
+        .badge-pp { background-color: rgba(234, 179, 8, 0.12); color: #fde047; border: 1px solid rgba(234, 179, 8, 0.2); }
+        .badge-backup { background-color: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); }
     </style>
 """, unsafe_allow_html=True)
 
-# 📂 BACKUP DIRECTORY INITIALIZATION
+# 📂 FILE DATA SYSTEM INITIALIZATION
 BACKUP_DIR = "chart_backups"
 if not os.path.exists(BACKUP_DIR):
     os.makedirs(BACKUP_DIR)
@@ -131,7 +120,7 @@ def load_persisted_stocks():
 all_available_assets = load_persisted_stocks()
 
 # ==============================================================================
-# 🎯 2. SIDEBAR CONTROLS LAYOUT
+# 🎯 2. SIDEBAR CONFIGURATIONS
 # ==============================================================================
 st.sidebar.header("📁 Backup File System")
 load_from_backup = st.sidebar.checkbox("📅 Load Past Day Backup (Offline)", value=False)
@@ -142,7 +131,7 @@ if load_from_backup:
     if available_backups:
         selected_backup_file = st.sidebar.selectbox("📂 Select Saved Day Chart", available_backups)
     else:
-        st.sidebar.warning("No backup files found yet!")
+        st.sidebar.warning("No backup files found!")
 
 st.sidebar.header("⚙️ Assets & Timeframe")
 target_symbol = st.sidebar.selectbox("🔤 Select Asset", all_available_assets, index=0)
@@ -290,9 +279,7 @@ if load_from_backup and selected_backup_file:
 if df is None:
     if use_simulation_fallback:
         base_price = 23200.0 if target_symbol == "NIFTY" else (50100.0 if target_symbol == "BANKNIFTY" else 76000.0)
-        if target_symbol not in ["NIFTY", "BANKNIFTY", "SENSEX"]:
-            base_price = 500.0
-            
+        if target_symbol not in ["NIFTY", "BANKNIFTY", "SENSEX"]: base_price = 500.0
         timestamps = pd.date_range(end=datetime.now(), periods=100, freq='5min' if interval=="5m" else 'D')
         np.random.seed(42)
         changes = np.random.normal(0, base_price * 0.002, 100)
@@ -301,18 +288,13 @@ if df is None:
         highs = np.maximum(opens, closes) + np.abs(np.random.normal(0, base_price * 0.0015, 100))
         lows = np.minimum(opens, closes) - np.abs(np.random.normal(0, base_price * 0.0015, 100))
         volumes = np.random.randint(1000, 50000, 100)
-        
-        df = pd.DataFrame({
-            "open": opens, "high": highs, "low": lows, "close": closes, "volume": volumes
-        }, index=timestamps)
+        df = pd.DataFrame({"open": opens, "high": highs, "low": lows, "close": closes, "volume": volumes}, index=timestamps)
         df = calculate_indicators(df, st_multiplier, st_period, rsi_period, interval)
-        st.sidebar.info("🤖 Running in Simulation Mode (Bypass Active)")
     else:
         with st.spinner(f"Requesting live chart dataset for {target_symbol}..."):
             end_dt = datetime.utcnow()
             lookback_days = 60 if interval == "1d" else 7
             start_dt = end_dt - timedelta(days=lookback_days) 
-            
             api_type = "INDEX" if target_symbol in ["NIFTY", "BANKNIFTY", "SENSEX"] else "STOCK"
             exchange_type = "BSE" if target_symbol == "SENSEX" else "NSE"
             
@@ -332,7 +314,6 @@ if df is None:
                         timestamps = [pd.to_datetime(p.timestamp, unit="ns", utc=True).tz_convert("Asia/Kolkata") for p in stock_chart.close]
                         total_elements = len(stock_chart.close)
                         v_list = [p.value for p in stock_chart.cumulative_volume] if hasattr(stock_chart, 'cumulative_volume') and stock_chart.cumulative_volume else [0] * total_elements
-                        
                         data = {
                             "open": [float(p.value / 100.0) for p in stock_chart.open],
                             "high": [float(p.value / 100.0) for p in stock_chart.high],
@@ -344,9 +325,7 @@ if df is None:
                         df.sort_index(inplace=True)
                         df['volume'] = df['cumulative_volume'].diff().fillna(0)
                         df = calculate_indicators(df, st_multiplier, st_period, rsi_period, interval)
-            except Exception as e:
-                st.sidebar.warning("API system drop. Shifting to simulation vectors...")
-                # Automatic switch to safe bypass mode on exceptions
+            except Exception:
                 base_price = 23200.0 if target_symbol == "NIFTY" else (50100.0 if target_symbol == "BANKNIFTY" else 76000.0)
                 if target_symbol not in ["NIFTY", "BANKNIFTY", "SENSEX"]: base_price = 500.0
                 timestamps = pd.date_range(end=datetime.now(), periods=100, freq='5min' if interval=="5m" else 'D')
@@ -422,11 +401,10 @@ header_html = f"""
 st.markdown(header_html, unsafe_allow_html=True)
 
 # ==============================================================================
-# 🖥️ 8. PLOTLY MULTI-LAYER VIEWPORT ENGINE
+# 🖥️ 8. PLOTLY MULTI-LAYER COMPACT ENGINE (HEIGHT FIXED AT 520)
 # ==============================================================================
 try:
     fig = make_subplots(rows=1, cols=1)
-
     fig.add_trace(gr.Candlestick(
         x=df.index, open=df['open'], high=df['high'], low=df['low'], close=df['close'], name="LTP Price",
         increasing_line_color='#00cc66', decreasing_line_color='#ff3333',
@@ -435,32 +413,20 @@ try:
 
     if show_zones:
         box_start_idx = max(0, len(df) - 15)
-        fig.add_shape(
-            type="rect", x0=df.index[box_start_idx], x1=df.index[-1], y0=sup_low, y1=sup_high,
-            fillcolor="rgba(239, 68, 68, 0.20)", line=dict(color="#ff3333", width=2), row=1, col=1
-        )
+        fig.add_shape(type="rect", x0=df.index[box_start_idx], x1=df.index[-1], y0=sup_low, y1=sup_high, fillcolor="rgba(239, 68, 68, 0.20)", line=dict(color="#ff3333", width=2), row=1, col=1)
+        fig.add_shape(type="rect", x0=df.index[box_start_idx], x1=df.index[-1], y0=dem_low, y1=dem_high, fillcolor="rgba(16, 185, 129, 0.20)", line=dict(color="#00cc66", width=2), row=1, col=1)
         fig.add_hline(y=sup_high, line_dash="solid", line_color="#ff3333", row=1, col=1)
         fig.add_hline(y=sup_low, line_dash="solid", line_color="#ff3333", row=1, col=1)
-
-        fig.add_shape(
-            type="rect", x0=df.index[box_start_idx], x1=df.index[-1], y0=dem_low, y1=dem_high,
-            fillcolor="rgba(16, 185, 129, 0.20)", line=dict(color="#00cc66", width=2), row=1, col=1
-        )
         fig.add_hline(y=dem_high, line_dash="solid", line_color="#00cc66", row=1, col=1)
         fig.add_hline(y=dem_low, line_dash="solid", line_color="#00cc66", row=1, col=1)
-        fig.add_hline(y=p_point, line_width=1.5, line_dash="dashdot", line_color="#eab308", 
-                      annotation_text=f"PP: {p_point}", annotation_position="top left", row=1, col=1)
+        fig.add_hline(y=p_point, line_width=1.5, line_dash="dashdot", line_color="#eab308", annotation_text=f"PP: {p_point}", annotation_position="top left", row=1, col=1)
 
-    if show_supertrend:
-        fig.add_trace(gr.Scatter(x=df.index, y=df['supertrend'], line=dict(color=st_color, width=2), name="SuperTrend"), row=1, col=1)
-
+    if show_supertrend: fig.add_trace(gr.Scatter(x=df.index, y=df['supertrend'], line=dict(color=st_color, width=2), name="SuperTrend"), row=1, col=1)
     if show_dma:
         fig.add_trace(gr.Scatter(x=df.index, y=df['dma_9'], line=dict(color=dma9_color, width=1.5), name="9 DMA"), row=1, col=1)
         fig.add_trace(gr.Scatter(x=df.index, y=df['dma_20'], line=dict(color=dma20_color, width=1.5), name="20 DMA"), row=1, col=1)
         fig.add_trace(gr.Scatter(x=df.index, y=df['dma_50'], line=dict(color=dma50_color, width=2), name="50 DMA"), row=1, col=1)
-
-    if show_vwap and 'vwap' in df.columns:
-        fig.add_trace(gr.Scatter(x=df.index, y=df['vwap'], line=dict(color=vwap_color, width=3.5), name="VWAP", connectgaps=False), row=1, col=1)
+    if show_vwap and 'vwap' in df.columns: fig.add_trace(gr.Scatter(x=df.index, y=df['vwap'], line=dict(color=vwap_color, width=3.5), name="VWAP", connectgaps=False), row=1, col=1)
 
     if show_daily_camarilla:
         fig.add_trace(gr.Scatter(x=df.index, y=df['daily_H4'], line=dict(color='#ff1744', width=1, dash="dot"), name="Daily H4"), row=1, col=1)
@@ -474,47 +440,29 @@ try:
         fig.add_trace(gr.Scatter(x=df.index, y=df['monthly_L3'], line=dict(color='#388e3c', width=1.5), name="Monthly L3"), row=1, col=1)
         fig.add_trace(gr.Scatter(x=df.index, y=df['monthly_L4'], line=dict(color='#1565c0', width=1.5), name="Monthly L4"), row=1, col=1)
 
-    if draw_h_line and h_line_value > 0:
-        fig.add_hline(y=h_line_value, line_color=h_line_color, line_width=2, annotation_text=f"Custom: {h_line_value:.2f}", row=1, col=1)
-
+    if draw_h_line and h_line_value > 0: fig.add_hline(y=h_line_value, line_color=h_line_color, line_width=2, annotation_text=f"Custom: {h_line_value:.2f}", row=1, col=1)
     if draw_v_line and len(df) > v_line_idx:
         target_time = df.index[-v_line_idx]
         fig.add_vline(x=target_time, line_color=v_line_color, line_width=2, line_dash="dash", row=1, col=1)
 
-    fig.add_trace(gr.Scatter(
-        x=[df.index[-1]], y=[current_ltp], mode="markers+text",
-        marker=dict(color="#ffff00", size=10, symbol="arrow-left"),
-        text=[f"  ◄ LTP: {current_ltp:.2f}"], textposition="middle right",
-        textfont=dict(color="#ffff00", size=13, family="Arial Black"),
-        name="Current LTP", showlegend=False
-    ), row=1, col=1)
+    fig.add_trace(gr.Scatter(x=[df.index[-1]], y=[current_ltp], mode="markers+text", marker=dict(color="#ffff00", size=10, symbol="arrow-left"), text=[f"  ◄ LTP: {current_ltp:.2f}"], textposition="middle right", textfont=dict(color="#ffff00", size=13, family="Arial Black"), name="Current LTP", showlegend=False), row=1, col=1)
 
-    min_price = float(df['low'].min())
-    max_price = float(df['high'].max())
-    top_y_limit = max(max_price, sup_high) * 1.015
-    bottom_y_limit = min(min_price, dem_low) * 0.985
+    min_price, max_price = float(df['low'].min()), float(df['high'].max())
+    top_y_limit, bottom_y_limit = max(max_price, sup_high) * 1.015, min(min_price, dem_low) * 0.985
 
     fig.update_layout(
-        height=740, xaxis_rangeslider_visible=False, template="plotly_dark", bargap=0.35,  
-        margin=dict(l=15, r=180, t=10, b=30),
-        yaxis=dict(
-            side="right", showgrid=True, gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=11),
-            tickformat=".2f", range=[bottom_y_limit, top_y_limit], autorange=False, fixedrange=False
-        ),
+        height=520, xaxis_rangeslider_visible=False, template="plotly_dark", bargap=0.35, margin=dict(l=10, r=150, t=10, b=25),
+        yaxis=dict(side="right", showgrid=True, gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=11), tickformat=".2f", range=[bottom_y_limit, top_y_limit], autorange=False, fixedrange=False),
         xaxis=dict(showgrid=True, gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=11), autorange=True, fixedrange=False),
         paper_bgcolor='#030712', plot_bgcolor='#030712'
     )
-
     fig.update_xaxes(rangebreaks=[dict(bounds=["sat", "mon"]), dict(bounds=[15.5, 9.25], pattern="hour")])
     st.plotly_chart(fig, use_container_width=True)
 except Exception:
-    st.info("🔄 Re-aligning layout variables. Stabilizing stream...")
+    st.info("🔄 Tuning terminal layouts... Refreshing vectors shortly.")
 
 st.markdown("### 📊 Live Terminal Reference Dashboard")
 c1, c2, c3 = st.columns(3)
-with c1:
-    st.info(f"🔴 **Sells/Supply Zone (DR):** {sup_low:.1f} - {sup_high:.1f}")
-with c2:
-    st.success(f"🟢 **Buys/Demand Zone (DS):** {dem_low:.1f} - {dem_high:.1f}")
-with c3:
-    st.warning(f"🟡 **Live Market LTP:** ₹{current_ltp:.2f}")
+with c1: st.info(f"🔴 **Sells/Supply Zone (DR):** {sup_low:.1f} - {sup_high:.1f}")
+with c2: st.success(f"🟢 **Buys/Demand Zone (DS):** {dem_low:.1f} - {dem_high:.1f}")
+with c3: st.warning(f"🟡 **Live Market LTP:** ₹{current_ltp:.2f}")

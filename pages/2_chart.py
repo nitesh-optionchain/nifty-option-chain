@@ -8,57 +8,9 @@ from datetime import datetime, timedelta
 import os
 import time
 from streamlit_autorefresh import st_autorefresh
+from engine import get_engine
 
-# 🔒 ==============================================================================
-# 🎯 1. SHIELDED AUTHENTICATION & SESSION MULTIPLIER LOCK
-# ==============================================================================
-if 'chart_auth_verified' not in st.session_state:
-    st.session_state['chart_auth_verified'] = False
-if 'chart_page_session' not in st.session_state:
-    st.session_state['chart_page_session'] = None
-if 'fallback_active_state' not in st.session_state:
-    st.session_state['fallback_active_state'] = False
-if 'last_selected_symbol' not in st.session_state:
-    st.session_state['last_selected_symbol'] = ""
-
-st.markdown("### 🔒 Index Live Chart Terminal")
-
-if not st.session_state['chart_auth_verified']:
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button("🚀 Connect Server Live Auth", use_container_width=True):
-            try:
-                from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
-                client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
-                st.session_state['chart_page_session'] = client
-                st.session_state['chart_auth_verified'] = True
-                st.session_state['fallback_active_state'] = False
-                st.rerun()
-            except Exception:
-                st.session_state['chart_auth_verified'] = True
-                st.session_state['chart_page_session'] = "SIMULATION_ACTIVE"
-                st.session_state['fallback_active_state'] = True
-                st.rerun()
-    with c2:
-        if st.button("🛠️ Activate Simulation Stream (Bypass)", use_container_width=True):
-            st.session_state['chart_auth_verified'] = True
-            st.session_state['chart_page_session'] = "SIMULATION_ACTIVE"
-            st.session_state['fallback_active_state'] = True
-            st.rerun()
-    st.stop()
-
-market_data = None
-
-try:
-    from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
-    from nubra_python_sdk.marketdata.market_data import MarketData
-
-    client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
-    market_data = MarketData(client)
-
-except Exception as e:
-    st.error(repr(e))
-    market_data = None
+market_data = get_engine()
 
 # ==============================================================================
 # ⏱️ 2. REFRESH CONTROL (SET TO STABLE 25 SECONDS)

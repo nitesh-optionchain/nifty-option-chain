@@ -16,7 +16,7 @@ from momentum_engine import run_momentum_tracker
 from tables_ui import render_option_chain_table
 
 # --- DYNAMIC REFRESH LOOP TRIGGER ---
-st_autorefresh(interval=REFRESH_INTERVAL_MS, key="v5_ultimate_production_final")
+st_autorefresh(interval=REFRESH_INTERVAL_MS, key="smartwealth_mobile_v5_prod_unique")
 
 # --- INITIALIZE SESSION STATE & AUTO-RECOVERY ---
 init_session_state()

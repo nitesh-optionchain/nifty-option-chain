@@ -10,6 +10,12 @@ import time
 from streamlit_autorefresh import st_autorefresh
 from engine import get_engine
 
+if 'last_selected_symbol' not in st.session_state:
+    st.session_state['last_selected_symbol'] = ""
+
+if 'persistent_df_store' not in st.session_state:
+    st.session_state['persistent_df_store'] = {}
+
 market_data = get_engine()
 
 # ==============================================================================
@@ -49,9 +55,9 @@ all_available_assets = load_persisted_stocks()
 st.sidebar.header("⚙️ Asset Controls")
 target_symbol = st.sidebar.selectbox("🔤 Select Index Asset", all_available_assets, index=0)
 
-if target_symbol != st.session_state['last_selected_symbol']:
+if target_symbol != st.session_state.get('last_selected_symbol', ''):
     st.session_state['last_selected_symbol'] = target_symbol
-
+    
 timeframe_mapping = {"5 Minutes": "5m", "10 Minutes": "10m", "15 Minutes": "15m", "30 Minutes": "30m", "Daily": "1d"}
 selected_tf_label = st.sidebar.selectbox("⏱️ Select Timeframe", list(timeframe_mapping.keys()), index=2)
 interval = timeframe_mapping[selected_tf_label]

@@ -18,8 +18,6 @@ if 'chart_page_session' not in st.session_state:
     st.session_state['chart_page_session'] = None
 if 'fallback_active_state' not in st.session_state:
     st.session_state['fallback_active_state'] = False
-if 'persistent_df_store' not in st.session_state:
-    st.session_state['persistent_df_store'] = {}
 if 'last_selected_symbol' not in st.session_state:
     st.session_state['last_selected_symbol'] = ""
 
@@ -50,17 +48,20 @@ if not st.session_state['chart_auth_verified']:
     st.stop()
 
 market_data = None
+
 if st.session_state['chart_page_session'] != "SIMULATION_ACTIVE":
     try:
         from nubra_python_sdk.marketdata.market_data import MarketData
         market_data = MarketData(st.session_state['chart_page_session'])
-    except Exception:
-        st.session_state['fallback_active_state'] = True
+
+    except Exception as e:
+        st.error(f"MarketData Init Error: {e}")
+        market_data = None
 
 # ==============================================================================
 # ⏱️ 2. REFRESH CONTROL (SET TO STABLE 25 SECONDS)
 # ==============================================================================
-st_autorefresh(interval=25000, key="smartwealth_index_terminal_perfect_v35")
+st_autorefresh(interval=5000, key="smartwealth_index_terminal_perfect_v35")
 
 # Premium Dashboard Stylesheet Injection
 st.markdown("""
@@ -95,7 +96,6 @@ st.sidebar.header("⚙️ Asset Controls")
 target_symbol = st.sidebar.selectbox("🔤 Select Index Asset", all_available_assets, index=0)
 
 if target_symbol != st.session_state['last_selected_symbol']:
-    st.session_state['persistent_df_store'] = {}
     st.session_state['last_selected_symbol'] = target_symbol
 
 timeframe_mapping = {"5 Minutes": "5m", "10 Minutes": "10m", "15 Minutes": "15m", "30 Minutes": "30m", "Daily": "1d"}
@@ -119,29 +119,54 @@ vwap_color = st.sidebar.color_picker("VWAP Color", "#00f0ff")
 
 # Dynamic Cache Lock to prevent data jump on auto refresh
 def get_static_fallback_data(symbol):
-    if symbol in st.session_state['persistent_df_store']:
-        return st.session_state['persistent_df_store'][symbol]
-    
-    # Absolute alignment matching 24,013 June 2026 Spot
-    base_price = 24013.40 if symbol == "NIFTY" else (51650.0 if symbol == "BANKNIFTY" else 78900.0)
-    if symbol not in ["NIFTY", "BANKNIFTY", "SENSEX"]: base_price = 1500.0
-    
-    timestamps = pd.date_range(end=datetime.now(), periods=60, freq='15min')
-    np.random.seed(42)
-    changes = np.random.normal(0.01, base_price * 0.0003, 60)
+
+    base_price = 24013.40 if symbol == "NIFTY" else (
+        51650.0 if symbol == "BANKNIFTY" else 78900.0
+    )
+
+    timestamps = pd.date_range(
+        end=datetime.now(),
+        periods=60,
+        freq="15min"
+    )
+
+    changes = np.random.normal(
+        0,
+        base_price * 0.0005,
+        60
+    )
+
     closes = base_price + np.cumsum(changes)
-    opens = closes - np.random.normal(0, base_price * 0.0002, 60)
-    highs = np.maximum(opens, closes) + np.abs(np.random.normal(0, base_price * 0.0002, 60))
-    lows = np.minimum(opens, closes) - np.abs(np.random.normal(0, base_price * 0.0002, 60))
-    
-    fresh_df = pd.DataFrame({"open": opens, "high": highs, "low": lows, "close": closes, "volume": np.random.randint(2000, 7000, 60)}, index=timestamps)
-    st.session_state['persistent_df_store'][symbol] = fresh_df
-    return fresh_df
+
+    opens = closes - np.random.normal(
+        0,
+        base_price * 0.0002,
+        60
+    )
+
+    highs = np.maximum(opens, closes) + abs(
+        np.random.normal(0, base_price * 0.0002, 60)
+    )
+
+    lows = np.minimum(opens, closes) - abs(
+        np.random.normal(0, base_price * 0.0002, 60)
+    )
+
+    return pd.DataFrame(
+        {
+            "open": opens,
+            "high": highs,
+            "low": lows,
+            "close": closes,
+            "volume": np.random.randint(2000,7000,60)
+        },
+        index=timestamps
+    )
 # ==============================================================================
 # 🚀 4. CORE COMPUTATIONAL SCALING INTERFACE
 # ==============================================================================
 df = None
-if st.session_state['fallback_active_state'] or market_data is None:
+if market_data is None:
     df = get_static_fallback_data(target_symbol)
 else:
     try:
@@ -156,8 +181,11 @@ else:
                 "fields": ["open", "high", "low", "close", "cumulative_volume"],
                 "startDate": start_dt.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
                 "endDate": end_dt.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-                "interval": interval, "intraDay": False, "realTime": False
+                "interval": interval, "intraDay": True, "realTime": True
             })
+
+            st.write(response)
+            
             if response and response.result and len(response.result) > 0:
                 instrument_dict = response.result[0].values[0]
                 if target_symbol in instrument_dict:
@@ -180,8 +208,9 @@ else:
                     }
                     df = pd.DataFrame(data, index=timestamps).sort_index()
                     df['volume'] = df['cumulative_volume'].diff().fillna(0)
-    except Exception:
-        df = get_static_fallback_data(target_symbol)
+    except Exception as e:
+        st.error(e)
+    df = get_static_fallback_data(target_symbol)
 
 if df is None or len(df) == 0:
     df = get_static_fallback_data(target_symbol)
@@ -203,7 +232,8 @@ df['atr'] = df['tr'].rolling(window=st_period, min_periods=1).mean()
 df['hl2'] = (df['high'] + df['low']) / 2
 df['upper_band'] = df['hl2'] + (st_multiplier * df['atr'])
 df['lower_band'] = df['hl2'] - (st_multiplier * df['atr'])
-df['supertrend'] = df['close'].iloc[0]
+df['supertrend'] = np.nan
+df.iloc[0, df.columns.get_loc('supertrend')] = df['close'].iloc[0]
 df['trend'] = 1
 
 for i in range(1, len(df)):
@@ -300,7 +330,7 @@ comfort_padding = (high_extreme - low_extreme) * 0.20
 fig.update_layout(
     height=540, xaxis_rangeslider_visible=False, template="plotly_dark", margin=dict(l=10, r=165, t=10, b=25),
     yaxis=dict(side="right", showgrid=True, gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=11), range=[low_extreme - comfort_padding, high_extreme + comfort_padding], autorange=False, fixedrange=False),
-    xaxis=dict(showgrid=True, gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=11), type='category', autorange=True, fixedrange=False),
+    xaxis=dict(showgrid=True, gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=11), autorange=True, fixedrange=False),
     paper_bgcolor='#030712', plot_bgcolor='#030712',
     annotations=layout_annotations
 )

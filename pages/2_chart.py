@@ -57,7 +57,7 @@ target_symbol = st.sidebar.selectbox("🔤 Select Index Asset", all_available_as
 
 if target_symbol != st.session_state.get('last_selected_symbol', ''):
     st.session_state['last_selected_symbol'] = target_symbol
-    
+
 timeframe_mapping = {"5 Minutes": "5m", "10 Minutes": "10m", "15 Minutes": "15m", "30 Minutes": "30m", "Daily": "1d"}
 selected_tf_label = st.sidebar.selectbox("⏱️ Select Timeframe", list(timeframe_mapping.keys()), index=2)
 interval = timeframe_mapping[selected_tf_label]
@@ -144,6 +144,9 @@ else:
                 "interval": interval, "intraDay": True, "realTime": True
             })
 
+            st.write("Historical API Response:")
+            st.write(response)
+
             
             if response and response.result and len(response.result) > 0:
                 instrument_dict = response.result[0].values[0]
@@ -168,11 +171,11 @@ else:
                     df = pd.DataFrame(data, index=timestamps).sort_index()
                     df['volume'] = df['cumulative_volume'].diff().fillna(0)
     except Exception as e:
-        st.error(e)
-    df = get_static_fallback_data(target_symbol)
+        st.error(f"Historical Data Error: {repr(e)}")
+        df = get_static_fallback_data(target_symbol)
 
-if df is None or len(df) == 0:
-    df = get_static_fallback_data(target_symbol)
+    if df is None or len(df) == 0:
+        df = get_static_fallback_data(target_symbol)
 
 # Technical Indicators
 df['dma_9'] = df['close'].rolling(window=9, min_periods=1).mean()

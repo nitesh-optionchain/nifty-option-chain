@@ -57,7 +57,7 @@ try:
     market_data = MarketData(client)
 
 except Exception as e:
-    st.error(f"Chart Login Error: {e}")
+    st.error(repr(e))
     market_data = None
 
 # ==============================================================================

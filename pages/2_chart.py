@@ -8,18 +8,18 @@ from datetime import datetime, timedelta
 import os
 from streamlit_autorefresh import st_autorefresh
 
-# 🔒 Persistent Session Authentication
+# 🔒 Session Auth Framework
 if 'chart_auth_verified' not in st.session_state:
     st.session_state['chart_auth_verified'] = False
 if 'chart_page_session' not in st.session_state:
     st.session_state['chart_page_session'] = None
 
-st.markdown("### 📊 TradeClue Live Production Terminal")
+st.markdown("### 📊 TradeClue Professional Candle Terminal")
 
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
 
-# Server Core Connection Matrix
+# Server Auth Initialize
 if not st.session_state['chart_auth_verified']:
     try:
         client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
@@ -27,19 +27,19 @@ if not st.session_state['chart_auth_verified']:
         st.session_state['chart_auth_verified'] = True
         st.rerun()
     except Exception as e:
-        st.error(f"🔴 Live Server Authentication Failed: {e}. Please check credentials.")
+        st.error(f"🔴 Auth Connection Failed: {e}")
         st.stop()
 
 try:
     market_data = MarketData(st.session_state['chart_page_session'])
 except Exception as e:
-    st.error(f"🔴 SDK Market Data Initialization Failed: {e}")
+    st.error(f"🔴 MarketData Engine Error: {e}")
     st.stop()
 
-# ⏱️ System Refresh Interval (25 Seconds)
-st_autorefresh(interval=25000, key="smartwealth_live_terminal_absolute_v100")
+# ⏱️ System Auto Refresh Setup (Standard 25 Secs)
+st_autorefresh(interval=25000, key="smartwealth_index_rules_final_v105")
 
-# Premium Viewport UI Injections
+# Custom Dashboard Design Styling Injection
 st.markdown("""
     <style>
         .block-container { padding-top: 0.5rem !important; padding-bottom: 0.5rem !important; max-width: 100% !important; }
@@ -72,17 +72,14 @@ interval = timeframe_mapping[selected_tf_label]
 
 show_zones = st.sidebar.checkbox("🎯 Show TradeClue DR/DS & Zones", value=True)
 show_supertrend = st.sidebar.checkbox("⚡ Show SuperTrend Line", value=True)
-show_vwap = st.sidebar.checkbox("💧 Show VWAP Line", value=True)
-st_multiplier = st.sidebar.number_input("SuperTrend Multiplier", min_value=1.0, max_value=5.0, value=3.0, step=0.1)
-st_period = st.sidebar.number_input("SuperTrend ATR Period", min_value=1, max_value=50, value=10)
 
 # ==============================================================================
-# 🚀 DIRECT ABSOLUTE LIVE FETCH PIPELINE (NO SIMULATION FALLBACK ALLOWED)
+# 🚀 SDK RULES-BASED DATA RETRIEVAL (NO SIMULATION / CLEAN OUTPUT TYPE)
 # ==============================================================================
 df = None
 try:
     end_dt = datetime.utcnow()
-    start_dt = end_dt - timedelta(days=6)
+    start_dt = end_dt - timedelta(days=5)
     api_type = "INDEX" if target_symbol in ["NIFTY", "BANKNIFTY", "SENSEX"] else "STOCK"
     exchange_type = "BSE" if target_symbol == "SENSEX" else "NSE"
     
@@ -100,7 +97,7 @@ try:
             stock_chart = instrument_dict[target_symbol]
             raw_closes = [float(p.value) for p in stock_chart.close]
             
-            # Smart Decimal Matrix Adjuster to resolve 100x Scaling issue
+            # Decimal scaling calculation according to rules
             avg_raw = sum(raw_closes) / len(raw_closes)
             scale_factor = 100.0 if avg_raw > 150000 else 1.0
             
@@ -112,20 +109,19 @@ try:
                 "close": [float(p.value / scale_factor) for p in stock_chart.close]
             }, index=timestamps).sort_index()
 except Exception as e:
-    st.error(f"🔴 Live Data Fetch Error: {e}")
+    st.error(f"🔴 SDK Fetch System Issue: {e}")
     st.stop()
 
 if df is None or len(df) == 0:
-    st.error("🔴 Server returned empty dataset. Please check if the market is open or token is active.")
+    st.error("🔴 Market Server returned an empty list. Token configuration issue.")
     st.stop()
 
-# Indicators Logic
-df['vwap'] = df['close']
+# ATR & SuperTrend Technical Engine Blocks
 df['tr'] = df[['high', 'low', 'close']].max(axis=1) - df[['high', 'low', 'close']].min(axis=1)
-df['atr'] = df['tr'].rolling(window=int(st_period), min_periods=1).mean()
+df['atr'] = df['tr'].rolling(window=10, min_periods=1).mean()
 df['hl2'] = (df['high'] + df['low']) / 2
-df['upper_band'] = df['hl2'] + (st_multiplier * df['atr'])
-df['lower_band'] = df['hl2'] - (st_multiplier * df['atr'])
+df['upper_band'] = df['hl2'] + (3.0 * df['atr'])
+df['lower_band'] = df['hl2'] - (3.0 * df['atr'])
 df['supertrend'] = df['close'].iloc[0]
 df['trend'] = 1
 
@@ -137,7 +133,7 @@ for i in range(1, len(df)):
 
 current_ltp = float(df['close'].iloc[-1])
 
-# Dynamic Level Scaling Modules
+# Dynamic Support / Resistance Calculations from Live LTP
 if target_symbol == "NIFTY":
     dr_level = float(((current_ltp + 15) // 50) * 50 + 50)
     ds_level = float(((current_ltp - 15) // 50) * 50 - 50)
@@ -157,7 +153,7 @@ p_point = round((dr_level + ds_level + current_ltp) / 3, 2)
 
 st.markdown(f"""
 <div class="tc-dashboard-header">
-    <div class="tc-title">⚡ {target_symbol} REAL-TIME ACTIVE TERMINAL</div>
+    <div class="tc-title">⚡ {target_symbol} TRADECLUE CORE MODULE</div>
     <div class="tc-metrics-container">
         <span class="tc-badge badge-ce">🔴 DR LEVEL: {int(dr_level)} | ZONE: {int(res_zone_low)}-{int(res_zone_high)}</span>
         <span class="tc-badge badge-pe">🟢 DS LEVEL: {int(ds_level)} | ZONE: {int(sup_zone_low)}-{int(sup_zone_high)}</span>
@@ -177,26 +173,25 @@ fig.add_trace(gr.Candlestick(
 ), row=1, col=1)
 
 layout_annotations = []
-view_candles = df_plot.tail(25) # Exact 25 Candles Constraint
+view_candles = df_plot.tail(25) # Exact Latest 25 Candles Rule Lock
 
 if show_zones:
     box_start_idx = max(0, len(df_plot) - 12)
     x0_val = df_plot['time_str'].iloc[box_start_idx]
     x1_val = df_plot['time_str'].iloc[-1]
     
+    # Resistance & Support Transparent Dynamic Overlays
     fig.add_shape(type="rect", x0=x0_val, x1=x1_val, y0=res_zone_low, y1=res_zone_high, fillcolor="rgba(239, 68, 68, 0.22)", line=dict(color="#ef4444", width=1.5))
     fig.add_shape(type="rect", x0=x0_val, x1=x1_val, y0=sup_zone_low, y1=sup_zone_high, fillcolor="rgba(34, 197, 94, 0.22)", line=dict(color="#22c55e", width=1.5))
     fig.add_hline(y=dr_level, line_width=1.5, line_dash="dash", line_color="#f87171")
     fig.add_hline(y=ds_level, line_width=1.5, line_dash="dash", line_color="#4ade80")
-    fig.add_hline(y=p_point, line_width=1, line_dash="dashdot", line_color="#eab308")
 
     layout_annotations.append(dict(x=x0_val, y=dr_level, text="🔴 DR LEVEL", showarrow=False, xanchor="left", yanchor="bottom", font=dict(color="#f87171", size=10, family="Arial Black")))
     layout_annotations.append(dict(x=x0_val, y=ds_level, text="🟢 DS LEVEL", showarrow=False, xanchor="left", yanchor="top", font=dict(color="#4ade80", size=10, family="Arial Black")))
 
 if show_supertrend: fig.add_trace(gr.Scatter(x=df_plot['time_str'], y=df_plot['supertrend'], line=dict(color="#f97316", width=2.5), name="SuperTrend"))
-if show_vwap: fig.add_trace(gr.Scatter(x=df_plot['time_str'], y=df_plot['vwap'], line=dict(color="#00f0ff", width=2), name="VWAP"))
 
-# Flat non-overlapping LTP Marker Pointer Tag
+# Flat Right Side LTP Ticker Label
 fig.add_trace(gr.Scatter(
     x=[df_plot['time_str'].iloc[-1]], y=[current_ltp], mode="markers+text", 
     marker=dict(color="#ffff00", size=10, symbol="arrow-left"), 
@@ -210,15 +205,15 @@ high_extreme = float(view_candles['high'].max())
 if show_zones:
     low_extreme = min(low_extreme, sup_zone_low)
     high_extreme = max(high_extreme, res_zone_high)
-# Tighter vertical compression factor (0.02) to stretch candle length vertically 
-vertical_stretch_factor = (high_extreme - low_extreme) * 0.02
+# Tighter vertical factor bounds (0.025) to stretch the candle height vertically
+vertical_stretch_factor = (high_extreme - low_extreme) * 0.025
 
 fig.update_layout(
     height=680, autosize=True, margin=dict(l=10, r=160, t=10, b=25), 
     yaxis=dict(side="right", showgrid=True, gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=11), range=[low_extreme - vertical_stretch_factor, high_extreme + vertical_stretch_factor], autorange=False, fixedrange=False),
-    # bargap=0.40 sets standard thin body structures for candles
+    # bargap=0.42 yields normal thin candle width formats beautifully
     xaxis=dict(showgrid=True, gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=11), type='category', categoryorder='category ascending', range=[df_plot['time_str'].iloc[-25], df_plot['time_str'].iloc[-1]], autorange=False, fixedrange=False),
-    bargap=0.40, paper_bgcolor='#030712', plot_bgcolor='#030712',
+    bargap=0.42, paper_bgcolor='#030712', plot_bgcolor='#030712',
     annotations=layout_annotations
 )
 

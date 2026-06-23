@@ -10,7 +10,7 @@ import time
 from streamlit_autorefresh import st_autorefresh
 
 # 🔒 ==============================================================================
-# 🎯 1. AUTHENTICATION NODE
+# 🎯 1. AUTHENTICATION & CORE CONFIG MATRIX
 # ==============================================================================
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
@@ -22,7 +22,9 @@ if 'chart_page_session' not in st.session_state:
 
 st.markdown("### 🔒 Chart Standalone Stream Node")
 
-use_simulation_fallback = False
+# GLOBAL FALLBACK CONTROLLER TO AVOID NAME-ERRORS
+if 'fallback_active_state' not in st.session_state:
+    st.session_state['fallback_active_state'] = False
 
 if not st.session_state['chart_auth_verified']:
     c1, c2 = st.columns(2)
@@ -32,31 +34,34 @@ if not st.session_state['chart_auth_verified']:
                 client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
                 st.session_state['chart_page_session'] = client
                 st.session_state['chart_auth_verified'] = True
+                st.session_state['fallback_active_state'] = False
                 st.rerun()
             except Exception:
                 st.session_state['chart_auth_verified'] = True
                 st.session_state['chart_page_session'] = "SIMULATION_ACTIVE"
+                st.session_state['fallback_active_state'] = True
                 st.rerun()
     with c2:
         if st.button("🛠️ Activate Simulation Stream (Bypass)", use_container_width=True):
             st.session_state['chart_auth_verified'] = True
             st.session_state['chart_page_session'] = "SIMULATION_ACTIVE"
+            st.session_state['fallback_active_state'] = True
             st.rerun()
     st.stop()
 
 market_data = None
 if st.session_state['chart_page_session'] == "SIMULATION_ACTIVE":
-    use_simulation_fallback = True
+    st.session_state['fallback_active_state'] = True
 else:
     try:
         market_data = MarketData(st.session_state['chart_page_session'])
     except Exception:
-        use_simulation_fallback = True
+        st.session_state['fallback_active_state'] = True
 
 # ==============================================================================
 # ⏱️ 2. FIXED STABLE AUTO-REFRESH (15 SECONDS)
 # ==============================================================================
-st_autorefresh(interval=15000, key="smartwealth_chart_perfect_final_v6")
+st_autorefresh(interval=15000, key="smartwealth_chart_perfect_final_v7")
 
 # 🌟 PREMIUM DARK THEME STYLE SHEET INJECTION
 st.markdown("""
@@ -88,6 +93,7 @@ def load_persisted_stocks():
     return base_list
 
 all_available_assets = load_persisted_stocks()
+
 # ==============================================================================
 # 🎯 3. SIDEBAR CONTROLS
 # ==============================================================================
@@ -135,7 +141,7 @@ draw_v_line = st.sidebar.checkbox("Enable Vertical Line")
 v_line_idx = int(st.sidebar.number_input("Vertical Line Candle Offset", min_value=1, max_value=100, value=5))
 v_line_color = st.sidebar.color_picker("Vertical Line Color", "#ff00ff")
 
-# Helper function to auto-generate simulation framework data
+# Helper to build mock vectors to avoid layout failures
 def create_fallback_data(symbol, tf_interval):
     base_price = 23200.0 if symbol == "NIFTY" else (50100.0 if symbol == "BANKNIFTY" else 76000.0)
     if symbol not in ["NIFTY", "BANKNIFTY", "SENSEX"]: base_price = 500.0
@@ -148,9 +154,8 @@ def create_fallback_data(symbol, tf_interval):
     lows = np.minimum(opens, closes) - np.abs(np.random.normal(0, base_price * 0.0015, 100))
     volumes = np.random.randint(1000, 50000, 100)
     return pd.DataFrame({"open": opens, "high": highs, "low": lows, "close": closes, "volume": volumes}, index=timestamps)
-
 # ==============================================================================
-# 🧠 4. FIXED SECURE DATA LAYER FETCH BLOCK
+# 🧠 4. CORE ENGINE DATA LAYER FETCH BLOCK (FIXED NAME SCOPE)
 # ==============================================================================
 df = None
 is_backup_loaded_flag = False
@@ -162,7 +167,7 @@ if load_from_backup and selected_backup_file:
         is_backup_loaded_flag = True
 
 if df is None:
-    if use_simulation_fallback or market_data is None:
+    if st.session_state['fallback_active_state'] or market_data is None:
         df = create_fallback_data(target_symbol, interval)
     else:
         try:
@@ -197,14 +202,13 @@ if df is None:
                         df = pd.DataFrame(data, index=timestamps).sort_index()
                         df['volume'] = df['cumulative_volume'].diff().fillna(0)
                 
-                # If API passed but returned empty fields fallback gracefully 
                 if df is None or len(df) == 0:
                     df = create_fallback_data(target_symbol, interval)
         except Exception:
             df = create_fallback_data(target_symbol, interval)
 
 # ==============================================================================
-# 🧠 5. CALCULATE MATHEMATICAL INDICATORS safely
+# 🧠 5. INDICATOR CRUNCH MATRIX 
 # ==============================================================================
 if df is not None and len(df) > 0:
     df['dma_9'] = df['close'].rolling(window=9, min_periods=1).mean()
@@ -263,7 +267,7 @@ if df is not None and len(df) > 0:
         sup_high = current_ltp * 1.015; sup_low = current_ltp * 1.010
         dem_high = current_ltp * 0.990; dem_low = current_ltp * 0.985
     p_point = round((sup_low + dem_high + current_ltp) / 3)
-    
+
     # 📊 HEADER TERMINAL RENDER
     st.markdown(f"""
     <div class="tc-dashboard-header">

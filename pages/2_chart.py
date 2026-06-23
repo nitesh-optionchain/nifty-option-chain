@@ -170,23 +170,36 @@ with st.sidebar.expander("Draw Manual Lines"):
     v_line_color = st.color_picker("Vertical Line Color", "#ff00ff")
 # pages/2_chart.py (PART 2 - Calculations, Auto-Backup Engine & Plotly View)
 
-# 🔒 3. AUTOMATIC SDK AUTH HANDSHAKE (CONTINUED)
+# ==============================================================================
+# 🎯 3. MULTI-PAGE SECURE SESSION INTER-CONNECTION NODE
+# ==============================================================================
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
+from engine import get_engine # Automatically links to the engine shared in app.py
 
+# First priority: Check if main app session state already holds the authorization
 if 'nubra_session' in st.session_state and st.session_state['nubra_session'] is not None:
     nubra_client = st.session_state['nubra_session']
     market_data = MarketData(nubra_client)
 else:
-    with st.spinner("Re-linking Secure Live Market Stream Server... ⏳"):
-        try:
-            nubra_client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
-            st.session_state['nubra_session'] = nubra_client
-            market_data = MarketData(nubra_client)
-        except Exception as login_err:
-            st.error(f"Authentication Failed on Cloud Node: {login_err}")
-            st.stop()
-
+    # Second priority: Safe fallback to global core engine memory
+    try:
+        md = get_engine()
+        if hasattr(md, 'client') and md.client is not None:
+            st.session_state['nubra_session'] = md.client
+            market_data = MarketData(md.client)
+        else:
+            raise ValueError("Global Engine connection not initialized yet.")
+    except Exception as shared_err:
+        with st.spinner("Synchronizing data matrix with main terminal... ⏳"):
+            try:
+                # Third priority: Secure background auto-handshake if everything fails
+                nubra_client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
+                st.session_state['nubra_session'] = nubra_client
+                market_data = MarketData(nubra_client)
+            except Exception as login_err:
+                st.error("❌ Authentication Bridge Lost. Please refresh or re-auth on Option Chain Main Terminal.")
+                st.stop()
 # ==============================================================================
 # 🧠 4. MATHEMATICAL INDICATORS COMPUTATION ENGINE
 # ==============================================================================

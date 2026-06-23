@@ -60,7 +60,7 @@ if st.session_state['chart_page_session'] != "SIMULATION_ACTIVE":
 # ==============================================================================
 # ⏱️ 2. REFRESH CONTROL (SET TO STABLE 25 SECONDS)
 # ==============================================================================
-st_autorefresh(interval=25000, key="smartwealth_index_terminal_perfect_v40")
+st_autorefresh(interval=25000, key="smartwealth_index_terminal_perfect_v45")
 
 # Premium Dashboard Stylesheet Injection
 st.markdown("""
@@ -288,10 +288,10 @@ if show_supertrend: fig.add_trace(gr.Scatter(x=df_plot['time_str'], y=df_plot['s
 if show_dma:
     fig.add_trace(gr.Scatter(x=df_plot['time_str'], y=df_plot['dma_9'], line=dict(color=dma9_color, width=1.5), name="9 DMA"))
     fig.add_trace(gr.Scatter(x=df_plot['time_str'], y=df_plot['dma_20'], line=dict(color=dma20_color, width=1.5), name="20 DMA"))
-    fig.add_trace(gr.Scatter(x=df_plot['time_str'].y=df_plot['dma_50'], line=dict(color=dma50_color, width=2), name="50 DMA"))
+    fig.add_trace(gr.Scatter(x=df_plot['time_str'], y=df_plot['dma_50'], line=dict(color=dma50_color, width=2), name="50 DMA"))
 if show_vwap: fig.add_trace(gr.Scatter(x=df_plot['time_str'], y=df_plot['vwap'], line=dict(color=vwap_color, width=2.5), name="VWAP"))
 
-# LTP Live tag flag right cursor
+# Real-Time LTP arrow tracker flag
 fig.add_trace(gr.Scatter(x=[df_plot['time_str'].iloc[-1]], y=[current_ltp], mode="markers+text", marker=dict(color="#ffff00", size=12, symbol="arrow-left"), text=[f" ◄ ₹{current_ltp:.2f}"], textposition="middle right", textfont=dict(color="#ffff00", size=14, family="Arial Black"), showlegend=False))
 
 # Focus zoom lookup matrix bounds (Focus on latest 24 candles to force big size)
@@ -303,7 +303,6 @@ comfort_padding = (high_extreme - low_extreme) * 0.18
 fig.update_layout(
     height=560, xaxis_rangeslider_visible=False, template="plotly_dark", margin=dict(l=10, r=180, t=10, b=25),
     yaxis=dict(side="right", showgrid=True, gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=11), range=[low_extreme - comfort_padding, high_extreme + comfort_padding], autorange=False, fixedrange=False),
-    # bargap fixes the structural empty spaces between category nodes to maximize body width
     xaxis=dict(showgrid=True, gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=11), type='category', categoryorder='category ascending', autorange=True, fixedrange=False),
     bargap=0.05, 
     paper_bgcolor='#030712', plot_bgcolor='#030712',

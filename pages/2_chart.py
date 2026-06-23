@@ -9,35 +9,42 @@ import os
 from streamlit_autorefresh import st_autorefresh
 
 # 🔒 ==============================================================================
-# 🎯 BRIDGE NODE: FORCED MULTI-PAGE TOKENS SYNC & AUTO-HANDSHAKE
+# 🎯 STANDALONE LOGIN & INDEPENDENT SESSION SYSTEM
 # ==============================================================================
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
 
-# Global validation check
-market_data = None
+# Initialize page specific session state if not existing
+if 'chart_page_session' not in st.session_state:
+    st.session_state['chart_page_session'] = None
 
-# Step 1: Priority session check
-if 'nubra_session' in st.session_state and st.session_state['nubra_session'] is not None:
-    try:
-        market_data = MarketData(st.session_state['nubra_session'])
-    except Exception:
-        pass
+st.markdown("### 🔒 Chart Session Authentication Node")
 
-# Step 2: Session clear hone par back-end automatic dynamic environment recovery loop
-if market_data is None:
+# Agar session nahi hai, toh independent login screen aur button render karein
+if st.session_state['chart_page_session'] is None:
+    with st.container():
+        st.info("⚠️ Chart functions operate independently. Please initialize this page session node.")
+        if st.button("🚀 Initialize Standalone Chart Stream Session", use_container_width=True):
+            with st.spinner("Connecting securely to Live Market Server..."):
+                try:
+                    client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
+                    st.session_state['chart_page_session'] = client
+                    st.success("🟢 Chart Session Established! App reloading...")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"❌ Handshake Error: {e}")
+        st.stop() # Code ko aage badhne se rokta hai jab tak authentication na ho
+else:
+    # Session state exists, link market data structure directly
     try:
-        # Direct secure engine layer hook without checking local state
-        nubra_client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
-        st.session_state['nubra_session'] = nubra_client
-        market_data = MarketData(nubra_client)
-    except Exception:
-        # Step 3: Agar direct recovery token drop ho toh fallback message template render karein
-        st.warning("⚠️ Access Session Expired. Please click on 'Option Chain Data Terminal' page once to refresh the token, then come back.")
-        st.stop()
+        market_data = MarketData(st.session_state['chart_page_session'])
+    except Exception as err:
+        st.session_state['chart_page_session'] = None
+        st.error("⚠️ Connection disrupted. Re-authenticating...")
+        st.rerun()
 
 # ================= 1. PAGE SETUP =================
-st_autorefresh(interval=3000, key="smartwealth_live_refresh_fixed_v12")
+st_autorefresh(interval=3000, key="smartwealth_chart_isolated_refresh_v1")
 
 # 🌟 PREMIUM DARK THEME STYLE SHEET INJECTION
 st.markdown("""
@@ -167,7 +174,7 @@ with st.sidebar.expander("Draw Manual Lines"):
     draw_v_line = st.checkbox("Enable Vertical Line")
     v_line_idx = st.number_input("Vertical Line Candle Offset", min_value=1, max_value=100, value=5)
     v_line_color = st.color_picker("Vertical Line Color", "#ff00ff")
-# pages/2_chart.py (PART 2 - Calculations, Auto-Backup Engine & Plotly View)
+# pages/2_chart.py (PART 2 - Isolated Computations & Independent Plotly Engine)
 
 # ==============================================================================
 # 🧠 4. MATHEMATICAL INDICATORS COMPUTATION ENGINE

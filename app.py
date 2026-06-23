@@ -55,19 +55,69 @@ def run_option_chain_page():
         df_comb, index_choice, atm, live_px
     )
 
-    # Main Option Chain Table Layout
-    render_option_chain_table(
-        d_df, max_oi_ce, max_oi_pe, max_chg_ce, max_chg_pe, max_vol_ce, max_vol_pe, live_px, atm, res_stk, sup_stk, fmt_val
-    )
+   # app.py (PART 1 - Imports & Mobile CSS Injection)
+import streamlit as st
+from streamlit_autorefresh import st_autorefresh
 
-    # 🎯 BOTH LOWER TABLES REMOVED FOREVER (render_dual_zone_framework function call deleted)
+# 1. Import Settings & Configurations
+from settings import REFRESH_INTERVAL_MS, SETTINGS_FILE
+from auth import load_json
 
-# 🗺️ DYNAMIC NAVIGATION SYSTEM CONFIGURATION
-page_1 = st.Page(run_option_chain_page, title="📊 Option Chain Data Terminal", icon="🎯", default=True)
-page_2 = st.Page("pages/2_chart.py", title="📈 Advanced Live Chart", icon="📉")
+# 2. Import Core Systems & UI Layouts
+from session import init_session_state
+from login_ui import render_login_and_paywall
+from engine import get_engine
+from sidebar import render_sidebar
+from live_tracker import get_global_memory, process_live_market_dashboard
+from momentum_engine import run_momentum_tracker
+from tables_ui import render_option_chain_table
 
-# Mount components inside active loop routing network
-pg = st.navigation({"Smart Wealth Navigation": [page_1, page_2]})
+# 📱 CUSTOM CSS FOR GLOBAL MOBILE TABLE OVERLAP FIX
+st.markdown("""
+    <style>
+        /* Forces the container width to be fully responsive on smartphones */
+        .block-container {
+            max-width: 100% !important;
+            padding-left: 0.5rem !important;
+            padding-right: 0.5rem !important;
+        }
+        
+        /* Targets the dataframe/table wrappers to activate smooth horizontal scrolling */
+        .stDataFrame, div[data-testid="stTable"], div.element-container, .css-5rimss {
+            width: 100% !important;
+            overflow-x: auto !important;
+            display: block !important;
+        }
+        
+        /* Prevents multi-column text strings from smashing or breaking rows */
+        table {
+            width: 100% !important;
+            min-width: 800px !important; /* Locks a minimum clean grid resolution on small viewports */
+            border-collapse: collapse !important;
+        }
+        
+        th, td {
+            white-space: nowrap !important; /* Crucial: Prevents metrics text values from dropping or overlapping */
+            padding: 8px 10px !important;
+            font-size: 12px !important;
+        }
+        
+        /* Webkit scrollbar optimizations for dynamic visibility */
+        ::-webkit-scrollbar {
+            height: 6px !important;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #2563eb !important;
+            border-radius: 4px !important;
+        }
+    </style>
+""", unsafe_allow_html=True)
 
-# Execute navigation router pipeline execution
-pg.run()
+# --- DYNAMIC REFRESH LOOP TRIGGER ---
+st_autorefresh(interval=REFRESH_INTERVAL_MS, key="v5_ultimate_production_final")
+
+# --- INITIALIZE SESSION STATE & AUTO-RECOVERY ---
+init_session_state()
+
+# --- TRIGGER ACCESS VALIDATOR & PAYWALL ---
+render_login_and_paywall()

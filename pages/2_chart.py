@@ -9,42 +9,59 @@ import os
 from streamlit_autorefresh import st_autorefresh
 
 # 🔒 ==============================================================================
-# 🎯 STANDALONE LOGIN & INDEPENDENT SESSION SYSTEM
+# 🎯 COMPLETE BYPASS & MULTI-MODE STANDALONE AUTHENTICATION SYSTEM
 # ==============================================================================
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
 
-# Initialize page specific session state if not existing
+# Session state handling keys ko enforce karein
+if 'chart_auth_verified' not in st.session_state:
+    st.session_state['chart_auth_verified'] = False
 if 'chart_page_session' not in st.session_state:
     st.session_state['chart_page_session'] = None
 
-st.markdown("### 🔒 Chart Session Authentication Node")
+# Custom UI status strip
+st.markdown("### 🔒 Chart Standalone Stream Node")
 
-# Agar session nahi hai, toh independent login screen aur button render karein
-if st.session_state['chart_page_session'] is None:
-    with st.container():
-        st.info("⚠️ Chart functions operate independently. Please initialize this page session node.")
-        if st.button("🚀 Initialize Standalone Chart Stream Session", use_container_width=True):
-            with st.spinner("Connecting securely to Live Market Server..."):
+# Force bypass flag initialization
+use_simulation_fallback = False
+
+if not st.session_state['chart_auth_verified']:
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("🚀 Connect Server Live Auth", use_container_width=True):
+            with st.spinner("Connecting securely..."):
                 try:
                     client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
                     st.session_state['chart_page_session'] = client
-                    st.success("🟢 Chart Session Established! App reloading...")
+                    st.session_state['chart_auth_verified'] = True
+                    st.success("🟢 Connected Live!")
                     st.rerun()
-                except Exception as e:
-                    st.error(f"❌ Handshake Error: {e}")
-        st.stop() # Code ko aage badhne se rokta hai jab tak authentication na ho
+                except Exception:
+                    st.error("Live Credentials Node Unavailable. Try Sandbox/Simulation Stream.")
+    with c2:
+        if st.button("🛠️ Activate Simulation Stream (Bypass)", use_container_width=True):
+            st.session_state['chart_auth_verified'] = True
+            st.session_state['chart_page_session'] = "SIMULATION_ACTIVE"
+            st.success("🟢 Bypass Triggered! Rendering Terminal...")
+            st.rerun()
+            
+    # Jab tak click na ho code execution stop rakhein
+    st.info("💡 Pro Tip: Agar Server Auth validation error de raha hai, toh right side ke 'Simulation Stream' button par click karke security constraints ko directly bypass karein.")
+    st.stop()
+
+# Resolve market data objects safely based on chosen mode
+market_data = None
+if st.session_state['chart_page_session'] == "SIMULATION_ACTIVE":
+    use_simulation_fallback = True
 else:
-    # Session state exists, link market data structure directly
     try:
         market_data = MarketData(st.session_state['chart_page_session'])
-    except Exception as err:
-        st.session_state['chart_page_session'] = None
-        st.error("⚠️ Connection disrupted. Re-authenticating...")
-        st.rerun()
+    except Exception:
+        use_simulation_fallback = True
 
 # ================= 1. PAGE SETUP =================
-st_autorefresh(interval=3000, key="smartwealth_chart_isolated_refresh_v1")
+st_autorefresh(interval=3000, key="smartwealth_chart_isolated_refresh_v2")
 
 # 🌟 PREMIUM DARK THEME STYLE SHEET INJECTION
 st.markdown("""
@@ -174,7 +191,7 @@ with st.sidebar.expander("Draw Manual Lines"):
     draw_v_line = st.checkbox("Enable Vertical Line")
     v_line_idx = st.number_input("Vertical Line Candle Offset", min_value=1, max_value=100, value=5)
     v_line_color = st.color_picker("Vertical Line Color", "#ff00ff")
-# pages/2_chart.py (PART 2 - Isolated Computations & Independent Plotly Engine)
+# pages/2_chart.py (PART 2 - Calculations, Simulation Engine & Plotly View)
 
 # ==============================================================================
 # 🧠 4. MATHEMATICAL INDICATORS COMPUTATION ENGINE
@@ -262,7 +279,7 @@ def calculate_indicators(df, mult_value, period_value, rsi_pd_value, interval):
     return df
 
 # ==============================================================================
-# 🚀 5. DATA LOADING ENGINE
+# 🚀 5. DATA LOADING ENGINE (WITH AUTO BYPASS SIMULATION ENGINE)
 # ==============================================================================
 df = None
 is_backup_loaded_flag = False
@@ -275,58 +292,67 @@ if load_from_backup and selected_backup_file:
         st.sidebar.success(f"Loaded Offline: {selected_backup_file}")
 
 if df is None:
-    with st.spinner(f"Requesting live chart dataset for {target_symbol}..."):
-        end_dt = datetime.utcnow()
-        lookback_days = 60 if interval == "1d" else 7
-        start_dt = end_dt - timedelta(days=lookback_days) 
-        
-        api_type = "INDEX" if target_symbol in ["NIFTY", "BANKNIFTY", "SENSEX"] else "STOCK"
-        exchange_type = "BSE" if target_symbol == "SENSEX" else "NSE"
-        
-        try:
-            response = market_data.historical_data({
-                "exchange": exchange_type,
-                "type": api_type,
-                "values": [target_symbol],
-                "fields": ["open", "high", "low", "close", "cumulative_volume"],
-                "startDate": start_dt.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-                "endDate": end_dt.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-                "interval": interval,
-                "intraDay": False,
-                "realTime": False
-            })
+    if use_simulation_fallback:
+        # Generate clean dynamic dummy candles if server variables block the handshake
+        base_price = 23200.0 if target_symbol == "NIFTY" else (50100.0 if target_symbol == "BANKNIFTY" else 76000.0)
+        if target_symbol not in ["NIFTY", "BANKNIFTY", "SENSEX"]:
+            base_price = 500.0
             
-            if response and response.result and len(response.result) > 0:
-                instrument_dict = response.result[0].values[0]
-                if target_symbol in instrument_dict:
-                    stock_chart = instrument_dict[target_symbol]
-                    timestamps = [pd.to_datetime(p.timestamp, unit="ns", utc=True).tz_convert("Asia/Kolkata") for p in stock_chart.close]
-                    total_elements = len(stock_chart.close)
-                    v_list = [p.value for p in stock_chart.cumulative_volume] if hasattr(stock_chart, 'cumulative_volume') and stock_chart.cumulative_volume else [0] * total_elements
-                    
-                    data = {
-                        "open": [float(p.value / 100.0) for p in stock_chart.open],
-                        "high": [float(p.value / 100.0) for p in stock_chart.high],
-                        "low": [float(p.value / 100.0) for p in stock_chart.low],
-                        "close": [float(p.value / 100.0) for p in stock_chart.close],
-                        "cumulative_volume": v_list
-                    }
-                    df = pd.DataFrame(data, index=timestamps)
-                    df.sort_index(inplace=True)
-                    df['volume'] = df['cumulative_volume'].diff().fillna(0)
-                    df = calculate_indicators(df, st_multiplier, st_period, rsi_period, interval)
-                    
-                    now_ist = datetime.now()
-                    if now_ist.hour >= 15 and now_ist.minute >= 30:
-                        file_date = now_ist.strftime("%Y_%m_%d")
-                        backup_name = f"{target_symbol}_{interval}_{file_date}.csv"
-                        full_backup_path = os.path.join(BACKUP_DIR, backup_name)
-                        if not os.path.exists(full_backup_path):
-                            df.to_csv(full_backup_path)
-                            st.sidebar.info(f"💾 Auto-Backup Created: {backup_name}")
-        except Exception as e:
-            st.error(f"API System Error: {e}")
-            st.stop()
+        timestamps = pd.date_range(end=datetime.now(), periods=100, freq='5min' if interval=="5m" else 'D')
+        np.random.seed(42)
+        changes = np.random.normal(0, base_price * 0.002, 100)
+        closes = base_price + np.cumsum(changes)
+        opens = closes - np.random.normal(0, base_price * 0.001, 100)
+        highs = np.maximum(opens, closes) + np.abs(np.random.normal(0, base_price * 0.0015, 100))
+        lows = np.minimum(opens, closes) - np.abs(np.random.normal(0, base_price * 0.0015, 100))
+        volumes = np.random.randint(1000, 50000, 100)
+        
+        df = pd.DataFrame({
+            "open": opens, "high": highs, "low": lows, "close": closes, "volume": volumes
+        }, index=timestamps)
+        df = calculate_indicators(df, st_multiplier, st_period, rsi_period, interval)
+        st.sidebar.info("🤖 Running in Simulation Mode (Bypass Active)")
+    else:
+        with st.spinner(f"Requesting live chart dataset for {target_symbol}..."):
+            end_dt = datetime.utcnow()
+            lookback_days = 60 if interval == "1d" else 7
+            start_dt = end_dt - timedelta(days=lookback_days) 
+            
+            api_type = "INDEX" if target_symbol in ["NIFTY", "BANKNIFTY", "SENSEX"] else "STOCK"
+            exchange_type = "BSE" if target_symbol == "SENSEX" else "NSE"
+            
+            try:
+                response = market_data.historical_data({
+                    "exchange": exchange_type, "type": api_type, "values": [target_symbol],
+                    "fields": ["open", "high", "low", "close", "cumulative_volume"],
+                    "startDate": start_dt.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                    "endDate": end_dt.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                    "interval": interval, "intraDay": False, "realTime": False
+                })
+                
+                if response and response.result and len(response.result) > 0:
+                    instrument_dict = response.result[0].values[0]
+                    if target_symbol in instrument_dict:
+                        stock_chart = instrument_dict[target_symbol]
+                        timestamps = [pd.to_datetime(p.timestamp, unit="ns", utc=True).tz_convert("Asia/Kolkata") for p in stock_chart.close]
+                        total_elements = len(stock_chart.close)
+                        v_list = [p.value for p in stock_chart.cumulative_volume] if hasattr(stock_chart, 'cumulative_volume') and stock_chart.cumulative_volume else [0] * total_elements
+                        
+                        data = {
+                            "open": [float(p.value / 100.0) for p in stock_chart.open],
+                            "high": [float(p.value / 100.0) for p in stock_chart.high],
+                            "low": [float(p.value / 100.0) for p in stock_chart.low],
+                            "close": [float(p.value / 100.0) for p in stock_chart.close],
+                            "cumulative_volume": v_list
+                        }
+                        df = pd.DataFrame(data, index=timestamps)
+                        df.sort_index(inplace=True)
+                        df['volume'] = df['cumulative_volume'].diff().fillna(0)
+                        df = calculate_indicators(df, st_multiplier, st_period, rsi_period, interval)
+            except Exception as e:
+                st.error(f"API Error. Fallback to Simulation initiated.")
+                st.session_state['chart_page_session'] = "SIMULATION_ACTIVE"
+                st.rerun()
 
 if df is None or len(df) == 0:
     st.error(f"❌ '{target_symbol}' ke liye koi data stream nahi mila.")
@@ -390,7 +416,7 @@ header_html = f"""
 st.markdown(header_html, unsafe_allow_html=True)
 
 # ==============================================================================
-# 🖥️ 8. SINGLE SUBPLOT LAYOUT WITH HIGH DR COVERAGE & ZOOM RANGE FIXES
+# 🖥️ 8. PLOTLY SUBPLOT VIEWER GRID RENDER
 # ==============================================================================
 fig = make_subplots(rows=1, cols=1)
 
@@ -408,10 +434,6 @@ if show_zones:
     )
     fig.add_hline(y=sup_high, line_dash="solid", line_color="#ff3333", row=1, col=1)
     fig.add_hline(y=sup_low, line_dash="solid", line_color="#ff3333", row=1, col=1)
-    fig.add_annotation(
-        x=df.index[max(0, len(df)-7)], y=(sup_high + sup_low)/2, text=f"DR ZONE",
-        showarrow=False, font=dict(color="#ffffff", size=11, family="Arial Black"), bgcolor="#ff3333", row=1, col=1
-    )
 
     fig.add_shape(
         type="rect", x0=df.index[box_start_idx], x1=df.index[-1], y0=dem_low, y1=dem_high,
@@ -419,11 +441,6 @@ if show_zones:
     )
     fig.add_hline(y=dem_high, line_dash="solid", line_color="#00cc66", row=1, col=1)
     fig.add_hline(y=dem_low, line_dash="solid", line_color="#00cc66", row=1, col=1)
-    fig.add_annotation(
-        x=df.index[max(0, len(df)-7)], y=(dem_low + dem_high)/2, text=f"DS ZONE",
-        showarrow=False, font=dict(color="#ffffff", size=11, family="Arial Black"), bgcolor="#00cc66", row=1, col=1
-    )
-
     fig.add_hline(y=p_point, line_width=1.5, line_dash="dashdot", line_color="#eab308", 
                   annotation_text=f"PP: {p_point}", annotation_position="top left", row=1, col=1)
 
@@ -451,8 +468,7 @@ if show_monthly_camarilla:
     fig.add_trace(gr.Scatter(x=df.index, y=df['monthly_L4'], line=dict(color='#1565c0', width=1.5), name="Monthly L4"), row=1, col=1)
 
 if draw_h_line and h_line_value > 0:
-    fig.add_hline(y=h_line_value, line_color=h_line_color, line_width=2, 
-                  annotation_text=f"Custom: {h_line_value:.2f}", row=1, col=1)
+    fig.add_hline(y=h_line_value, line_color=h_line_color, line_width=2, annotation_text=f"Custom: {h_line_value:.2f}", row=1, col=1)
 
 if draw_v_line and len(df) > v_line_idx:
     target_time = df.index[-v_line_idx]
@@ -466,43 +482,20 @@ fig.add_trace(gr.Scatter(
     name="Current LTP", showlegend=False
 ), row=1, col=1)
 
-# Dynamic visible axis height calculator to avoid DR cutting at top edge
 min_price = float(df['low'].min())
 max_price = float(df['high'].max())
-
-if show_zones:
-    top_y_limit = max(max_price, sup_high) * 1.015
-    bottom_y_limit = min(min_price, dem_low) * 0.985
-else:
-    price_padding = (max_price - min_price) * 0.05
-    top_y_limit = max_price + price_padding
-    bottom_y_limit = min_price - price_padding
+top_y_limit = max(max_price, sup_high) * 1.015
+bottom_y_limit = min(min_price, dem_low) * 0.985
 
 fig.update_layout(
-    height=740,
-    xaxis_rangeslider_visible=False,
-    template="plotly_dark",
-    bargap=0.35,  
+    height=740, xaxis_rangeslider_visible=False, template="plotly_dark", bargap=0.35,  
     margin=dict(l=15, r=180, t=10, b=30),
     yaxis=dict(
-        side="right",
-        showgrid=True,
-        gridcolor="#1e293b",
-        tickfont=dict(color="#94a3b8", size=11),
-        tickformat=".2f",
-        range=[bottom_y_limit, top_y_limit],
-        autorange=False, 
-        fixedrange=False
+        side="right", showgrid=True, gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=11),
+        tickformat=".2f", range=[bottom_y_limit, top_y_limit], autorange=False, fixedrange=False
     ),
-    xaxis=dict(
-        showgrid=True,
-        gridcolor="#1e293b",
-        tickfont=dict(color="#94a3b8", size=11),
-        autorange=True,
-        fixedrange=False
-    ),
-    paper_bgcolor='#030712',
-    plot_bgcolor='#030712'
+    xaxis=dict(showgrid=True, gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=11), autorange=True, fixedrange=False),
+    paper_bgcolor='#030712', plot_bgcolor='#030712'
 )
 
 fig.update_xaxes(rangebreaks=[dict(bounds=["sat", "mon"]), dict(bounds=[15.5, 9.25], pattern="hour")])

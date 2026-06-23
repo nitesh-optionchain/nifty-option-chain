@@ -8,38 +8,42 @@ from datetime import datetime, timedelta
 import os
 from streamlit_autorefresh import st_autorefresh
 
-# 🔒 Session Auth Framework
+# 🔒 SESSION INITIALIZATION (Bina Auth Break Kiye Token Control)
 if 'chart_auth_verified' not in st.session_state:
     st.session_state['chart_auth_verified'] = False
 if 'chart_page_session' not in st.session_state:
     st.session_state['chart_page_session'] = None
 
-st.markdown("### 📊 TradeClue Professional Candle Terminal")
+st.markdown("### 📊 TradeClue Live Index Chart")
 
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
 
-# Server Auth Initialize
+# 🛡️ SAFE SINGLE-TIME AUTH GATEWAY (Relogin Loop Protection)
 if not st.session_state['chart_auth_verified']:
     try:
-        client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
-        st.session_state['chart_page_session'] = client
-        st.session_state['chart_auth_verified'] = True
-        st.rerun()
+        # Agar main file (app.py) mein session active hai toh wahan se fetch karega
+        if 'nubra_client' in st.session_state and st.session_state['nubra_client'] is not None:
+            st.session_state['chart_page_session'] = st.session_state['nubra_client']
+            st.session_state['chart_auth_verified'] = True
+        else:
+            client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
+            st.session_state['chart_page_session'] = client
+            st.session_state['chart_auth_verified'] = True
     except Exception as e:
-        st.error(f"🔴 Auth Connection Failed: {e}")
+        st.error(f"🔴 Relogin Token Issue: {e}. Please refresh dashboard.")
         st.stop()
 
 try:
     market_data = MarketData(st.session_state['chart_page_session'])
 except Exception as e:
-    st.error(f"🔴 MarketData Engine Error: {e}")
+    st.error(f"🔴 SDK Market Data Error: {e}")
     st.stop()
 
-# ⏱️ System Auto Refresh Setup (Standard 25 Secs)
-st_autorefresh(interval=25000, key="smartwealth_index_rules_final_v105")
+# ⏱️ System Stable Auto Refresh Cycle (25 Seconds)
+st_autorefresh(interval=25000, key="smartwealth_index_stable_v120")
 
-# Custom Dashboard Design Styling Injection
+# CSS Dashboard Premium UI Injection
 st.markdown("""
     <style>
         .block-container { padding-top: 0.5rem !important; padding-bottom: 0.5rem !important; max-width: 100% !important; }
@@ -74,7 +78,7 @@ show_zones = st.sidebar.checkbox("🎯 Show TradeClue DR/DS & Zones", value=True
 show_supertrend = st.sidebar.checkbox("⚡ Show SuperTrend Line", value=True)
 
 # ==============================================================================
-# 🚀 SDK RULES-BASED DATA RETRIEVAL (NO SIMULATION / CLEAN OUTPUT TYPE)
+# 🚀 PURE LIVE STREAM FETCH DATA LAYERING (NO BACKUP SIMULATION MOCK BLOCKS)
 # ==============================================================================
 df = None
 try:
@@ -97,7 +101,7 @@ try:
             stock_chart = instrument_dict[target_symbol]
             raw_closes = [float(p.value) for p in stock_chart.close]
             
-            # Decimal scaling calculation according to rules
+            # Smart Scale Factor Parser according to SDK Rule Section
             avg_raw = sum(raw_closes) / len(raw_closes)
             scale_factor = 100.0 if avg_raw > 150000 else 1.0
             
@@ -109,14 +113,14 @@ try:
                 "close": [float(p.value / scale_factor) for p in stock_chart.close]
             }, index=timestamps).sort_index()
 except Exception as e:
-    st.error(f"🔴 SDK Fetch System Issue: {e}")
+    st.error(f"🔴 Live Feed Interrupted: {e}")
     st.stop()
 
 if df is None or len(df) == 0:
-    st.error("🔴 Market Server returned an empty list. Token configuration issue.")
+    st.error("🔴 Live Token Response Empty. Database Syncing Issue.")
     st.stop()
 
-# ATR & SuperTrend Technical Engine Blocks
+# Core Technical Matrix Calculations
 df['tr'] = df[['high', 'low', 'close']].max(axis=1) - df[['high', 'low', 'close']].min(axis=1)
 df['atr'] = df['tr'].rolling(window=10, min_periods=1).mean()
 df['hl2'] = (df['high'] + df['low']) / 2
@@ -133,7 +137,7 @@ for i in range(1, len(df)):
 
 current_ltp = float(df['close'].iloc[-1])
 
-# Dynamic Support / Resistance Calculations from Live LTP
+# Dynamic Automatic Level Shifting 
 if target_symbol == "NIFTY":
     dr_level = float(((current_ltp + 15) // 50) * 50 + 50)
     ds_level = float(((current_ltp - 15) // 50) * 50 - 50)
@@ -153,7 +157,7 @@ p_point = round((dr_level + ds_level + current_ltp) / 3, 2)
 
 st.markdown(f"""
 <div class="tc-dashboard-header">
-    <div class="tc-title">⚡ {target_symbol} TRADECLUE CORE MODULE</div>
+    <div class="tc-title">⚡ {target_symbol} REAL-TIME ACTIVE TERMINAL</div>
     <div class="tc-metrics-container">
         <span class="tc-badge badge-ce">🔴 DR LEVEL: {int(dr_level)} | ZONE: {int(res_zone_low)}-{int(res_zone_high)}</span>
         <span class="tc-badge badge-pe">🟢 DS LEVEL: {int(ds_level)} | ZONE: {int(sup_zone_low)}-{int(sup_zone_high)}</span>
@@ -173,14 +177,13 @@ fig.add_trace(gr.Candlestick(
 ), row=1, col=1)
 
 layout_annotations = []
-view_candles = df_plot.tail(25) # Exact Latest 25 Candles Rule Lock
+view_candles = df_plot.tail(25) # Exact 25 Candles Rule Constraints
 
 if show_zones:
     box_start_idx = max(0, len(df_plot) - 12)
     x0_val = df_plot['time_str'].iloc[box_start_idx]
     x1_val = df_plot['time_str'].iloc[-1]
     
-    # Resistance & Support Transparent Dynamic Overlays
     fig.add_shape(type="rect", x0=x0_val, x1=x1_val, y0=res_zone_low, y1=res_zone_high, fillcolor="rgba(239, 68, 68, 0.22)", line=dict(color="#ef4444", width=1.5))
     fig.add_shape(type="rect", x0=x0_val, x1=x1_val, y0=sup_zone_low, y1=sup_zone_high, fillcolor="rgba(34, 197, 94, 0.22)", line=dict(color="#22c55e", width=1.5))
     fig.add_hline(y=dr_level, line_width=1.5, line_dash="dash", line_color="#f87171")
@@ -191,7 +194,7 @@ if show_zones:
 
 if show_supertrend: fig.add_trace(gr.Scatter(x=df_plot['time_str'], y=df_plot['supertrend'], line=dict(color="#f97316", width=2.5), name="SuperTrend"))
 
-# Flat Right Side LTP Ticker Label
+# Right-Edge Flat Live Price Ticker
 fig.add_trace(gr.Scatter(
     x=[df_plot['time_str'].iloc[-1]], y=[current_ltp], mode="markers+text", 
     marker=dict(color="#ffff00", size=10, symbol="arrow-left"), 
@@ -205,15 +208,15 @@ high_extreme = float(view_candles['high'].max())
 if show_zones:
     low_extreme = min(low_extreme, sup_zone_low)
     high_extreme = max(high_extreme, res_zone_high)
-# Tighter vertical factor bounds (0.025) to stretch the candle height vertically
-vertical_stretch_factor = (high_extreme - low_extreme) * 0.025
+# Tighter vertical compression (0.02) to stretch candle height perfectly 
+vertical_stretch_factor = (high_extreme - low_extreme) * 0.02
 
 fig.update_layout(
     height=680, autosize=True, margin=dict(l=10, r=160, t=10, b=25), 
     yaxis=dict(side="right", showgrid=True, gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=11), range=[low_extreme - vertical_stretch_factor, high_extreme + vertical_stretch_factor], autorange=False, fixedrange=False),
-    # bargap=0.42 yields normal thin candle width formats beautifully
+    # bargap=0.45 sets professional standard thin candle dimensions
     xaxis=dict(showgrid=True, gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=11), type='category', categoryorder='category ascending', range=[df_plot['time_str'].iloc[-25], df_plot['time_str'].iloc[-1]], autorange=False, fixedrange=False),
-    bargap=0.42, paper_bgcolor='#030712', plot_bgcolor='#030712',
+    bargap=0.45, paper_bgcolor='#030712', plot_bgcolor='#030712',
     annotations=layout_annotations
 )
 

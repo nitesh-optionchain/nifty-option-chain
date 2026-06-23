@@ -75,7 +75,7 @@ st.markdown("""
         .tc-title { color: #f3f4f6; font-size: 18px; font-weight: 800; margin: 0; }
         .tc-metrics-container { display: flex; gap: 10px; flex-wrap: wrap; }
         .tc-badge { padding: 5px 12px; border-radius: 4px; font-size: 12px; font-weight: 700; display: inline-block; }
-        .badge-ce { background-color: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+        .badge-ce { background-color: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); }
         .badge-pe { background-color: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3); }
         .badge-pp { background-color: rgba(234, 179, 8, 0.12); color: #fde047; border: 1px solid rgba(234, 179, 8, 0.2); }
         .badge-backup { background-color: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); }
@@ -134,23 +134,23 @@ rsi_period = int(st.sidebar.number_input("RSI Period", min_value=2, max_value=50
 st_multiplier = float(st.sidebar.number_input("SuperTrend Multiplier", min_value=1.0, max_value=5.0, value=3.0, step=0.1))
 st_period = int(st.sidebar.number_input("SuperTrend ATR Period", min_value=1, max_value=50, value=10))
 
-st.sidebar.header("🎨 Customize Line Colors")
-with st.sidebar.expander("Change Line Colors"):
-    st_color = st.color_picker("SuperTrend Line Color", "#f97316")
-    dma9_color = st.color_picker("9 DMA Color", "#ffeb3b")
-    dma20_color = st.color_picker("20 DMA Color", "#00e5ff")
-    dma50_color = st.color_picker("50 DMA Color", "#e040fb")
-    vwap_color = st.color_picker("VWAP Color", "#00f0ff")
+# 🔥 FIXED: Removed expander constraint to prevent global template KeyErrors
+st.sidebar.header("🎨 Line Colors System")
+st_color = st.sidebar.color_picker("SuperTrend Line Color", "#f97316")
+dma9_color = st.sidebar.color_picker("9 DMA Color", "#ffeb3b")
+dma20_color = st.sidebar.color_picker("20 DMA Color", "#00e5ff")
+dma50_color = st.sidebar.color_picker("50 DMA Color", "#e040fb")
+vwap_color = st.sidebar.color_picker("VWAP Color", "#00f0ff")
 
 st.sidebar.header("✏️ Custom Drawing Tools")
-with st.sidebar.expander("Draw Manual Lines"):
-    draw_h_line = st.checkbox("Enable Horizontal Line")
-    h_line_value = st.number_input("Horizontal Price Value", value=0.0)
-    h_line_color = st.color_picker("Horizontal Line Color", "#ffffff")
-    draw_v_line = st.checkbox("Enable Vertical Line")
-    v_line_idx = int(st.sidebar.number_input("Vertical Line Candle Offset", min_value=1, max_value=100, value=5))
-    v_line_color = st.color_picker("Vertical Line Color", "#ff00ff")
-# pages/2_chart.py (PART 2 - Fragment Engine, Calculations & Plotly Layout View)
+draw_h_line = st.sidebar.checkbox("Enable Horizontal Line")
+h_line_value = st.sidebar.number_input("Horizontal Price Value", value=0.0)
+h_line_color = st.sidebar.color_picker("Horizontal Line Color", "#ffffff")
+
+draw_v_line = st.sidebar.checkbox("Enable Vertical Line")
+v_line_idx = int(st.sidebar.number_input("Vertical Line Candle Offset", min_value=1, max_value=100, value=5))
+v_line_color = st.sidebar.color_picker("Vertical Line Color", "#ff00ff")
+# pages/2_chart.py (PART 2 - Fragment Engine, Safe Calculations & Plotly Layout View)
 
 # ==============================================================================
 # 🧠 4. MATHEMATICAL INDICATORS COMPUTATION ENGINE
@@ -244,7 +244,7 @@ def get_simulation_dataframe(target_symbol, interval):
     base_price = 23200.0 if target_symbol == "NIFTY" else (50100.0 if target_symbol == "BANKNIFTY" else 76000.0)
     if target_symbol not in ["NIFTY", "BANKNIFTY", "SENSEX"]: base_price = 500.0
     timestamps = pd.date_range(end=datetime.now(), periods=100, freq='5min' if interval=="5m" else 'D')
-    np.random.seed(int(time.time()) % 1000) # Dynamic seed to allow variation on refresh
+    np.random.seed(int(time.time()) % 1000)
     changes = np.random.normal(0, base_price * 0.002, 100)
     closes = base_price + np.cumsum(changes)
     opens = closes - np.random.normal(0, base_price * 0.001, 100)
@@ -255,7 +255,7 @@ def get_simulation_dataframe(target_symbol, interval):
     return sim_df
 
 # ==============================================================================
-# ⚡ 6. STREAMLIT FRAGMENT CONTAINER (ELIMINATES PAGE DULLNESS/FLICKER)
+# ⚡ 6. STREAMLIT FRAGMENT CONTAINER (ELIMINATES PAGE FLICKER)
 # ==============================================================================
 @st.fragment(run_every=15)
 def render_isolated_chart_fragment(target_symbol, interval, use_simulation_fallback):
@@ -400,7 +400,7 @@ def render_isolated_chart_fragment(target_symbol, interval, use_simulation_fallb
         fig.update_xaxes(rangebreaks=[dict(bounds=["sat", "mon"]), dict(bounds=[15.5, 9.25], pattern="hour")])
         st.plotly_chart(fig, use_container_width=True)
     except Exception:
-        st.info("🔄 Re-aligning layout data blocks...")
+        st.info("🔄 Tuning terminal graphics matrix...")
 
     st.markdown("### 📊 Live Terminal Reference Dashboard")
     c1, c2, c3 = st.columns(3)
@@ -408,5 +408,5 @@ def render_isolated_chart_fragment(target_symbol, interval, use_simulation_fallb
     with c2: st.success(f"🟢 **Buys/Demand Zone (DS):** {dem_low:.1f} - {dem_high:.1f}")
     with c3: st.warning(f"🟡 **Live Market LTP:** ₹{current_ltp:.2f}")
 
-# Trigger the fragment execution node smoothly
+# Trigger the fragment loop execution nodally
 render_isolated_chart_fragment(target_symbol, interval, use_simulation_fallback)

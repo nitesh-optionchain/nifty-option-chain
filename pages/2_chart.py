@@ -60,19 +60,24 @@ if st.session_state['chart_page_session'] != "SIMULATION_ACTIVE":
 # ==============================================================================
 # ⏱️ 2. REFRESH CONTROL (SET TO STABLE 25 SECONDS)
 # ==============================================================================
-st_autorefresh(interval=25000, key="smartwealth_index_terminal_perfect_v50")
+st_autorefresh(interval=25000, key="smartwealth_index_terminal_perfect_v55")
 
-# Premium Dashboard Stylesheet Injection
+# Premium Dashboard Stylesheet Injection (Responsive Viewport Mode)
 st.markdown("""
     <style>
-        .block-container { padding-top: 1rem !important; padding-bottom: 1rem !important; max-width: 100% !important; }
-        .tc-dashboard-header { background: linear-gradient(135deg, #111827 0%, #030712 100%); border: 1px solid #1f2937; border-radius: 8px; padding: 12px 16px; margin-bottom: 15px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; }
-        .tc-title { color: #f3f4f6; font-size: 18px; font-weight: 800; margin: 0; }
-        .tc-metrics-container { display: flex; gap: 10px; flex-wrap: wrap; }
-        .tc-badge { padding: 5px 12px; border-radius: 4px; font-size: 12px; font-weight: 700; display: inline-block; }
+        .block-container { padding-top: 0.5rem !important; padding-bottom: 0.5rem !important; max-width: 100% !important; }
+        .tc-dashboard-header { background: linear-gradient(135deg, #111827 0%, #030712 100%); border: 1px solid #1f2937; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; }
+        .tc-title { color: #f3f4f6; font-size: 16px; font-weight: 800; margin: 0; }
+        .tc-metrics-container { display: flex; gap: 8px; flex-wrap: wrap; }
+        .tc-badge { padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: 700; display: inline-block; }
         .badge-ce { background-color: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
         .badge-pe { background-color: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3); }
         .badge-pp { background-color: rgba(234, 179, 8, 0.12); color: #fde047; border: 1px solid rgba(234, 179, 8, 0.2); }
+        @media (max-width: 768px) {
+            .tc-dashboard-header { flex-direction: column; align-items: flex-start; }
+            .tc-metrics-container { width: 100%; flex-direction: column; }
+            .tc-badge { width: 100%; text-align: center; }
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -117,7 +122,6 @@ dma20_color = st.sidebar.color_picker("20 DMA Color", "#00e5ff")
 dma50_color = st.sidebar.color_picker("50 DMA Color", "#e040fb")
 vwap_color = st.sidebar.color_picker("VWAP Color", "#00f0ff")
 
-# Fixed Dataset Cache Lock Generator
 def get_static_fallback_data(symbol):
     if symbol in st.session_state['persistent_df_store']:
         return st.session_state['persistent_df_store'][symbol]
@@ -136,7 +140,6 @@ def get_static_fallback_data(symbol):
     fresh_df = pd.DataFrame({"open": opens, "high": highs, "low": lows, "close": closes, "volume": np.random.randint(2000, 7000, 45)}, index=timestamps)
     st.session_state['persistent_df_store'][symbol] = fresh_df
     return fresh_df
-
 # ==============================================================================
 # 🚀 4. CORE COMPUTATIONAL SCALING INTERFACE
 # ==============================================================================
@@ -186,7 +189,6 @@ else:
 if df is None or len(df) == 0:
     df = get_static_fallback_data(target_symbol)
 
-# Indicators calculations
 df['dma_9'] = df['close'].rolling(window=9, min_periods=1).mean()
 df['dma_20'] = df['close'].rolling(window=20, min_periods=1).mean()
 df['dma_50'] = df['close'].rolling(window=50, min_periods=1).mean()
@@ -199,7 +201,6 @@ else:
 df['tr'] = df[['high', 'low', 'close']].max(axis=1) - df[['high', 'low', 'close']].min(axis=1)
 df['atr'] = df['tr'].rolling(window=st_period, min_periods=1).mean()
 
-# SuperTrend Logic Matrix
 df['hl2'] = (df['high'] + df['low']) / 2
 df['upper_band'] = df['hl2'] + (st_multiplier * df['atr'])
 df['lower_band'] = df['hl2'] - (st_multiplier * df['atr'])
@@ -213,7 +214,7 @@ for i in range(1, len(df)):
     df.loc[df.index[i], 'supertrend'] = df['lower_band'].iloc[i] if df['trend'].iloc[i] == 1 else df['upper_band'].iloc[i]
 
 # ==============================================================================
-# 🖥️ 5. EXPLICIT DR/DS LEVEL & ZONE MAPS
+# 🖥️ 5. AUTO-RESPONSIVE DR/DS ENGINE SETUP
 # ==============================================================================
 current_ltp = float(df['close'].iloc[-1])
 
@@ -235,7 +236,6 @@ else:
 
 p_point = round((dr_level + ds_level + current_ltp) / 3, 2)
 
-# TradeClue Top Panel Header
 st.markdown(f"""
 <div class="tc-dashboard-header">
     <div class="tc-title">⚡ {target_symbol} TRADECLUE PROFILE</div>
@@ -249,13 +249,11 @@ st.markdown(f"""
 
 fig = make_subplots(rows=1, cols=1)
 
-# Optimized String Formatting for Candlestick charts
 df_plot = df.copy()
 df_plot['time_str'] = df_plot.index.strftime('%H:%M')
 if interval == "1d":
     df_plot['time_str'] = df_plot.index.strftime('%Y-%m-%d')
 
-# Trace 1: Candlesticks
 fig.add_trace(gr.Candlestick(
     x=df_plot['time_str'], open=df_plot['open'], high=df_plot['high'], low=df_plot['low'], close=df_plot['close'], 
     name="LTP",
@@ -270,7 +268,6 @@ if show_zones:
     x0_val = df_plot['time_str'].iloc[box_start_idx]
     x1_val = df_plot['time_str'].iloc[-1]
     
-    # Resistance & Support boxes
     fig.add_shape(type="rect", x0=x0_val, x1=x1_val, y0=res_zone_low, y1=res_zone_high, fillcolor="rgba(239, 68, 68, 0.16)", line=dict(color="#ef4444", width=2))
     fig.add_shape(type="rect", x0=x0_val, x1=x1_val, y0=sup_zone_low, y1=sup_zone_high, fillcolor="rgba(34, 197, 94, 0.16)", line=dict(color="#22c55e", width=2))
     
@@ -278,11 +275,11 @@ if show_zones:
     fig.add_hline(y=ds_level, line_width=2, line_dash="dash", line_color="#4ade80")
     fig.add_hline(y=p_point, line_width=1.5, line_dash="dashdot", line_color="#eab308")
 
-    # Injections of Absolute Dynamic Text Layout Labels
-    layout_annotations.append(dict(x=x0_val, y=dr_level, text=" 🔴 DR LEVEL", showarrow=False, xanchor="left", yanchor="bottom", font=dict(color="#f87171", size=12, family="Arial Black")))
-    layout_annotations.append(dict(x=x0_val, y=ds_level, text=" 🟢 DS LEVEL", showarrow=False, xanchor="left", yanchor="top", font=dict(color="#4ade80", size=12, family="Arial Black")))
-    layout_annotations.append(dict(x=x1_val, y=res_zone_high, text="⚠️ RESISTANCE ZONE ", showarrow=False, xanchor="right", yanchor="bottom", font=dict(color="#ef4444", size=11, family="Arial Black")))
-    layout_annotations.append(dict(x=x1_val, y=sup_zone_low, text="✅ SUPPORT ZONE ", showarrow=False, xanchor="right", yanchor="top", font=dict(color="#22c55e", size=11, family="Arial Black")))
+    # RESPONSIVE ANCHORING: Fixed overlapping on small screens
+    layout_annotations.append(dict(x=x0_val, y=dr_level, text=" 🔴 DR LEVEL", showarrow=False, xanchor="left", yanchor="bottom", font=dict(color="#f87171", size=11, family="Arial Black")))
+    layout_annotations.append(dict(x=x0_val, y=ds_level, text=" 🟢 DS LEVEL", showarrow=False, xanchor="left", yanchor="top", font=dict(color="#4ade80", size=11, family="Arial Black")))
+    layout_annotations.append(dict(x=x1_val, y=res_zone_high, text="⚠️ RES ZONE ", showarrow=False, xanchor="right", yanchor="bottom", font=dict(color="#ef4444", size=10, family="Arial Black")))
+    layout_annotations.append(dict(x=x1_val, y=sup_zone_low, text="✅ SUP ZONE ", showarrow=False, xanchor="right", yanchor="top", font=dict(color="#22c55e", size=10, family="Arial Black")))
 
 if show_supertrend: fig.add_trace(gr.Scatter(x=df_plot['time_str'], y=df_plot['supertrend'], line=dict(color=st_color, width=2.5), name="SuperTrend"))
 if show_dma:
@@ -291,7 +288,7 @@ if show_dma:
     fig.add_trace(gr.Scatter(x=df_plot['time_str'], y=df_plot['dma_50'], line=dict(color=dma50_color, width=2), name="50 DMA"))
 if show_vwap: fig.add_trace(gr.Scatter(x=df_plot['time_str'], y=df_plot['vwap'], line=dict(color=vwap_color, width=2.5), name="VWAP"))
 
-# Real-Time LTP arrow tracker flag - MANUAL ALIGNMENT FIXED HERE
+# Dynamic Price tag flag alignment
 fig.add_trace(gr.Scatter(
     x=[df_plot['time_str'].iloc[-1]], y=[current_ltp], 
     mode="markers+text", 
@@ -302,7 +299,6 @@ fig.add_trace(gr.Scatter(
     showlegend=False
 ))
 
-# Focus zoom lookup matrix bounds (Focus on latest 24 candles to force big size)
 view_candles = df_plot.tail(24)
 low_extreme = min(float(view_candles['low'].min()), sup_zone_low)
 high_extreme = max(float(view_candles['high'].max()), res_zone_high)
@@ -310,8 +306,8 @@ comfort_padding = (high_extreme - low_extreme) * 0.18
 
 fig.update_layout(
     height=560, xaxis_rangeslider_visible=False, template="plotly_dark", 
-    # FIXED RIGHT MARGIN FROM 180 TO 220 FOR ZERO OVERLAPPING
-    margin=dict(l=10, r=220, t=10, b=25),
+    autosize=True, # Dynamic stretching enabled
+    margin=dict(l=10, r=140, t=10, b=25), # Auto scaling margin space
     yaxis=dict(side="right", showgrid=True, gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=11), range=[low_extreme - comfort_padding, high_extreme + comfort_padding], autorange=False, fixedrange=False),
     xaxis=dict(showgrid=True, gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=11), type='category', categoryorder='category ascending', autorange=True, fixedrange=False),
     bargap=0.05, 

@@ -12,15 +12,16 @@ from streamlit_autorefresh import st_autorefresh
 # 🔒 ==============================================================================
 # 🎯 1. SHIELDED AUTHENTICATION & LOCK SUBSYSTEM
 # ==============================================================================
-from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
-from nubra_python_sdk.marketdata.market_data import MarketData
-
 if 'chart_auth_verified' not in st.session_state:
     st.session_state['chart_auth_verified'] = False
 if 'chart_page_session' not in st.session_state:
     st.session_state['chart_page_session'] = None
 if 'fallback_active_state' not in st.session_state:
     st.session_state['fallback_active_state'] = False
+if 'persistent_df_store' not in st.session_state:
+    st.session_state['persistent_df_store'] = {}
+if 'last_selected_symbol' not in st.session_state:
+    st.session_state['last_selected_symbol'] = ""
 
 st.markdown("### 🔒 Index Live Chart Terminal")
 
@@ -29,6 +30,7 @@ if not st.session_state['chart_auth_verified']:
     with c1:
         if st.button("🚀 Connect Server Live Auth", use_container_width=True):
             try:
+                from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
                 client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
                 st.session_state['chart_page_session'] = client
                 st.session_state['chart_auth_verified'] = True
@@ -48,10 +50,9 @@ if not st.session_state['chart_auth_verified']:
     st.stop()
 
 market_data = None
-if st.session_state['chart_page_session'] == "SIMULATION_ACTIVE":
-    st.session_state['fallback_active_state'] = True
-else:
+if st.session_state['chart_page_session'] != "SIMULATION_ACTIVE":
     try:
+        from nubra_python_sdk.marketdata.market_data import MarketData
         market_data = MarketData(st.session_state['chart_page_session'])
     except Exception:
         st.session_state['fallback_active_state'] = True
@@ -59,9 +60,8 @@ else:
 # ==============================================================================
 # ⏱️ 2. REFRESH SYNC CONTROL (15 SECONDS)
 # ==============================================================================
-st_autorefresh(interval=15000, key="smartwealth_index_terminal_perfect_v24")
+st_autorefresh(interval=25000, key="smartwealth_index_terminal_perfect_v30")
 
-# PREMIUM STYLE sheet
 st.markdown("""
     <style>
         .block-container { padding-top: 1rem !important; padding-bottom: 1rem !important; max-width: 100% !important; }
@@ -88,10 +88,15 @@ def load_persisted_stocks():
 all_available_assets = load_persisted_stocks()
 
 # ==============================================================================
-# 🎯 3. SIDEBAR NAVIGATION CONTROLS
+# 🎯 3. SIDEBAR PARAMETERS
 # ==============================================================================
 st.sidebar.header("⚙️ Asset Parameters")
 target_symbol = st.sidebar.selectbox("🔤 Select Index Asset", all_available_assets, index=0)
+
+# Reset cache if asset changes to avoid cross-contamination
+if target_symbol != st.session_state['last_selected_symbol']:
+    st.session_state['persistent_df_store'] = {}
+    st.session_state['last_selected_symbol'] = target_symbol
 
 timeframe_mapping = {"5 Minutes": "5m", "10 Minutes": "10m", "15 Minutes": "15m", "30 Minutes": "30m", "Daily": "1d"}
 selected_tf_label = st.sidebar.selectbox("⏱️ Select Timeframe", list(timeframe_mapping.keys()), index=2)
@@ -117,31 +122,38 @@ draw_h_line = st.sidebar.checkbox("Enable Horizontal Line")
 h_line_value = st.sidebar.number_input("Horizontal Price Value", value=0.0)
 h_line_color = st.sidebar.color_picker("Horizontal Line Color", "#ffffff")
 
-# Strict Seeding alignment to map real-time terminal data coordinates
-def create_fallback_data(symbol):
-    # Fixed explicitly to current June 2026 data coordinates to keep index value exact
+# 🔒 FIXED VALUE LOCK ENGINE FOR SIMULATION MODE
+def get_static_fallback_data(symbol):
+    # If already generated for this asset, return the locked snapshot (Prevents jump on refresh)
+    if symbol in st.session_state['persistent_df_store']:
+        return st.session_state['persistent_df_store'][symbol]
+    
     base_price = 24013.40 if symbol == "NIFTY" else (51650.0 if symbol == "BANKNIFTY" else 78900.0)
     if symbol not in ["NIFTY", "BANKNIFTY", "SENSEX"]: base_price = 1500.0
     
     timestamps = pd.date_range(end=datetime.now(), periods=100, freq='15min')
-    np.random.seed(42) # Consistent lookback mapping
-    changes = np.random.normal(0.05, base_price * 0.0006, 100)
+    np.random.seed(100) # Pure deterministic static vector
+    changes = np.random.normal(0.02, base_price * 0.0004, 100)
     closes = base_price + np.cumsum(changes)
-    opens = closes - np.random.normal(0, base_price * 0.0004, 100)
-    highs = np.maximum(opens, closes) + np.abs(np.random.normal(0, base_price * 0.0003, 100))
-    lows = np.minimum(opens, closes) - np.abs(np.random.normal(0, base_price * 0.0003, 100))
-    return pd.DataFrame({"open": opens, "high": highs, "low": lows, "close": closes, "volume": np.random.randint(2000, 8000, 100)}, index=timestamps)
+    opens = closes - np.random.normal(0, base_price * 0.0003, 100)
+    highs = np.maximum(opens, closes) + np.abs(np.random.normal(0, base_price * 0.0002, 100))
+    lows = np.minimum(opens, closes) - np.abs(np.random.normal(0, base_price * 0.0002, 100))
+    
+    fresh_df = pd.DataFrame({"open": opens, "high": highs, "low": lows, "close": closes, "volume": np.random.randint(2000, 8000, 100)}, index=timestamps)
+    st.session_state['persistent_df_store'][symbol] = fresh_df
+    return fresh_df
+
 # ==============================================================================
-# 🚀 4. RELIABLE UNIFIED SCALING ENGINE BLOCK
+# 🚀 4. DATA COMPILATION & SCALING GRID
 # ==============================================================================
 df = None
 if st.session_state['fallback_active_state'] or market_data is None:
-    df = create_fallback_data(target_symbol)
+    df = get_static_fallback_data(target_symbol)
 else:
     try:
         with st.spinner("Processing index vectors..."):
             end_dt = datetime.utcnow()
-            start_dt = end_dt - timedelta(days=60 if interval == "1d" else 7)
+            start_dt = end_dt - timedelta(days=7)
             api_type = "INDEX" if target_symbol in ["NIFTY", "BANKNIFTY", "SENSEX"] else "STOCK"
             exchange_type = "BSE" if target_symbol == "SENSEX" else "NSE"
             
@@ -158,12 +170,9 @@ else:
                     stock_chart = instrument_dict[target_symbol]
                     raw_closes = [float(p.value) for p in stock_chart.close]
                     
-                    # 💎 INTELLIGENT HARDWARE SCALING ENGINE LOGIC
                     avg_raw = sum(raw_closes) / len(raw_closes)
                     scale_factor = 1.0
                     if avg_raw > 100000:
-                        # Raw numbers are in paise, verify if it demands 100x fallback downscaling
-                        # Fixed alignment matching the 24,013.40 spot view profile
                         scale_factor = 100.0
 
                     timestamps = [pd.to_datetime(p.timestamp, unit="ns", utc=True).tz_convert("Asia/Kolkata") for p in stock_chart.close]
@@ -179,12 +188,12 @@ else:
                     df = pd.DataFrame(data, index=timestamps).sort_index()
                     df['volume'] = df['cumulative_volume'].diff().fillna(0)
     except Exception:
-        df = create_fallback_data(target_symbol)
+        df = get_static_fallback_data(target_symbol)
 
 if df is None or len(df) == 0:
-    df = create_fallback_data(target_symbol)
+    df = get_static_fallback_data(target_symbol)
 
-# Mathematical Matrix Computations
+# Technical Calculations Grid
 df['dma_9'] = df['close'].rolling(window=9, min_periods=1).mean()
 df['dma_20'] = df['close'].rolling(window=20, min_periods=1).mean()
 df['dma_50'] = df['close'].rolling(window=50, min_periods=1).mean()
@@ -202,7 +211,7 @@ df['RSI'] = 100 - (100 / (1 + (gain / (loss + 1e-10))))
 df['tr'] = df[['high', 'low', 'close']].max(axis=1) - df[['high', 'low', 'close']].min(axis=1)
 df['atr'] = df['tr'].rolling(window=st_period, min_periods=1).mean()
 
-# Seamless Dynamic SuperTrend Vector computation 
+# SuperTrend Calculations Grid
 df['hl2'] = (df['high'] + df['low']) / 2
 df['upper_band'] = df['hl2'] + (st_multiplier * df['atr'])
 df['lower_band'] = df['hl2'] - (st_multiplier * df['atr'])
@@ -231,24 +240,20 @@ if len(unique_dates) > 1:
 # ==============================================================================
 current_ltp = float(df['close'].iloc[-1])
 
-# Dynamic Level Assignment matching the option chain premium data anchors
+# Set pure structural zone boundaries around the locked live price point
 if target_symbol == "NIFTY":
-    sup_low = 23900.0
-    sup_high = 23950.0
-    dem_high = 24100.0
-    dem_low = 24150.0
+    sup_low = 23920.0; sup_high = 23960.0
+    dem_low = 24080.0; dem_high = 24120.0
 elif target_symbol == "BANKNIFTY":
-    sup_low = float(((current_ltp - 150) // 100) * 100)
-    sup_high = sup_low + 100
-    dem_high = float(((current_ltp + 150) // 100) * 100)
-    dem_low = dem_high + 100
+    sup_low = 51450.0; sup_high = 51550.0
+    dem_low = 51800.0; dem_high = 51900.0
 else:
-    sup_low = float(current_ltp * 0.99); sup_high = float(sup_low * 1.002)
-    dem_high = float(current_ltp * 1.01); dem_low = float(dem_high * 1.002)
+    sup_low = float(current_ltp * 0.990); sup_high = float(sup_low * 1.002)
+    dem_low = float(current_ltp * 1.010); dem_high = float(dem_low * 1.002)
 
 p_point = round((sup_low + dem_high + current_ltp) / 3, 2)
 
-# Dynamic Upper Custom Header Panel Display
+# Dynamic Header Bar
 st.markdown(f"""
 <div class="tc-dashboard-header">
     <div class="tc-title">⚡ {target_symbol} REAL-TIME TRADING VIEW</div>
@@ -263,17 +268,20 @@ st.markdown(f"""
 fig = make_subplots(rows=1, cols=1)
 fig.add_trace(gr.Candlestick(x=df.index, open=df['open'], high=df['high'], low=df['low'], close=df['close'], name="LTP"), row=1, col=1)
 
+# Annotations storage for text markers
+layout_annotations = []
+
 if show_zones:
-    box_idx = max(0, len(df) - 30)
-    # 🔴 Upper Resistance Bound
+    box_idx = max(0, len(df) - 25)
+    # 🔴 Upper Resistance Box
     fig.add_shape(type="rect", x0=df.index[box_idx], x1=df.index[-1], y0=sup_low, y1=sup_high, fillcolor="rgba(239, 68, 68, 0.16)", line=dict(color="#ff3333", width=2))
-    # 🟢 Lower Support Bound
+    # 🟢 Lower Support Box
     fig.add_shape(type="rect", x0=df.index[box_idx], x1=df.index[-1], y0=dem_low, y1=dem_high, fillcolor="rgba(16, 185, 129, 0.16)", line=dict(color="#00cc66", width=2))
-    
-    # 📝 Text Labels injected directly inside layout map boundaries to fulfill requested format
-    fig.add_trace(gr.Scatter(x=[df.index[box_idx + 5]], y=[sup_high], mode="text", text=["🔴 DR ZONE (RESISTANCE)"], textposition="top right", textfont=dict(color="#ff4d4d", size=12, family="Arial Black"), showlegend=False))
-    fig.add_trace(gr.Scatter(x=[df.index[box_idx + 5]], y=[dem_low], mode="text", text=["🟢 DS ZONE (SUPPORT)"], textposition="bottom right", textfont=dict(color="#22c55e", size=12, family="Arial Black"), showlegend=False))
     fig.add_hline(y=p_point, line_width=1.5, line_dash="dashdot", line_color="#eab308")
+
+    # 📝 Absolute Layout Text Anchors (Ensures labels stay on boxes regardless of zoom)
+    layout_annotations.append(dict(x=df.index[box_idx + 2], y=sup_high, text="🔴 DR ZONE (RESISTANCE)", showarrow=False, xanchor="left", yanchor="bottom", font=dict(color="#ff4d4d", size=12, family="Arial Black")))
+    layout_annotations.append(dict(x=df.index[box_idx + 2], y=dem_low, text="🟢 DS ZONE (SUPPORT)", showarrow=False, xanchor="left", yanchor="top", font=dict(color="#22c55e", size=12, family="Arial Black")))
 
 if show_supertrend: fig.add_trace(gr.Scatter(x=df.index, y=df['supertrend'], line=dict(color=st_color, width=2), name="SuperTrend"))
 if show_dma:
@@ -288,28 +296,28 @@ if show_daily_camarilla:
 
 if draw_h_line and h_line_value > 0: fig.add_hline(y=h_line_value, line_color=h_line_color, line_width=2)
 
-# Dynamic LTP Cursor tag right aligned
+# Dynamic LTP Cursor Tag (Right Side Margin Indicator)
 fig.add_trace(gr.Scatter(x=[df.index[-1]], y=[current_ltp], mode="markers+text", marker=dict(color="#ffff00", size=11, symbol="arrow-left"), text=[f"  ◄ ₹{current_ltp:.2f}"], textposition="middle right", textfont=dict(color="#ffff00", size=13, family="Arial Black"), showlegend=False))
 
-# 🎯 FIX ZOOM LEVEL (Balanced padding comfort view factor)
-# Computes the window coordinate boundaries using last 35 data rows
+# 🎯 PROPER LOOKBACK VIEWPORT COMFORT ZOOM FACTOR
 view_candles = df.tail(35)
 low_extreme = float(view_candles['low'].min())
 high_extreme = float(view_candles['high'].max())
 
-# Perfect padding margin to stop over-zooming/distortion
-comfort_padding = (high_extreme - low_extreme) * 0.25 
+# Add symmetrical padding below/above data streams
+comfort_padding = (high_extreme - low_extreme) * 0.30
 
 fig.update_layout(
-    height=530, xaxis_rangeslider_visible=False, template="plotly_dark", margin=dict(l=10, r=150, t=10, b=25),
+    height=540, xaxis_rangeslider_visible=False, template="plotly_dark", margin=dict(l=10, r=165, t=10, b=25),
     yaxis=dict(side="right", showgrid=True, gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=11), range=[low_extreme - comfort_padding, high_extreme + comfort_padding], autorange=False, fixedrange=False),
     xaxis=dict(showgrid=True, gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=11), autorange=True, fixedrange=False),
-    paper_bgcolor='#030712', plot_bgcolor='#030712'
+    paper_bgcolor='#030712', plot_bgcolor='#030712',
+    annotations=layout_annotations
 )
 fig.update_xaxes(rangebreaks=[dict(bounds=["sat", "mon"]), dict(bounds=[15.5, 9.25], pattern="hour")])
 st.plotly_chart(fig, use_container_width=True)
 
-# Clean Independent reference grid data
+# Isolated metadata counters
 st.markdown("### 📊 Live Terminal Reference Dashboard")
 c1, c2, c3 = st.columns(3)
 with c1: st.info(f"🔴 **DR Zone Limit (Resistance):** {int(sup_low)} - {int(sup_high)}")

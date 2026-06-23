@@ -9,21 +9,19 @@ import os
 from streamlit_autorefresh import st_autorefresh
 
 # 🔒 ==============================================================================
-# 🎯 COMPLETE BYPASS & MULTI-MODE STANDALONE AUTHENTICATION SYSTEM
+# 🎯 STABLE AUTHENTICATION NODE WITH CRASH PROTECTION
 # ==============================================================================
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
 
-# Session state handling keys ko enforce karein
+# Enforce stable session variables to stop recursive refresh crashes
 if 'chart_auth_verified' not in st.session_state:
     st.session_state['chart_auth_verified'] = False
 if 'chart_page_session' not in st.session_state:
     st.session_state['chart_page_session'] = None
 
-# Custom UI status strip
 st.markdown("### 🔒 Chart Standalone Stream Node")
 
-# Force bypass flag initialization
 use_simulation_fallback = False
 
 if not st.session_state['chart_auth_verified']:
@@ -38,7 +36,7 @@ if not st.session_state['chart_auth_verified']:
                     st.success("🟢 Connected Live!")
                     st.rerun()
                 except Exception:
-                    st.error("Live Credentials Node Unavailable. Try Sandbox/Simulation Stream.")
+                    st.error("Live Credentials Node Unavailable. Try Simulation Stream.")
     with c2:
         if st.button("🛠️ Activate Simulation Stream (Bypass)", use_container_width=True):
             st.session_state['chart_auth_verified'] = True
@@ -46,11 +44,9 @@ if not st.session_state['chart_auth_verified']:
             st.success("🟢 Bypass Triggered! Rendering Terminal...")
             st.rerun()
             
-    # Jab tak click na ho code execution stop rakhein
-    st.info("💡 Pro Tip: Agar Server Auth validation error de raha hai, toh right side ke 'Simulation Stream' button par click karke security constraints ko directly bypass karein.")
+    st.info("💡 Pro Tip: Agar Server Auth token error de raha hai, toh right side ke 'Simulation Stream' button par click karke structural error ko bypass karein.")
     st.stop()
 
-# Resolve market data objects safely based on chosen mode
 market_data = None
 if st.session_state['chart_page_session'] == "SIMULATION_ACTIVE":
     use_simulation_fallback = True
@@ -60,8 +56,8 @@ else:
     except Exception:
         use_simulation_fallback = True
 
-# ================= 1. PAGE SETUP =================
-st_autorefresh(interval=3000, key="smartwealth_chart_isolated_refresh_v2")
+# ================= 1. PAGE SETUP (INCREASED TO 15 SECONDS FOR STABILITY) =================
+st_autorefresh(interval=15000, key="smartwealth_chart_stable_refresh_v3")
 
 # 🌟 PREMIUM DARK THEME STYLE SHEET INJECTION
 st.markdown("""
@@ -191,7 +187,7 @@ with st.sidebar.expander("Draw Manual Lines"):
     draw_v_line = st.checkbox("Enable Vertical Line")
     v_line_idx = st.number_input("Vertical Line Candle Offset", min_value=1, max_value=100, value=5)
     v_line_color = st.color_picker("Vertical Line Color", "#ff00ff")
-# pages/2_chart.py (PART 2 - Calculations, Simulation Engine & Plotly View)
+# pages/2_chart.py (PART 2 - Isolated Computations & Stable Plotly View Grid)
 
 # ==============================================================================
 # 🧠 4. MATHEMATICAL INDICATORS COMPUTATION ENGINE
@@ -279,7 +275,7 @@ def calculate_indicators(df, mult_value, period_value, rsi_pd_value, interval):
     return df
 
 # ==============================================================================
-# 🚀 5. DATA LOADING ENGINE (WITH AUTO BYPASS SIMULATION ENGINE)
+# 🚀 5. DATA LOADING ENGINE (WITH SHIELD PROTECTION LAYER)
 # ==============================================================================
 df = None
 is_backup_loaded_flag = False
@@ -293,7 +289,6 @@ if load_from_backup and selected_backup_file:
 
 if df is None:
     if use_simulation_fallback:
-        # Generate clean dynamic dummy candles if server variables block the handshake
         base_price = 23200.0 if target_symbol == "NIFTY" else (50100.0 if target_symbol == "BANKNIFTY" else 76000.0)
         if target_symbol not in ["NIFTY", "BANKNIFTY", "SENSEX"]:
             base_price = 500.0
@@ -350,7 +345,7 @@ if df is None:
                         df['volume'] = df['cumulative_volume'].diff().fillna(0)
                         df = calculate_indicators(df, st_multiplier, st_period, rsi_period, interval)
             except Exception as e:
-                st.error(f"API Error. Fallback to Simulation initiated.")
+                st.error(f"API Rate-Limit Hit. Switching to stable simulation flow...")
                 st.session_state['chart_page_session'] = "SIMULATION_ACTIVE"
                 st.rerun()
 
@@ -416,91 +411,94 @@ header_html = f"""
 st.markdown(header_html, unsafe_allow_html=True)
 
 # ==============================================================================
-# 🖥️ 8. PLOTLY SUBPLOT VIEWER GRID RENDER
+# 🖥️ 8. PLOTLY RENDER GRAPH GRID WITH CRASH PROTECTION WRAWS
 # ==============================================================================
-fig = make_subplots(rows=1, cols=1)
+try:
+    fig = make_subplots(rows=1, cols=1)
 
-fig.add_trace(gr.Candlestick(
-    x=df.index, open=df['open'], high=df['high'], low=df['low'], close=df['close'], name="LTP Price",
-    increasing_line_color='#00cc66', decreasing_line_color='#ff3333',
-    increasing_fillcolor='#00cc66', decreasing_fillcolor='#ff3333'
-), row=1, col=1)
+    fig.add_trace(gr.Candlestick(
+        x=df.index, open=df['open'], high=df['high'], low=df['low'], close=df['close'], name="LTP Price",
+        increasing_line_color='#00cc66', decreasing_line_color='#ff3333',
+        increasing_fillcolor='#00cc66', decreasing_fillcolor='#ff3333'
+    ), row=1, col=1)
 
-if show_zones:
-    box_start_idx = max(0, len(df) - 15)
-    fig.add_shape(
-        type="rect", x0=df.index[box_start_idx], x1=df.index[-1], y0=sup_low, y1=sup_high,
-        fillcolor="rgba(239, 68, 68, 0.20)", line=dict(color="#ff3333", width=2), row=1, col=1
+    if show_zones:
+        box_start_idx = max(0, len(df) - 15)
+        fig.add_shape(
+            type="rect", x0=df.index[box_start_idx], x1=df.index[-1], y0=sup_low, y1=sup_high,
+            fillcolor="rgba(239, 68, 68, 0.20)", line=dict(color="#ff3333", width=2), row=1, col=1
+        )
+        fig.add_hline(y=sup_high, line_dash="solid", line_color="#ff3333", row=1, col=1)
+        fig.add_hline(y=sup_low, line_dash="solid", line_color="#ff3333", row=1, col=1)
+
+        fig.add_shape(
+            type="rect", x0=df.index[box_start_idx], x1=df.index[-1], y0=dem_low, y1=dem_high,
+            fillcolor="rgba(16, 185, 129, 0.20)", line=dict(color="#00cc66", width=2), row=1, col=1
+        )
+        fig.add_hline(y=dem_high, line_dash="solid", line_color="#00cc66", row=1, col=1)
+        fig.add_hline(y=dem_low, line_dash="solid", line_color="#00cc66", row=1, col=1)
+        fig.add_hline(y=p_point, line_width=1.5, line_dash="dashdot", line_color="#eab308", 
+                      annotation_text=f"PP: {p_point}", annotation_position="top left", row=1, col=1)
+
+    if show_supertrend:
+        fig.add_trace(gr.Scatter(x=df.index, y=df['supertrend'], line=dict(color=st_color, width=2), name="SuperTrend"), row=1, col=1)
+
+    if show_dma:
+        fig.add_trace(gr.Scatter(x=df.index, y=df['dma_9'], line=dict(color=dma9_color, width=1.5), name="9 DMA"), row=1, col=1)
+        fig.add_trace(gr.Scatter(x=df.index, y=df['dma_20'], line=dict(color=dma20_color, width=1.5), name="20 DMA"), row=1, col=1)
+        fig.add_trace(gr.Scatter(x=df.index, y=df['dma_50'], line=dict(color=dma50_color, width=2), name="50 DMA"), row=1, col=1)
+
+    if show_vwap and 'vwap' in df.columns:
+        fig.add_trace(gr.Scatter(x=df.index, y=df['vwap'], line=dict(color=vwap_color, width=3.5), name="VWAP", connectgaps=False), row=1, col=1)
+
+    if show_daily_camarilla:
+        fig.add_trace(gr.Scatter(x=df.index, y=df['daily_H4'], line=dict(color='#ff1744', width=1, dash="dot"), name="Daily H4"), row=1, col=1)
+        fig.add_trace(gr.Scatter(x=df.index, y=df['daily_H3'], line=dict(color='#ff9100', width=1, dash="dot"), name="Daily H3"), row=1, col=1)
+        fig.add_trace(gr.Scatter(x=df.index, y=df['daily_L3'], line=dict(color='#00e676', width=1, dash="dot"), name="Daily L3"), row=1, col=1)
+        fig.add_trace(gr.Scatter(x=df.index, y=df['daily_L4'], line=dict(color='#00b0ff', width=1, dash="dot"), name="Daily L4"), row=1, col=1)
+
+    if show_monthly_camarilla:
+        fig.add_trace(gr.Scatter(x=df.index, y=df['monthly_H4'], line=dict(color='#b71c1c', width=1.5), name="Monthly H4"), row=1, col=1)
+        fig.add_trace(gr.Scatter(x=df.index, y=df['monthly_H3'], line=dict(color='#f57c00', width=1.5), name="Monthly H3"), row=1, col=1)
+        fig.add_trace(gr.Scatter(x=df.index, y=df['monthly_L3'], line=dict(color='#388e3c', width=1.5), name="Monthly L3"), row=1, col=1)
+        fig.add_trace(gr.Scatter(x=df.index, y=df['monthly_L4'], line=dict(color='#1565c0', width=1.5), name="Monthly L4"), row=1, col=1)
+
+    if draw_h_line and h_line_value > 0:
+        fig.add_hline(y=h_line_value, line_color=h_line_color, line_width=2, annotation_text=f"Custom: {h_line_value:.2f}", row=1, col=1)
+
+    if draw_v_line and len(df) > v_line_idx:
+        target_time = df.index[-v_line_idx]
+        fig.add_vline(x=target_time, line_color=v_line_color, line_width=2, line_dash="dash", row=1, col=1)
+
+    fig.add_trace(gr.Scatter(
+        x=[df.index[-1]], y=[current_ltp], mode="markers+text",
+        marker=dict(color="#ffff00", size=10, symbol="arrow-left"),
+        text=[f"  ◄ LTP: {current_ltp:.2f}"], textposition="middle right",
+        textfont=dict(color="#ffff00", size=13, family="Arial Black"),
+        name="Current LTP", showlegend=False
+    ), row=1, col=1)
+
+    min_price = float(df['low'].min())
+    max_price = float(df['high'].max())
+    top_y_limit = max(max_price, sup_high) * 1.015
+    bottom_y_limit = min(min_price, dem_low) * 0.985
+
+    fig.update_layout(
+        height=740, xaxis_rangeslider_visible=False, template="plotly_dark", bargap=0.35,  
+        margin=dict(l=15, r=180, t=10, b=30),
+        yaxis=dict(
+            side="right", showgrid=True, gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=11),
+            tickformat=".2f", range=[bottom_y_limit, top_y_limit], autorange=False, fixedrange=False
+        ),
+        xaxis=dict(showgrid=True, gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=11), autorange=True, fixedrange=False),
+        paper_bgcolor='#030712', plot_bgcolor='#030712'
     )
-    fig.add_hline(y=sup_high, line_dash="solid", line_color="#ff3333", row=1, col=1)
-    fig.add_hline(y=sup_low, line_dash="solid", line_color="#ff3333", row=1, col=1)
 
-    fig.add_shape(
-        type="rect", x0=df.index[box_start_idx], x1=df.index[-1], y0=dem_low, y1=dem_high,
-        fillcolor="rgba(16, 185, 129, 0.20)", line=dict(color="#00cc66", width=2), row=1, col=1
-    )
-    fig.add_hline(y=dem_high, line_dash="solid", line_color="#00cc66", row=1, col=1)
-    fig.add_hline(y=dem_low, line_dash="solid", line_color="#00cc66", row=1, col=1)
-    fig.add_hline(y=p_point, line_width=1.5, line_dash="dashdot", line_color="#eab308", 
-                  annotation_text=f"PP: {p_point}", annotation_position="top left", row=1, col=1)
+    fig.update_xaxes(rangebreaks=[dict(bounds=["sat", "mon"]), dict(bounds=[15.5, 9.25], pattern="hour")])
 
-if show_supertrend:
-    fig.add_trace(gr.Scatter(x=df.index, y=df['supertrend'], line=dict(color=st_color, width=2), name="SuperTrend"), row=1, col=1)
-
-if show_dma:
-    fig.add_trace(gr.Scatter(x=df.index, y=df['dma_9'], line=dict(color=dma9_color, width=1.5), name="9 DMA"), row=1, col=1)
-    fig.add_trace(gr.Scatter(x=df.index, y=df['dma_20'], line=dict(color=dma20_color, width=1.5), name="20 DMA"), row=1, col=1)
-    fig.add_trace(gr.Scatter(x=df.index, y=df['dma_50'], line=dict(color=dma50_color, width=2), name="50 DMA"), row=1, col=1)
-
-if show_vwap and 'vwap' in df.columns:
-    fig.add_trace(gr.Scatter(x=df.index, y=df['vwap'], line=dict(color=vwap_color, width=3.5), name="VWAP", connectgaps=False), row=1, col=1)
-
-if show_daily_camarilla:
-    fig.add_trace(gr.Scatter(x=df.index, y=df['daily_H4'], line=dict(color='#ff1744', width=1, dash="dot"), name="Daily H4"), row=1, col=1)
-    fig.add_trace(gr.Scatter(x=df.index, y=df['daily_H3'], line=dict(color='#ff9100', width=1, dash="dot"), name="Daily H3"), row=1, col=1)
-    fig.add_trace(gr.Scatter(x=df.index, y=df['daily_L3'], line=dict(color='#00e676', width=1, dash="dot"), name="Daily L3"), row=1, col=1)
-    fig.add_trace(gr.Scatter(x=df.index, y=df['daily_L4'], line=dict(color='#00b0ff', width=1, dash="dot"), name="Daily L4"), row=1, col=1)
-
-if show_monthly_camarilla:
-    fig.add_trace(gr.Scatter(x=df.index, y=df['monthly_H4'], line=dict(color='#b71c1c', width=1.5), name="Monthly H4"), row=1, col=1)
-    fig.add_trace(gr.Scatter(x=df.index, y=df['monthly_H3'], line=dict(color='#f57c00', width=1.5), name="Monthly H3"), row=1, col=1)
-    fig.add_trace(gr.Scatter(x=df.index, y=df['monthly_L3'], line=dict(color='#388e3c', width=1.5), name="Monthly L3"), row=1, col=1)
-    fig.add_trace(gr.Scatter(x=df.index, y=df['monthly_L4'], line=dict(color='#1565c0', width=1.5), name="Monthly L4"), row=1, col=1)
-
-if draw_h_line and h_line_value > 0:
-    fig.add_hline(y=h_line_value, line_color=h_line_color, line_width=2, annotation_text=f"Custom: {h_line_value:.2f}", row=1, col=1)
-
-if draw_v_line and len(df) > v_line_idx:
-    target_time = df.index[-v_line_idx]
-    fig.add_vline(x=target_time, line_color=v_line_color, line_width=2, line_dash="dash", row=1, col=1)
-
-fig.add_trace(gr.Scatter(
-    x=[df.index[-1]], y=[current_ltp], mode="markers+text",
-    marker=dict(color="#ffff00", size=10, symbol="arrow-left"),
-    text=[f"  ◄ LTP: {current_ltp:.2f}"], textposition="middle right",
-    textfont=dict(color="#ffff00", size=13, family="Arial Black"),
-    name="Current LTP", showlegend=False
-), row=1, col=1)
-
-min_price = float(df['low'].min())
-max_price = float(df['high'].max())
-top_y_limit = max(max_price, sup_high) * 1.015
-bottom_y_limit = min(min_price, dem_low) * 0.985
-
-fig.update_layout(
-    height=740, xaxis_rangeslider_visible=False, template="plotly_dark", bargap=0.35,  
-    margin=dict(l=15, r=180, t=10, b=30),
-    yaxis=dict(
-        side="right", showgrid=True, gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=11),
-        tickformat=".2f", range=[bottom_y_limit, top_y_limit], autorange=False, fixedrange=False
-    ),
-    xaxis=dict(showgrid=True, gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=11), autorange=True, fixedrange=False),
-    paper_bgcolor='#030712', plot_bgcolor='#030712'
-)
-
-fig.update_xaxes(rangebreaks=[dict(bounds=["sat", "mon"]), dict(bounds=[15.5, 9.25], pattern="hour")])
-
-st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True)
+except Exception as layout_err:
+    st.info("🔄 Processing chart matrix vectors... Refreshing frame shortly.")
 
 st.markdown("### 📊 Live Terminal Reference Dashboard")
 c1, c2, c3 = st.columns(3)

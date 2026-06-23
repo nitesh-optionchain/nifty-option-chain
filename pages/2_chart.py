@@ -60,7 +60,7 @@ if st.session_state['chart_page_session'] != "SIMULATION_ACTIVE":
 # ==============================================================================
 # ⏱️ 2. REFRESH CONTROL (SET TO STABLE 25 SECONDS)
 # ==============================================================================
-st_autorefresh(interval=25000, key="smartwealth_index_terminal_perfect_v35")
+st_autorefresh(interval=25000, key="smartwealth_index_terminal_perfect_v40")
 
 # Premium Dashboard Stylesheet Injection
 st.markdown("""
@@ -117,26 +117,26 @@ dma20_color = st.sidebar.color_picker("20 DMA Color", "#00e5ff")
 dma50_color = st.sidebar.color_picker("50 DMA Color", "#e040fb")
 vwap_color = st.sidebar.color_picker("VWAP Color", "#00f0ff")
 
-# Dynamic Cache Lock to prevent data jump on auto refresh
+# Fixed Dataset Cache Lock Generator
 def get_static_fallback_data(symbol):
     if symbol in st.session_state['persistent_df_store']:
         return st.session_state['persistent_df_store'][symbol]
     
-    # Absolute alignment matching 24,013 June 2026 Spot
     base_price = 24013.40 if symbol == "NIFTY" else (51650.0 if symbol == "BANKNIFTY" else 78900.0)
     if symbol not in ["NIFTY", "BANKNIFTY", "SENSEX"]: base_price = 1500.0
     
-    timestamps = pd.date_range(end=datetime.now(), periods=60, freq='15min')
+    timestamps = pd.date_range(end=datetime.now(), periods=45, freq='15min')
     np.random.seed(42)
-    changes = np.random.normal(0.01, base_price * 0.0003, 60)
+    changes = np.random.normal(0.01, base_price * 0.0003, 45)
     closes = base_price + np.cumsum(changes)
-    opens = closes - np.random.normal(0, base_price * 0.0002, 60)
-    highs = np.maximum(opens, closes) + np.abs(np.random.normal(0, base_price * 0.0002, 60))
-    lows = np.minimum(opens, closes) - np.abs(np.random.normal(0, base_price * 0.0002, 60))
+    opens = closes - np.random.normal(0, base_price * 0.0002, 45)
+    highs = np.maximum(opens, closes) + np.abs(np.random.normal(0, base_price * 0.0002, 45))
+    lows = np.minimum(opens, closes) - np.abs(np.random.normal(0, base_price * 0.0002, 45))
     
-    fresh_df = pd.DataFrame({"open": opens, "high": highs, "low": lows, "close": closes, "volume": np.random.randint(2000, 7000, 60)}, index=timestamps)
+    fresh_df = pd.DataFrame({"open": opens, "high": highs, "low": lows, "close": closes, "volume": np.random.randint(2000, 7000, 45)}, index=timestamps)
     st.session_state['persistent_df_store'][symbol] = fresh_df
     return fresh_df
+
 # ==============================================================================
 # 🚀 4. CORE COMPUTATIONAL SCALING INTERFACE
 # ==============================================================================
@@ -186,7 +186,7 @@ else:
 if df is None or len(df) == 0:
     df = get_static_fallback_data(target_symbol)
 
-# Technical Indicators
+# Indicators calculations
 df['dma_9'] = df['close'].rolling(window=9, min_periods=1).mean()
 df['dma_20'] = df['close'].rolling(window=20, min_periods=1).mean()
 df['dma_50'] = df['close'].rolling(window=50, min_periods=1).mean()
@@ -199,7 +199,7 @@ else:
 df['tr'] = df[['high', 'low', 'close']].max(axis=1) - df[['high', 'low', 'close']].min(axis=1)
 df['atr'] = df['tr'].rolling(window=st_period, min_periods=1).mean()
 
-# SuperTrend Calculations Vector
+# SuperTrend Logic Matrix
 df['hl2'] = (df['high'] + df['low']) / 2
 df['upper_band'] = df['hl2'] + (st_multiplier * df['atr'])
 df['lower_band'] = df['hl2'] - (st_multiplier * df['atr'])
@@ -213,33 +213,32 @@ for i in range(1, len(df)):
     df.loc[df.index[i], 'supertrend'] = df['lower_band'].iloc[i] if df['trend'].iloc[i] == 1 else df['upper_band'].iloc[i]
 
 # ==============================================================================
-# 🖥️ 5. EXPLICIT SEPARATION: DR/DS LEVEL VS ZONE MATRIX
+# 🖥️ 5. EXPLICIT DR/DS LEVEL & ZONE MAPS
 # ==============================================================================
 current_ltp = float(df['close'].iloc[-1])
 
-# Absolute separate clean assignments for DR/DS vs Resistance/Support Zones
 if target_symbol == "NIFTY":
-    dr_level = 24080.0
-    ds_level = 23960.0
-    res_zone_low = 24120.0; res_zone_high = 24150.0
-    sup_zone_low = 23880.0; sup_zone_high = 23910.0
+    dr_level = 24050.0
+    ds_level = 23980.0
+    res_zone_low = 24080.0; res_zone_high = 24110.0
+    sup_zone_low = 23920.0; sup_zone_high = 23950.0
 elif target_symbol == "BANKNIFTY":
-    dr_level = 51800.0
-    ds_level = 51500.0
-    res_zone_low = 51950.0; res_zone_high = 52050.0
-    sup_zone_low = 51300.0; sup_zone_high = 51400.0
+    dr_level = 51750.0
+    ds_level = 51550.0
+    res_zone_low = 51850.0; res_zone_high = 51950.0
+    sup_zone_low = 51350.0; sup_zone_high = 51450.0
 else:
-    dr_level = current_ltp * 1.008
-    ds_level = current_ltp * 0.992
-    res_zone_low = current_ltp * 1.015; res_zone_high = current_ltp * 1.020
-    sup_zone_low = current_ltp * 0.980; sup_zone_high = current_ltp * 0.985
+    dr_level = current_ltp * 1.004
+    ds_level = current_ltp * 0.996
+    res_zone_low = current_ltp * 1.008; res_zone_high = current_ltp * 1.012
+    sup_zone_low = current_ltp * 0.992; sup_zone_high = current_ltp * 0.988
 
 p_point = round((dr_level + ds_level + current_ltp) / 3, 2)
 
-# TradeClue Dynamic Split Header (Perfect Separation)
+# TradeClue Top Panel Header
 st.markdown(f"""
 <div class="tc-dashboard-header">
-    <div class="tc-title">⚡ {target_symbol} TRADECLUE ENGINE PROFILE</div>
+    <div class="tc-title">⚡ {target_symbol} TRADECLUE PROFILE</div>
     <div class="tc-metrics-container">
         <span class="tc-badge badge-ce">🔴 DR LEVEL: {int(dr_level)} | ZONE: {int(res_zone_low)}-{int(res_zone_high)}</span>
         <span class="tc-badge badge-pe">🟢 DS LEVEL: {int(ds_level)} | ZONE: {int(sup_zone_low)}-{int(sup_zone_high)}</span>
@@ -250,64 +249,70 @@ st.markdown(f"""
 
 fig = make_subplots(rows=1, cols=1)
 
-# Converting Datetime index to standard string format to solve the "Chart Missing" error permanently
+# Optimized String Formatting for Candlestick charts
 df_plot = df.copy()
 df_plot['time_str'] = df_plot.index.strftime('%H:%M')
 if interval == "1d":
     df_plot['time_str'] = df_plot.index.strftime('%Y-%m-%d')
 
-fig.add_trace(gr.Candlestick(x=df_plot['time_str'], open=df_plot['open'], high=df_plot['high'], low=df_plot['low'], close=df_plot['close'], name="LTP"), row=1, col=1)
+# Trace 1: Candlesticks
+fig.add_trace(gr.Candlestick(
+    x=df_plot['time_str'], open=df_plot['open'], high=df_plot['high'], low=df_plot['low'], close=df_plot['close'], 
+    name="LTP",
+    increasing_fillcolor='#22c55e', decreasing_fillcolor='#ef4444',
+    increasing_line_color='#22c55e', decreasing_line_color='#ef4444'
+), row=1, col=1)
 
 layout_annotations = []
 
 if show_zones:
-    box_start_idx = max(0, len(df_plot) - 20)
+    box_start_idx = max(0, len(df_plot) - 18)
     x0_val = df_plot['time_str'].iloc[box_start_idx]
     x1_val = df_plot['time_str'].iloc[-1]
     
-    # 🔴 TradeClue Pure Resistance Zone Boxes
-    fig.add_shape(type="rect", x0=x0_val, x1=x1_val, y0=res_zone_low, y1=res_zone_high, fillcolor="rgba(239, 68, 68, 0.14)", line=dict(color="#ef4444", width=1.5))
-    # 🟢 TradeClue Pure Support Zone Boxes
-    fig.add_shape(type="rect", x0=x0_val, x1=x1_val, y0=sup_zone_low, y1=sup_zone_high, fillcolor="rgba(34, 197, 94, 0.14)", line=dict(color="#22c55e", width=1.5))
+    # Resistance & Support boxes
+    fig.add_shape(type="rect", x0=x0_val, x1=x1_val, y0=res_zone_low, y1=res_zone_high, fillcolor="rgba(239, 68, 68, 0.16)", line=dict(color="#ef4444", width=2))
+    fig.add_shape(type="rect", x0=x0_val, x1=x1_val, y0=sup_zone_low, y1=sup_zone_high, fillcolor="rgba(34, 197, 94, 0.16)", line=dict(color="#22c55e", width=2))
     
-    # Horizontal Separate Trigger Lines for DR and DS Levels
     fig.add_hline(y=dr_level, line_width=2, line_dash="dash", line_color="#f87171")
     fig.add_hline(y=ds_level, line_width=2, line_dash="dash", line_color="#4ade80")
     fig.add_hline(y=p_point, line_width=1.5, line_dash="dashdot", line_color="#eab308")
 
-    # Injections of Separate Independent Absolute Text Anchors
-    layout_annotations.append(dict(x=x0_val, y=dr_level, text="🔴 DR LEVEL (DAILY RESISTANCE)", showarrow=False, xanchor="left", yanchor="bottom", font=dict(color="#f87171", size=11, family="Arial Black")))
-    layout_annotations.append(dict(x=x0_val, y=ds_level, text="🟢 DS LEVEL (DAILY SUPPORT)", showarrow=False, xanchor="left", yanchor="top", font=dict(color="#4ade80", size=11, family="Arial Black")))
-    layout_annotations.append(dict(x=x1_val, y=res_zone_high, text="⚠️ RESISTANCE ZONE", showarrow=False, xanchor="right", yanchor="bottom", font=dict(color="#ef4444", size=11, family="Arial Bold")))
-    layout_annotations.append(dict(x=x1_val, y=sup_zone_low, text="✅ SUPPORT ZONE", showarrow=False, xanchor="right", yanchor="top", font=dict(color="#22c55e", size=11, family="Arial Bold")))
+    # Injections of Absolute Dynamic Text Layout Labels
+    layout_annotations.append(dict(x=x0_val, y=dr_level, text=" 🔴 DR LEVEL", showarrow=False, xanchor="left", yanchor="bottom", font=dict(color="#f87171", size=12, family="Arial Black")))
+    layout_annotations.append(dict(x=x0_val, y=ds_level, text=" 🟢 DS LEVEL", showarrow=False, xanchor="left", yanchor="top", font=dict(color="#4ade80", size=12, family="Arial Black")))
+    layout_annotations.append(dict(x=x1_val, y=res_zone_high, text="⚠️ RESISTANCE ZONE ", showarrow=False, xanchor="right", yanchor="bottom", font=dict(color="#ef4444", size=11, family="Arial Black")))
+    layout_annotations.append(dict(x=x1_val, y=sup_zone_low, text="✅ SUPPORT ZONE ", showarrow=False, xanchor="right", yanchor="top", font=dict(color="#22c55e", size=11, family="Arial Black")))
 
-if show_supertrend: fig.add_trace(gr.Scatter(x=df_plot['time_str'], y=df_plot['supertrend'], line=dict(color=st_color, width=2), name="SuperTrend"))
+if show_supertrend: fig.add_trace(gr.Scatter(x=df_plot['time_str'], y=df_plot['supertrend'], line=dict(color=st_color, width=2.5), name="SuperTrend"))
 if show_dma:
     fig.add_trace(gr.Scatter(x=df_plot['time_str'], y=df_plot['dma_9'], line=dict(color=dma9_color, width=1.5), name="9 DMA"))
     fig.add_trace(gr.Scatter(x=df_plot['time_str'], y=df_plot['dma_20'], line=dict(color=dma20_color, width=1.5), name="20 DMA"))
-    fig.add_trace(gr.Scatter(x=df_plot['time_str'], y=df_plot['dma_50'], line=dict(color=dma50_color, width=2), name="50 DMA"))
+    fig.add_trace(gr.Scatter(x=df_plot['time_str'].y=df_plot['dma_50'], line=dict(color=dma50_color, width=2), name="50 DMA"))
 if show_vwap: fig.add_trace(gr.Scatter(x=df_plot['time_str'], y=df_plot['vwap'], line=dict(color=vwap_color, width=2.5), name="VWAP"))
 
-# Real-Time LTP arrow tracking flag
-fig.add_trace(gr.Scatter(x=[df_plot['time_str'].iloc[-1]], y=[current_ltp], mode="markers+text", marker=dict(color="#ffff00", size=11, symbol="arrow-left"), text=[f"  ◄ ₹{current_ltp:.2f}"], textposition="middle right", textfont=dict(color="#ffff00", size=13, family="Arial Black"), showlegend=False))
+# LTP Live tag flag right cursor
+fig.add_trace(gr.Scatter(x=[df_plot['time_str'].iloc[-1]], y=[current_ltp], mode="markers+text", marker=dict(color="#ffff00", size=12, symbol="arrow-left"), text=[f" ◄ ₹{current_ltp:.2f}"], textposition="middle right", textfont=dict(color="#ffff00", size=14, family="Arial Black"), showlegend=False))
 
-# Symmetrical lookback padding zoom logic
-view_candles = df_plot.tail(30)
+# Focus zoom lookup matrix bounds (Focus on latest 24 candles to force big size)
+view_candles = df_plot.tail(24)
 low_extreme = min(float(view_candles['low'].min()), sup_zone_low)
 high_extreme = max(float(view_candles['high'].max()), res_zone_high)
-comfort_padding = (high_extreme - low_extreme) * 0.20
+comfort_padding = (high_extreme - low_extreme) * 0.18
 
 fig.update_layout(
-    height=540, xaxis_rangeslider_visible=False, template="plotly_dark", margin=dict(l=10, r=165, t=10, b=25),
+    height=560, xaxis_rangeslider_visible=False, template="plotly_dark", margin=dict(l=10, r=180, t=10, b=25),
     yaxis=dict(side="right", showgrid=True, gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=11), range=[low_extreme - comfort_padding, high_extreme + comfort_padding], autorange=False, fixedrange=False),
-    xaxis=dict(showgrid=True, gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=11), type='category', autorange=True, fixedrange=False),
+    # bargap fixes the structural empty spaces between category nodes to maximize body width
+    xaxis=dict(showgrid=True, gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=11), type='category', categoryorder='category ascending', autorange=True, fixedrange=False),
+    bargap=0.05, 
     paper_bgcolor='#030712', plot_bgcolor='#030712',
     annotations=layout_annotations
 )
 
 st.plotly_chart(fig, use_container_width=True)
 
-# Separate structural matrix lower references
+# Separate reference grid data blocks
 st.markdown("### 📊 Live Terminal Reference Dashboard")
 c1, c2, c3 = st.columns(3)
 with c1: st.info(f"🔴 **DR Level:** {int(dr_level)} | **Zone:** {int(res_zone_low)}-{int(res_zone_high)}")

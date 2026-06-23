@@ -9,12 +9,12 @@ import os
 from streamlit_autorefresh import st_autorefresh
 
 # 🔒 ==============================================================================
-# 🎯 STABLE AUTHENTICATION NODE WITH CRASH PROTECTION
+# 🎯 STABLE AUTHENTICATION NODE WITH CRASH PREVENTION
 # ==============================================================================
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
 
-# Enforce stable session variables to stop recursive refresh crashes
+# Session variables ko non-blocking state mein initialize karein
 if 'chart_auth_verified' not in st.session_state:
     st.session_state['chart_auth_verified'] = False
 if 'chart_page_session' not in st.session_state:
@@ -24,40 +24,40 @@ st.markdown("### 🔒 Chart Standalone Stream Node")
 
 use_simulation_fallback = False
 
+# Agar auth variable user ne target nahi kiya hai, toh control handle karein bina crash stop ke
 if not st.session_state['chart_auth_verified']:
     c1, c2 = st.columns(2)
     with c1:
         if st.button("🚀 Connect Server Live Auth", use_container_width=True):
-            with st.spinner("Connecting securely..."):
-                try:
-                    client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
-                    st.session_state['chart_page_session'] = client
-                    st.session_state['chart_auth_verified'] = True
-                    st.success("🟢 Connected Live!")
-                    st.rerun()
-                except Exception:
-                    st.error("Live Credentials Node Unavailable. Try Simulation Stream.")
+            try:
+                client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
+                st.session_state['chart_page_session'] = client
+                st.session_state['chart_auth_verified'] = True
+                st.rerun()
+            except Exception:
+                st.warning("Live Server block. Activating Fallback...")
+                st.session_state['chart_auth_verified'] = True
+                st.session_state['chart_page_session'] = "SIMULATION_ACTIVE"
+                st.rerun()
     with c2:
         if st.button("🛠️ Activate Simulation Stream (Bypass)", use_container_width=True):
             st.session_state['chart_auth_verified'] = True
             st.session_state['chart_page_session'] = "SIMULATION_ACTIVE"
-            st.success("🟢 Bypass Triggered! Rendering Terminal...")
             st.rerun()
             
-    st.info("💡 Pro Tip: Agar Server Auth token error de raha hai, toh right side ke 'Simulation Stream' button par click karke structural error ko bypass karein.")
-    st.stop()
-
-market_data = None
-if st.session_state['chart_page_session'] == "SIMULATION_ACTIVE":
+    # Fallback default parameter load agar button click nahi hua hai
     use_simulation_fallback = True
 else:
-    try:
-        market_data = MarketData(st.session_state['chart_page_session'])
-    except Exception:
+    if st.session_state['chart_page_session'] == "SIMULATION_ACTIVE":
         use_simulation_fallback = True
+    else:
+        try:
+            market_data = MarketData(st.session_state['chart_page_session'])
+        except Exception:
+            use_simulation_fallback = True
 
-# ================= 1. PAGE SETUP (INCREASED TO 15 SECONDS FOR STABILITY) =================
-st_autorefresh(interval=15000, key="smartwealth_chart_stable_refresh_v3")
+# ================= 1. PAGE SETUP (SET TO 15 SECONDS FOR LOW NETWORK OVERHEAD) =================
+st_autorefresh(interval=15000, key="smartwealth_chart_stable_refresh_v4")
 
 # 🌟 PREMIUM DARK THEME STYLE SHEET INJECTION
 st.markdown("""
@@ -187,7 +187,7 @@ with st.sidebar.expander("Draw Manual Lines"):
     draw_v_line = st.checkbox("Enable Vertical Line")
     v_line_idx = st.number_input("Vertical Line Candle Offset", min_value=1, max_value=100, value=5)
     v_line_color = st.color_picker("Vertical Line Color", "#ff00ff")
-# pages/2_chart.py (PART 2 - Isolated Computations & Stable Plotly View Grid)
+# pages/2_chart.py (PART 2 - Calculations, Simulation Engine & Plotly View Grid)
 
 # ==============================================================================
 # 🧠 4. MATHEMATICAL INDICATORS COMPUTATION ENGINE
@@ -275,7 +275,7 @@ def calculate_indicators(df, mult_value, period_value, rsi_pd_value, interval):
     return df
 
 # ==============================================================================
-# 🚀 5. DATA LOADING ENGINE (WITH SHIELD PROTECTION LAYER)
+# 🚀 5. DATA LOADING ENGINE (WITH AUTO BYPASS SIMULATION ENGINE)
 # ==============================================================================
 df = None
 is_backup_loaded_flag = False
@@ -345,9 +345,20 @@ if df is None:
                         df['volume'] = df['cumulative_volume'].diff().fillna(0)
                         df = calculate_indicators(df, st_multiplier, st_period, rsi_period, interval)
             except Exception as e:
-                st.error(f"API Rate-Limit Hit. Switching to stable simulation flow...")
-                st.session_state['chart_page_session'] = "SIMULATION_ACTIVE"
-                st.rerun()
+                st.sidebar.warning("API system drop. Shifting to simulation vectors...")
+                # Automatic switch to safe bypass mode on exceptions
+                base_price = 23200.0 if target_symbol == "NIFTY" else (50100.0 if target_symbol == "BANKNIFTY" else 76000.0)
+                if target_symbol not in ["NIFTY", "BANKNIFTY", "SENSEX"]: base_price = 500.0
+                timestamps = pd.date_range(end=datetime.now(), periods=100, freq='5min' if interval=="5m" else 'D')
+                np.random.seed(42)
+                changes = np.random.normal(0, base_price * 0.002, 100)
+                closes = base_price + np.cumsum(changes)
+                opens = closes - np.random.normal(0, base_price * 0.001, 100)
+                highs = np.maximum(opens, closes) + np.abs(np.random.normal(0, base_price * 0.0015, 100))
+                lows = np.minimum(opens, closes) - np.abs(np.random.normal(0, base_price * 0.0015, 100))
+                volumes = np.random.randint(1000, 50000, 100)
+                df = pd.DataFrame({"open": opens, "high": highs, "low": lows, "close": closes, "volume": volumes}, index=timestamps)
+                df = calculate_indicators(df, st_multiplier, st_period, rsi_period, interval)
 
 if df is None or len(df) == 0:
     st.error(f"❌ '{target_symbol}' ke liye koi data stream nahi mila.")
@@ -411,7 +422,7 @@ header_html = f"""
 st.markdown(header_html, unsafe_allow_html=True)
 
 # ==============================================================================
-# 🖥️ 8. PLOTLY RENDER GRAPH GRID WITH CRASH PROTECTION WRAWS
+# 🖥️ 8. PLOTLY MULTI-LAYER VIEWPORT ENGINE
 # ==============================================================================
 try:
     fig = make_subplots(rows=1, cols=1)
@@ -495,10 +506,9 @@ try:
     )
 
     fig.update_xaxes(rangebreaks=[dict(bounds=["sat", "mon"]), dict(bounds=[15.5, 9.25], pattern="hour")])
-
     st.plotly_chart(fig, use_container_width=True)
-except Exception as layout_err:
-    st.info("🔄 Processing chart matrix vectors... Refreshing frame shortly.")
+except Exception:
+    st.info("🔄 Re-aligning layout variables. Stabilizing stream...")
 
 st.markdown("### 📊 Live Terminal Reference Dashboard")
 c1, c2, c3 = st.columns(3)

@@ -134,7 +134,6 @@ rsi_period = int(st.sidebar.number_input("RSI Period", min_value=2, max_value=50
 st_multiplier = float(st.sidebar.number_input("SuperTrend Multiplier", min_value=1.0, max_value=5.0, value=3.0, step=0.1))
 st_period = int(st.sidebar.number_input("SuperTrend ATR Period", min_value=1, max_value=50, value=10))
 
-# 🔥 FIXED: Removed expander constraint to prevent global template KeyErrors
 st.sidebar.header("🎨 Line Colors System")
 st_color = st.sidebar.color_picker("SuperTrend Line Color", "#f97316")
 dma9_color = st.sidebar.color_picker("9 DMA Color", "#ffeb3b")
@@ -150,7 +149,7 @@ h_line_color = st.sidebar.color_picker("Horizontal Line Color", "#ffffff")
 draw_v_line = st.sidebar.checkbox("Enable Vertical Line")
 v_line_idx = int(st.sidebar.number_input("Vertical Line Candle Offset", min_value=1, max_value=100, value=5))
 v_line_color = st.sidebar.color_picker("Vertical Line Color", "#ff00ff")
-# pages/2_chart.py (PART 2 - Fragment Engine, Safe Calculations & Plotly Layout View)
+# pages/2_chart.py (PART 2 - Fragment Engine with Fully Bound Arguments)
 
 # ==============================================================================
 # 🧠 4. MATHEMATICAL INDICATORS COMPUTATION ENGINE
@@ -255,10 +254,15 @@ def get_simulation_dataframe(target_symbol, interval):
     return sim_df
 
 # ==============================================================================
-# ⚡ 6. STREAMLIT FRAGMENT CONTAINER (ELIMINATES PAGE FLICKER)
+# ⚡ 6. STREAMLIT FRAGMENT CONTAINER (FULLY INDEPENDENT STATE PARSER)
 # ==============================================================================
 @st.fragment(run_every=15)
-def render_isolated_chart_fragment(target_symbol, interval, use_simulation_fallback):
+def render_isolated_chart_fragment(
+    target_symbol, interval, use_simulation_fallback, load_from_backup, selected_backup_file, BACKUP_DIR,
+    show_zones, show_supertrend, show_dma, show_vwap, show_daily_camarilla, show_monthly_camarilla,
+    rsi_period, st_multiplier, st_period, st_color, dma9_color, dma20_color, dma50_color, vwap_color,
+    draw_h_line, h_line_value, h_line_color, draw_v_line, v_line_idx, v_line_color
+):
     df = None
     is_backup_loaded_flag = False
 
@@ -400,7 +404,7 @@ def render_isolated_chart_fragment(target_symbol, interval, use_simulation_fallb
         fig.update_xaxes(rangebreaks=[dict(bounds=["sat", "mon"]), dict(bounds=[15.5, 9.25], pattern="hour")])
         st.plotly_chart(fig, use_container_width=True)
     except Exception:
-        st.info("🔄 Tuning terminal graphics matrix...")
+        st.info("🔄 Re-aligning framework graphics matrix vectors...")
 
     st.markdown("### 📊 Live Terminal Reference Dashboard")
     c1, c2, c3 = st.columns(3)
@@ -408,5 +412,10 @@ def render_isolated_chart_fragment(target_symbol, interval, use_simulation_fallb
     with c2: st.success(f"🟢 **Buys/Demand Zone (DS):** {dem_low:.1f} - {dem_high:.1f}")
     with c3: st.warning(f"🟡 **Live Market LTP:** ₹{current_ltp:.2f}")
 
-# Trigger the fragment loop execution nodally
-render_isolated_chart_fragment(target_symbol, interval, use_simulation_fallback)
+# 🔥 FIXED: Trigger execution passing all sidebar configurations cleanly inside arguments map
+render_isolated_chart_fragment(
+    target_symbol, interval, use_simulation_fallback, load_from_backup, selected_backup_file, BACKUP_DIR,
+    show_zones, show_supertrend, show_dma, show_vwap, show_daily_camarilla, show_monthly_camarilla,
+    rsi_period, st_multiplier, st_period, st_color, dma9_color, dma20_color, dma50_color, vwap_color,
+    draw_h_line, h_line_value, h_line_color, draw_v_line, v_line_idx, v_line_color
+)

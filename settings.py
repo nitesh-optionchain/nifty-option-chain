@@ -8,7 +8,7 @@ SETTINGS_FILE = "matrix_settings.json"
 
 # --- MERCHANDISE UPI SETTINGS CONFIG ---
 ADMIN_UPI_ID = "9304768496@ybl"  # Yahan aapki UPI ID
-MONTHLY_SUBSCRIPTION_FEES = 499.00     # Fees amount
+MONTHLY_SUBSCRIPTION_FEES = 799.00     # Fees amount
 
 # Admin Mappings
 ADMIN_DB_DEFAULT = {"9304768496": "Admin Chief", "7982046438": "Admin x"}

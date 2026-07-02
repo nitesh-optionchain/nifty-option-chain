@@ -39,7 +39,4 @@ def get_engine():
         return MarketData(nubra)
 
     except Exception as e:
-        st.error(f"Engine Error: {e}")
-        import traceback
-        st.text(traceback.format_exc())
-        return None
+        raise e

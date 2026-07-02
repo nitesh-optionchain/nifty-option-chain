@@ -301,9 +301,7 @@ if df is None:
         exchange_type = "BSE" if target_symbol == "SENSEX" else "NSE"
         
         try:
-            st.write("Before historical_data")
             response = market_data.historical_data({
-            st.write("After historical_data")
                 "exchange": exchange_type,
                 "type": api_type,
                 "values": [target_symbol],

@@ -8,7 +8,9 @@ def get_engine():
         from nubra_python_sdk.marketdata.market_data import MarketData
         from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
         from nubra_python_sdk.ticker import websocketdata
-        
+
+        st.write("PHONE_NO in secrets:", "PHONE_NO" in st.secrets)
+        st.write("MPIN in secrets:", "MPIN" in st.secrets)
         nubra = InitNubraSdk(NubraEnv.PROD, env_creds=True)
                 
         def on_msg(msg):

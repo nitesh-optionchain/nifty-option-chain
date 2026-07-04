@@ -8,7 +8,7 @@ def get_engine():
         from nubra_python_sdk.marketdata.market_data import MarketData
         from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
         from nubra_python_sdk.ticker import websocketdata
-                             
+                          
         nubra = InitNubraSdk(NubraEnv.PROD, env_creds=True)
                 
         def on_msg(msg):

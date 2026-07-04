@@ -28,46 +28,7 @@ def process_live_market_dashboard(md, index_choice, target_exch, memory):
         h_bg, h_txt = ("#e8f5e9", "#1b5e20") if cur_chg >= 0 else ("#ffebee", "#b71c1c")
         arrow = "▲" if cur_chg >= 0 else "▼"
         st.markdown(f'<div style="background:{h_bg}; padding:15px; border-radius:10px; text-align:center; border: 2px solid {h_txt};"><h1 style="color:{h_txt}; margin:0; font-size:32px; font-weight:bold;">{index_choice} {arrow} {live_px:,.2f} <span style="font-size:20px;">({cur_chg:+,.2f} | {cur_pct:+.2f}%)</span></h1></div>', unsafe_allow_html=True)
-
-        # 📉 LIVE INDIA VIX TRACKER COMPONENT
-        if 'last_valid_vix_px' not in st.session_state:
-            st.session_state['last_valid_vix_px'] = 15.79  
-        if 'last_valid_vix_chg' not in st.session_state:
-            st.session_state['last_valid_vix_chg'] = -0.097
-
-        vix_tick = st.session_state.ticks.get('INDIAVIX', {})
-        if isinstance(vix_tick, dict) and vix_tick:
-            raw_px = vix_tick.get('index_value', vix_tick.get('ltp', vix_tick.get('last_price')))
-            raw_chg = vix_tick.get('change', vix_tick.get('net_change'))
-            if raw_px is not None:
-                val_px = float(raw_px)
-                st.session_state['last_valid_vix_px'] = val_px / 100 if val_px > 500 else val_px
-            if raw_chg is not None:
-                val_chg = float(raw_chg)
-                st.session_state['last_valid_vix_chg'] = val_chg / 100 if abs(val_chg) > 10 else val_chg
-
-        vix_px = st.session_state['last_valid_vix_px']
-        vix_chg = st.session_state['last_valid_vix_chg']
-        vix_pct = (vix_chg / (vix_px - vix_chg) * 100) if (vix_px - vix_chg) > 0 else 0.0
-
-        if vix_chg > 0.3 or vix_px > 15.0:
-            vix_trend = "🔥 SPIKING (Option Premiums Expanding)"
-            vix_color = "#ef4444"
-        elif vix_chg < -0.3:
-            vix_trend = "📉 COOLING DOWN (Option Premiums Decaying)"
-            vix_color = "#22c55e"
-        else:
-            vix_trend = "🔄 STABLE ACCUMULATION (Range Bound)"
-            vix_color = "#64748b"
-
-        st.markdown(f"""
-        <div style="background:#f8fafc; padding:10px; border-radius:8px; border:1px solid #e2e8f0; margin-top:8px; text-align:center;">
-            <span style="font-weight:bold; color:#1e293b;">🇮🇳 INDIA VIX:</span> 
-            <span style="font-weight:bold; font-size:16px; color:{vix_color};">{vix_px:.2f} ({vix_chg:+.2f} | {vix_pct:+.2f}%)</span>
-            <span style="margin-left:15px; font-weight:bold; color:#475569;">Trend Matrix: <span style="color:{vix_color};">{vix_trend}</span></span>
-        </div>
-        """, unsafe_allow_html=True)
-
+             
         df_ce = pd.DataFrame([vars(x) for x in chain.ce])
         df_pe = pd.DataFrame([vars(x) for x in chain.pe])
         df_comb = pd.merge(df_ce, df_pe, on="strike_price", suffixes=("_CE","_PE")).fillna(0)

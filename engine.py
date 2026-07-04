@@ -2,7 +2,6 @@
 import threading
 import streamlit as st
 
-@st.cache_resource(show_spinner=False)
 def get_engine():
     try:
         from nubra_python_sdk.marketdata.market_data import MarketData

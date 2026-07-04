@@ -10,15 +10,7 @@ def run_momentum_tracker(df_comb, index_choice, atm, live_px):
     near_pe_oichg = near_strikes["oi_chg_PE"].sum()
     near_ce_vol = near_strikes["volume_CE"].sum()
     near_pe_vol = near_strikes["volume_PE"].sum()
-
-    # Dynamic Momentum logic condition deployment
-    if near_pe_oichg > near_ce_oichg * 1.3 and near_pe_vol > near_ce_vol:
-        st.markdown(f'<div style="background:#1b5e20; color:white; padding:12px; border-radius:8px; text-align:center; font-weight:bold; font-size:22px; margin-top:5px; border:2px solid #a3e635; box-shadow: 0 4px 10px rgba(0,0,0,0.15);">🔥 BIG MOVE BUY SIGNAL: Aggressive Put Writing & Call Unwinding Near {atm}. CALL BUYING ACTIVE!</div>', unsafe_allow_html=True)
-    elif near_ce_oichg > near_pe_oichg * 1.3 and near_ce_vol > near_pe_vol:
-        st.markdown(f'<div style="background:#b71c1c; color:white; padding:12px; border-radius:8px; text-align:center; font-weight:bold; font-size:22px; margin-top:5px; border:2px solid #f87171; box-shadow: 0 4px 10px rgba(0,0,0,0.15);">🚨 BIG MOVE PUT SIGNAL: Aggressive Call Writing & Put Long Liquidation Near {atm}. PUT BUYING ACTIVE!</div>', unsafe_allow_html=True)
-    else:
-        st.markdown('<div style="background:#e2e8f0; color:#475569; padding:12px; border-radius:8px; text-align:center; font-weight:bold; font-size:22px; margin-top:5px; border:1px dashed #cbd5e1;">↔️ SIDEWAYS SQUEEZE: Buyer & Seller Equilibrium Mapped. Wait For Proximity Breakout!</div>', unsafe_allow_html=True)
-
+       
     # ================= PRE-TABLE BOUNDARY METRIC EXTRACTORS =================
     res_stk = int(df_comb.loc[df_comb["volume_CE"].idxmax(), "STRIKE"])
     sup_stk = int(df_comb.loc[df_comb["volume_PE"].idxmax(), "STRIKE"])

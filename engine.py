@@ -1,5 +1,4 @@
 # engine.py
-import os
 import threading
 import streamlit as st
 
@@ -12,10 +11,7 @@ def get_engine():
 
         st.write("PHONE_NO in secrets:", "PHONE_NO" in st.secrets)
         st.write("MPIN in secrets:", "MPIN" in st.secrets)
-
-        os.environ["PHONE_NO"] = st.secrets["PHONE_NO"]
-        os.environ["MPIN"] = st.secrets["MPIN"]
-        
+                
         nubra = InitNubraSdk(NubraEnv.PROD, env_creds=True)
                 
         def on_msg(msg):

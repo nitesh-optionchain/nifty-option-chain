@@ -7,3 +7,4 @@ pydantic
 pytz
 aiohttp
 msgspec
+nubra-python-sdk

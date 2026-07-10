@@ -6,7 +6,7 @@ import json
 import streamlit as st
 import streamlit.components.v1 as components
 
-# 📊 Wide mode page configuration (Secure Layer)
+# 📊 Page setting to wide mode
 st.set_page_config(layout="wide")
 st.subheader("📊 Live Multi-Asset Analytical Chart Terminal")
 st.markdown("---")
@@ -17,7 +17,7 @@ if 'pandas' not in sys.modules:
     fake_pandas.DataFrame = lambda *args, **kwargs: None
     sys.modules['pandas'] = fake_pandas
 
-# 📂 Internal Paths Verification
+# 📂 Path Setup
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 html_file_path = os.path.join(BASE_DIR, 'index.html')
 
@@ -28,41 +28,53 @@ from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
 
 # ========================================================
-# 🔒 100% SECURE & HIDDEN ENVIROMENT INJECTION
+# 🔐 STREAMLIT CLOUD DEEP-SECRET PULL ENGINE
 # ========================================================
-# Kisi bhi user ko screen par kuch nahi dikhega. Data seedhe backend hardware me encrypt hoga.
-PHONE_NO = st.secrets.get("PHONE_NO")
-MPIN = st.secrets.get("MPIN")
+# Agar dynamic dict access block hai, toh hum internal items parse karenge
+PHONE_NO = None
+MPIN = None
 
+try:
+    if hasattr(st, "secrets") and st.secrets is not None:
+        # Pura dict object directly call kar rahe hain setting check karne ke liye
+        PHONE_NO = st.secrets.to_dict().get("PHONE_NO")
+        MPIN = st.secrets.to_dict().get("MPIN")
+except Exception as e:
+    print(f"Secrets parsing error: {e}")
+
+# OS Level backup fallback injection
 if PHONE_NO and MPIN:
     os.environ["PHONE_NO"] = str(PHONE_NO)
     os.environ["MPIN"] = str(MPIN)
 # ========================================================
 
-# Master Storage Framework Setup for Chart Candles
+# Master Storage Structure for Charts
 if "master_storage" not in st.session_state:
     st.session_state.master_storage = {
         "NIFTY": {"price": 0, "status": "LIVE", "master_history": []},
         "SENSEX": {"price": 0, "status": "LIVE", "master_history": []}
     }
 
-# 🔄 System-Level Background Engine Connect
+# 🔄 System SDK Login Trigger
 market_engine = None
-try:
-    if PHONE_NO and MPIN:
+if PHONE_NO and MPIN:
+    try:
         client = InitNubraSdk(NubraEnv.PROD, phone_no=str(PHONE_NO), mpin=str(MPIN))
         market_engine = MarketData(client)
-    else:
-        # Secure system fallback mode
+    except Exception as e:
+        st.warning(f"⚠️ Broker SDK Authentication issue: {str(e)}")
+else:
+    # Safe system login logic without UI display
+    try:
         client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
         market_engine = MarketData(client)
-except Exception as e:
-    print(f"SDK Core Background Auth Error: {str(e)}")
+    except Exception as e:
+        pass
 
-# --- SECURE DIRECT TICK FETCH ENGINE ---
+# --- DIRECT DATA INGESTION MATRIX ---
 if market_engine:
     try:
-        # 1. Fetch NIFTY Ticks
+        # 1. Fetch NIFTY
         nifty_snap = market_engine.current_price("NIFTY", exchange="NSE")
         if nifty_snap and nifty_snap.price:
             real_nifty = float(nifty_snap.price) / 100
@@ -74,7 +86,7 @@ if market_engine:
             if len(st.session_state.master_storage["NIFTY"]["master_history"]) > 500:
                 st.session_state.master_storage["NIFTY"]["master_history"].pop(0)
 
-        # 2. Fetch SENSEX Ticks
+        # 2. Fetch SENSEX
         sensex_snap = market_engine.current_price("SENSEX", exchange="BSE")
         if sensex_snap and sensex_snap.price:
             real_sensex = float(sensex_snap.price) / 100
@@ -87,31 +99,30 @@ if market_engine:
                 st.session_state.master_storage["SENSEX"]["master_history"].pop(0)
 
     except Exception as error:
-        print(f"Secure Data Pipe Loop Warning: {error}")
+        print(f"Data engine tick fail: {error}")
 else:
-    # Safe alert without printing credentials details
-    st.error("🔒 Security Alert: Live authentication parameters are locked or restricted by Streamlit server settings.")
+    # Agar abhi bhi setting block hai, toh screen par warning alert dikhega
+    st.error("🔒 Security Key Missing: Streamlit Cloud settings se secrets dictionary block aa rahi hai.")
 
-# 🌐 Encrypted Variable HTML Injection
+# 🌐 HTML JavaScript Frame Injector
 if os.path.exists(html_file_path):
     with open(html_file_path, "r", encoding="utf-8") as f:
         html_content = f.read()
     
     json_data = json.dumps(st.session_state.master_storage)
     
-    # Keval verification status pass hoga browser me, raw phone/mpin string hide ho jayegi
     injection_script = f"""
     <script>
         window.chartData = {json_data};
-        window.streamAuthContext = {{"STATUS": "AUTHORIZED_SYSTEM_SECURE"}};
+        window.streamAuthContext = {{"STATUS": "AUTHORIZED_SECURE_MODE"}};
     </script>
     """
     
     html_content = html_content.replace("<head>", f"<head>{injection_script}")
     components.html(html_content, height=820, scrolling=True)
 else:
-    st.error("❌ 'index.html' file main root folder me nahi mili!")
+    st.error("❌ 'index.html' file root folder me nahi mili!")
 
-# ⏳ Secure Continuous Refresh Loop (1 Second Interval)
+# ⏳ Autoloop page rerun engine (1 second ticker)
 time.sleep(1)
 st.rerun()

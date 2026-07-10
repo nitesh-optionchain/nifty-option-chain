@@ -4,7 +4,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta charset="UTF-8">
     <title>Pro Live Candlestick Dashboard</title>
+    <script src="lightweight-chart.js"></script>
     <script src="indicators.js"></script>
+    <script src="socket.io.js"></script>
+    <script src="zone_engine.js"></script>
     <style>
         body { margin: 0; background-color: #1c2030; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #d1d4dc; padding: 15px; }
         .header { background: #131722; padding: 14px 20px; display: flex; gap: 30px; border-radius: 6px; margin-bottom: 12px; border: 1px solid #2b2e3a; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
@@ -782,39 +785,35 @@
         setTimeout(resize, 300);
 
         // ========================================================
-        // ⚡ STREAMLIT TO CANVAS REAL-TIME BRIDGE ENGINE
+        // ⚡ FINAL CANVAS ENGINE OVERRIDE TRIGGER
         // ========================================================
-        if (window.chartData) {
-            updateCanvasData(window.chartData);
-        }
-
         function fetchUpdates() {
-            if (window.parent && window.parent.chartData) {
-                updateCanvasData(window.parent.chartData);
-            } else if (window.chartData) {
-                updateCanvasData(window.chartData);
-            }
-        }
-
-        function updateCanvasData(masterData) {
-            if (masterData && masterData[current_asset]) {
-                latestServerData = masterData[current_asset];
+            let targetData = window.chartData || (window.parent && window.parent.chartData);
+            
+            if (targetData && targetData[current_asset]) {
+                latestServerData = targetData[current_asset];
                 
-                // Top widget updates (Agar active elements hon)
-                const priceDisplay = document.getElementById('asset-display');
-                if (priceDisplay && latestServerData.price) {
+                // Dynamic Title & Status Area Overwrite
+                const statusSpan = document.getElementById('asset-display');
+                if (statusSpan && latestServerData.price) {
                     const realPrice = (parseFloat(latestServerData.price) / 100).toFixed(2);
-                    priceDisplay.innerText = current_asset + " - " + realPrice;
+                    statusSpan.innerHTML = `<span style="color: #26a69a;">● LIVE</span> ${current_asset}: ${realPrice}`;
                 }
                 
-                drawChart();
+                // Force fully draw the canvas candles
+                if (typeof drawChart === "function") {
+                    drawChart();
+                }
             }
         }
 
-        // 🔄 LIVE STREAM REFRESH INTERVAL LOOP
-        setInterval(fetchUpdates, 1000);
+        // Immediate run on file load
+        setTimeout(() => {
+            fetchUpdates();
+            setInterval(fetchUpdates, 1000);
+        }, 500);
         // ========================================================
-
+        
     </script>
 </body>
 </html>

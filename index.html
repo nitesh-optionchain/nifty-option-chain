@@ -778,8 +778,43 @@
         // Pehli baar build setup trigger karne ke liye background execution execution trigger
         setTimeout(resize, 300);
 
+       // Pehli baar build setup trigger karne ke liye
+        setTimeout(resize, 300);
+
+        // ========================================================
+        // ⚡ STREAMLIT TO CANVAS REAL-TIME BRIDGE ENGINE
+        // ========================================================
+        if (window.chartData) {
+            updateCanvasData(window.chartData);
+        }
+
+        function fetchUpdates() {
+            if (window.parent && window.parent.chartData) {
+                updateCanvasData(window.parent.chartData);
+            } else if (window.chartData) {
+                updateCanvasData(window.chartData);
+            }
+        }
+
+        function updateCanvasData(masterData) {
+            if (masterData && masterData[current_asset]) {
+                latestServerData = masterData[current_asset];
+                
+                // Top widget updates (Agar active elements hon)
+                const priceDisplay = document.getElementById('asset-display');
+                if (priceDisplay && latestServerData.price) {
+                    const realPrice = (parseFloat(latestServerData.price) / 100).toFixed(2);
+                    priceDisplay.innerText = current_asset + " - " + realPrice;
+                }
+                
+                drawChart();
+            }
+        }
+
         // 🔄 LIVE STREAM REFRESH INTERVAL LOOP
         setInterval(fetchUpdates, 1000);
+        // ========================================================
+
     </script>
 </body>
 </html>

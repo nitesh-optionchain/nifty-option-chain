@@ -27,9 +27,10 @@ if BASE_DIR not in sys.path:
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
 
-# 🔐 Direct Environment Injection Bridge (Force Hard Injection)
-PHONE_NO = st.secrets.get("PHONE_NO") or os.environ.get("PHONE_NO")
-MPIN = st.secrets.get("MPIN") or os.environ.get("MPIN")
+# 🔐 CROSS-PAGE DYNAMIC CRUNCH ENGINE
+# Agar Streamlit secrets fail ho rahe hain, to user ke dynamic main session state se details pull karenge
+PHONE_NO = st.session_state.get("PHONE_NO") or st.secrets.get("PHONE_NO") or os.environ.get("PHONE_NO")
+MPIN = st.session_state.get("MPIN") or st.secrets.get("MPIN") or os.environ.get("MPIN")
 
 if PHONE_NO and MPIN:
     os.environ["PHONE_NO"] = str(PHONE_NO)
@@ -42,16 +43,20 @@ if "master_storage" not in st.session_state:
         "SENSEX": {"price": 0, "status": "LIVE", "master_history": []}
     }
 
-# 🔄 Direct Live Engine Generator (No Cache Dependency)
+# 🔄 Live Engine Sync Trigger
 market_engine = None
 try:
     if PHONE_NO and MPIN:
         client = InitNubraSdk(NubraEnv.PROD, phone_no=str(PHONE_NO), mpin=str(MPIN))
         market_engine = MarketData(client)
+    else:
+        # Fallback Auto-Creds mode check
+        client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
+        market_engine = MarketData(client)
 except Exception as e:
-    print(f"SDK Direct Login Error: {str(e)}")
+    print(f"SDK Internal Hard-Init Warning: {str(e)}")
 
-# --- DIRECT TICK FETCH ENGINE ---
+# --- DIRECT DATA CHANNEL PROCESSOR ---
 if market_engine:
     try:
         # 1. Fetch NIFTY Ticks
@@ -79,9 +84,7 @@ if market_engine:
                 st.session_state.master_storage["SENSEX"]["master_history"].pop(0)
 
     except Exception as error:
-        print(f"Pipeline Warning: {error}")
-else:
-    st.error("❌ Broker SDK Initialization fail ho gaya. Secrets verify karein!")
+        print(f"Data Channel Loop Warning: {error}")
 
 # 🌐 Unified HTML/JS Component Injection Logic
 if os.path.exists(html_file_path):
@@ -90,10 +93,14 @@ if os.path.exists(html_file_path):
     
     json_data = json.dumps(st.session_state.master_storage)
     
+    # Secure fallback string strings mapping inside template context
+    safe_phone = str(PHONE_NO) if PHONE_NO else ""
+    safe_mpin = str(MPIN) if MPIN else ""
+    
     injection_script = f"""
     <script>
         window.chartData = {json_data};
-        window.streamAuthContext = {{"PHONE_NO": "{PHONE_NO}", "MPIN": "{MPIN}", "STATUS": "ACTIVE"}};
+        window.streamAuthContext = {{"PHONE_NO": "{safe_phone}", "MPIN": "{safe_mpin}", "STATUS": "ACTIVE"}};
     </script>
     """
     

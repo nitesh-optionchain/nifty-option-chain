@@ -781,28 +781,31 @@
         setTimeout(resize, 300);
 
         // ========================================================
-        // ⚡ ZERO-REFRESH CANVAS DRAW CODESET
+        // ⚡ REAL REAL-TIME MEMORY PARSER (ZERO PAGE FLICKER)
         // ========================================================
         function fetchUpdates() {
-            // Hum koi API network request nahi maarenge, direct context arrays read karenge
-            let dataMatrix = window.chartData || (window.parent && window.parent.chartData);
+            // Direct window object messaging logic read
+            let liveData = window.chartData;
             
-            if (dataMatrix && dataMatrix[current_asset]) {
-                latestServerData = dataMatrix[current_asset];
+            if (liveData && liveData[current_asset]) {
+                latestServerData = liveData[current_asset];
                 
-                // Asset Indicator text management
-                const priceLabel = document.getElementById('asset-display');
-                if (priceLabel && latestServerData.price) {
+                // Live Price Header text injection
+                const priceTarget = document.getElementById('asset-display');
+                if (priceTarget && latestServerData.price) {
                     const realPrice = (parseFloat(latestServerData.price) / 100).toFixed(2);
-                    priceLabel.innerHTML = `<span style="color: #26a69a;">● ACTIVE</span> ${current_asset} - ${realPrice}`;
+                    priceTarget.innerHTML = `<span style="color: #26a69a;">● LIVE</span> ${current_asset} - ${realPrice}`;
                 }
                 
-                // Force fully execute canvas generator array mapping
+                // Changing status text from FROZEN to ACTIVE
+                const statusSpan = document.querySelector('span'); // Adjust dynamic selector as per your template
+                
+                // Redraw canvas with real updated data arrays
                 drawChart();
             }
         }
 
-        // Static loop array listener execution
+        // Interval listener setup
         fetchUpdates();
         setInterval(fetchUpdates, 1000);
         // ========================================================

@@ -784,36 +784,47 @@
        // Pehli baar build setup trigger karne ke liye
         setTimeout(resize, 300);
 
+        // Pehli baar build setup trigger karne ke liye
+        setTimeout(resize, 300);
+
         // ========================================================
-        // ⚡ FINAL CANVAS ENGINE OVERRIDE TRIGGER
+        // ⚡ SMOOTH REAL-TIME BROKER DATA PIPELINE (ZERO REFRESH)
         // ========================================================
-        function fetchUpdates() {
-            let targetData = window.chartData || (window.parent && window.parent.chartData);
-            
-            if (targetData && targetData[current_asset]) {
-                latestServerData = targetData[current_asset];
+        async function fetchUpdates() {
+            try {
+                // Hum direct JavaScript browser session se token authorization fetch karenge
+                // Aur aapki option chain data terminal ki active data stream se coordinate karenge
+                const response = await fetch(`/api/live-data?asset=${current_asset}`);
+                if (!response.ok) return;
                 
-                // Dynamic Title & Status Area Overwrite
-                const statusSpan = document.getElementById('asset-display');
-                if (statusSpan && latestServerData.price) {
-                    const realPrice = (parseFloat(latestServerData.price) / 100).toFixed(2);
-                    statusSpan.innerHTML = `<span style="color: #26a69a;">● LIVE</span> ${current_asset}: ${realPrice}`;
-                }
-                
-                // Force fully draw the canvas candles
-                if (typeof drawChart === "function") {
+                const data = await response.json();
+                if (data && data.master_history) {
+                    latestServerData = data;
+                    
+                    // Live Price Label Text Rendering
+                    const priceDisplay = document.getElementById('asset-display');
+                    if (priceDisplay && latestServerData.price) {
+                        const realPrice = (parseFloat(latestServerData.price) / 100).toFixed(2);
+                        priceDisplay.innerHTML = `<span style="color: #26a69a;">● LIVE</span> ${current_asset} - ${realPrice}`;
+                    }
+                    
+                    // Satus span element update zone
+                    const zoneStatusText = document.querySelector('.zone-status-selector'); // change according to your class
+                    if (zoneStatusText) zoneStatusText.innerText = "ACTIVE";
+                    
+                    // Smoothly re-draw canvas candles without breaking DOM
                     drawChart();
                 }
+            } catch (err) {
+                console.log("Stream update bypass: ", err);
             }
         }
 
-        // Immediate run on file load
-        setTimeout(() => {
-            fetchUpdates();
-            setInterval(fetchUpdates, 1000);
-        }, 500);
+        // 🔄 TRIGGER THE DYNAMIC PIPELINE EVERY 1 SECOND SMOOTHLY
+        fetchUpdates();
+        setInterval(fetchUpdates, 1000);
         // ========================================================
-        
     </script>
 </body>
 </html>
+       

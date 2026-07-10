@@ -778,40 +778,38 @@
         }
         window.addEventListener('resize', resize);
         
-        // Pehli baar build setup trigger karne ke liye background execution execution trigger
+        // Pehli baar build setup trigger karne ke liye
         setTimeout(resize, 300);
 
         // ========================================================
-        // ⚡ SMOOTH REAL-TIME BROKER DATA PIPELINE (ZERO REFRESH)
+        // ⚡ SMOOTH REAL-TIME DATA PROVIDER ENGINE (ZERO PAGE REFRESH)
         // ========================================================
         function fetchUpdates() {
-            // Kisi API par call nahi karna, seedhe window memory check karna hai
-            let targetData = window.chartData;
+            // Streamlit window context se credentials verify karein
+            let auth = window.streamAuthContext || (window.parent && window.parent.streamAuthContext);
             
-            if (targetData && targetData[current_asset]) {
-                latestServerData = targetData[current_asset];
-                
-                // Real-time Top Widget text mapping
-                const priceDisplay = document.getElementById('asset-display');
-                if (priceDisplay && latestServerData.price) {
-                    const realPrice = (parseFloat(latestServerData.price) / 100).toFixed(2);
-                    priceDisplay.innerHTML = `<span style="color: #26a69a;">● LIVE</span> ${current_asset} - ${realPrice}`;
-                }
-                
-                // Zone status selector override
-                const zoneStatus = document.getElementById('zone-status-display') || document.querySelector('span'); 
-                // Agar aapke pass Zone Status ki exact ID hai to use update karein, nahi to ye text update karega:
-                if (zoneStatus && latestServerData.master_history.length > 0) {
-                     // Frozen hatakar live kar rahe hain
-                     zoneStatus.innerHTML = `<span style="color: #26a69a;">ACTIVE</span>`;
+            if (auth && auth.STATUS === "AUTHORIZED_SECURE") {
+                // Yahan aapka jo zone status element hai use direct ACTIVE mark karein
+                const zoneStatus = document.getElementById('zone-status-display') || document.querySelector('span');
+                if (zoneStatus) {
+                    zoneStatus.innerHTML = `<span style="color: #26a69a;">● ACTIVE</span>`;
                 }
 
-                // Call core canvas engine to draw the candles smoothly
-                drawChart();
+                // NOTE: Kyunki python refresh band ho gaya hai, ab aapka pure Canvas Engine 
+                // ya Broker SDK data listener Bina screen ko hilaaye ticks yahan render karega.
+                if (latestServerData) {
+                    // Title price display handle
+                    const priceDisplay = document.getElementById('asset-display');
+                    if (priceDisplay && latestServerData.price) {
+                        const realPrice = (parseFloat(latestServerData.price) / 100).toFixed(2);
+                        priceDisplay.innerText = current_asset + " - " + realPrice;
+                    }
+                    drawChart();
+                }
             }
         }
 
-        // Ticker system auto starter
+        // Ticker loop checks without rendering new DOM elements
         fetchUpdates();
         setInterval(fetchUpdates, 1000);
         // ========================================================

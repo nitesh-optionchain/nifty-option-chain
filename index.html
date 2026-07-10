@@ -790,41 +790,37 @@
         // ========================================================
         // ⚡ SMOOTH REAL-TIME BROKER DATA PIPELINE (ZERO REFRESH)
         // ========================================================
-        async function fetchUpdates() {
-            try {
-                // Hum direct JavaScript browser session se token authorization fetch karenge
-                // Aur aapki option chain data terminal ki active data stream se coordinate karenge
-                const response = await fetch(`/api/live-data?asset=${current_asset}`);
-                if (!response.ok) return;
+        function fetchUpdates() {
+            // Kisi API par call nahi karna, seedhe window memory check karna hai
+            let targetData = window.chartData;
+            
+            if (targetData && targetData[current_asset]) {
+                latestServerData = targetData[current_asset];
                 
-                const data = await response.json();
-                if (data && data.master_history) {
-                    latestServerData = data;
-                    
-                    // Live Price Label Text Rendering
-                    const priceDisplay = document.getElementById('asset-display');
-                    if (priceDisplay && latestServerData.price) {
-                        const realPrice = (parseFloat(latestServerData.price) / 100).toFixed(2);
-                        priceDisplay.innerHTML = `<span style="color: #26a69a;">● LIVE</span> ${current_asset} - ${realPrice}`;
-                    }
-                    
-                    // Satus span element update zone
-                    const zoneStatusText = document.querySelector('.zone-status-selector'); // change according to your class
-                    if (zoneStatusText) zoneStatusText.innerText = "ACTIVE";
-                    
-                    // Smoothly re-draw canvas candles without breaking DOM
-                    drawChart();
+                // Real-time Top Widget text mapping
+                const priceDisplay = document.getElementById('asset-display');
+                if (priceDisplay && latestServerData.price) {
+                    const realPrice = (parseFloat(latestServerData.price) / 100).toFixed(2);
+                    priceDisplay.innerHTML = `<span style="color: #26a69a;">● LIVE</span> ${current_asset} - ${realPrice}`;
                 }
-            } catch (err) {
-                console.log("Stream update bypass: ", err);
+                
+                // Zone status selector override
+                const zoneStatus = document.getElementById('zone-status-display') || document.querySelector('span'); 
+                // Agar aapke pass Zone Status ki exact ID hai to use update karein, nahi to ye text update karega:
+                if (zoneStatus && latestServerData.master_history.length > 0) {
+                     // Frozen hatakar live kar rahe hain
+                     zoneStatus.innerHTML = `<span style="color: #26a69a;">ACTIVE</span>`;
+                }
+
+                // Call core canvas engine to draw the candles smoothly
+                drawChart();
             }
         }
 
-        // 🔄 TRIGGER THE DYNAMIC PIPELINE EVERY 1 SECOND SMOOTHLY
+        // Ticker system auto starter
         fetchUpdates();
         setInterval(fetchUpdates, 1000);
         // ========================================================
     </script>
 </body>
 </html>
-       

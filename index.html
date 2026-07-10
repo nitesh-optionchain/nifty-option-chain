@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta charset="UTF-8">
+    <title>Pro Live Candlestick Dashboard</title>
+    <script src="indicators.js"></script>
+    <style>
+        body { margin: 0; background-color: #1c2030; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #d1d4dc; padding: 15px; }
+        .header { background: #131722; padding: 14px 20px; display: flex; gap: 30px; border-radius: 6px; margin-bottom: 12px; border: 1px solid #2b2e3a; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        .header-item { font-size: 14px; letter-spacing: 0.5px; }
+        .header-val { font-weight: bold; margin-left: 5px; }
+        .control-bar { margin-bottom: 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        .indicator-btn { background: #2b2e3a; color: #d1d4dc; border: 1px solid #434651; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 12px; transition: all 0.2s; }
+        /* 🎨 RESPONSIVE DRAWING TOOLBAR SYSTEM */
+        .chart-wrapper { 
+            display: flex; 
+            width: 100%; 
+            position: relative; 
+            height: calc(100vh - 140px); 
+            min-height: 500px;
+        }
+        
+        .drawing-toolbar { 
+            width: 45px; 
+            background: #131722; 
+            border: 1px solid #2b2e3a; 
+            border-right: none; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            padding-top: 10px; 
+            gap: 8px; 
+            z-index: 10;
+        }
+        
+        #chart-container { 
+            flex: 1; 
+            background: #131722; 
+            border: 1px solid #2b2e3a; 
+            position: relative;
+        }
+
+        .tool-btn { 
+            width: 32px; height: 32px; background: #2b2e3a; color: #d1d4dc; 
+            border: 1px solid #434651; border-radius: 4px; cursor: pointer; 
+            font-size: 14px; display: flex; align-items: center; justify-content: center; 
+            transition: all 0.2s; 
+        }
+        .tool-btn.active { background: #2a2e39; border-color: #ff9800; color: #ff9800; }
+        .tool-btn:hover { border-color: #787b86; }
+        .color-picker-input { width: 32px; height: 32px; padding: 0; border: none; cursor: pointer; background: transparent; }
+
+        /* 📱 MOBILE & TABLET SPECIAL LAYOUT CONTROLLER */
+        @media (max-width: 768px) {
+            .chart-wrapper { 
+                flex-direction: column-reverse; 
+                height: 60vh; 
+            }
+            .drawing-toolbar { 
+                width: 100%; 
+                height: 45px; 
+                flex-direction: row; 
+                justify-content: center; 
+                padding-top: 0;
+                padding-left: 10px;
+                border-right: 1px solid #2b2e3a;
+                border-top: none;
+            }
+            .color-picker-input, .tool-btn {
+                width: 35px;
+                height: 35px;
+            }
+        }
+        /* 🎨 LEFT DRAWING TOOLBAR SYSTEM */
+        .chart-wrapper { display: flex; width: 100%; position: relative; }
+        .drawing-toolbar { 
+            width: 45px; background: #131722; border: 1px solid #2b2e3a; 
+            border-right: none; display: flex; flex-direction: column; 
+            align-items: center; padding-top: 10px; gap: 8px; 
+        }
+        .tool-btn { 
+            width: 32px; height: 32px; background: #2b2e3a; color: #d1d4dc; 
+            border: 1px solid #434651; border-radius: 4px; cursor: pointer; 
+            font-size: 14px; display: flex; align-items: center; justify-content: center; 
+            transition: all 0.2s; 
+        }
+        .tool-btn.active { background: #2a2e39; border-color: #ff9800; color: #ff9800; }
+        .tool-btn:hover { border-color: #787b86; }
+        .color-picker-input { width: 32px; height: 32px; padding: 0; border: none; cursor: pointer; background: transparent; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <div class="header-item">Asset: <span id="asset-display" class="header-val" style="color: #26a69a;">NIFTY 50 LIVE</span></div>
+        <div class="header-item">Zone Status: <span id="zone-status" class="header-val" style="color:#ff9800;">FROZEN</span></div>
+        <div class="header-item">Last Price: <span id="live-price" class="header-val" style="color:#26a69a;">Awaiting Tick...</span></div>
+    </div>
+
+    <div class="control-bar">
+        <select id="asset-select" onchange="changeAsset()" style="background: #2b2e3a; color: #d1d4dc; border: 1px solid #434651; padding: 5px 12px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 12px; outline: none; border-color: #26a69a;">
+            <option value="NIFTY">NIFTY 50</option>
+            <option value="SENSEX">SENSEX</option>
+        </select>
+
+        <select id="timeframe-select" onchange="changeTimeframe()" style="background: #2b2e3a; color: #d1d4dc; border: 1px solid #434651; padding: 5px 12px; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 12px; outline: none; margin-left: 5px;">
+            <option value="5">5 Sec (Test)</option>
+            <option value="10">10 Sec</option>
+            <option value="15">15 Sec</option>
+            <option value="30">30 Sec</option>
+            <option value="300">5 Min</option>
+            <option value="900">15 Min</option>
+            <option value="1800">30 Min</option>
+        </select>
+
+        <select id="date-history-select" onchange="changeHistoryDate()" style="background: #2b2e3a; color: #d1d4dc; border: 1px solid #434651; padding: 5px 12px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 12px; outline: none; border-color: #ff9800; margin-left: 5px;">
+            <option value="LIVE">🔄 LIVE MARKET</option>
+        </select>
+
+        <button id="btn-ema9" class="indicator-btn" onclick="toggleIndicator('ema9')" style="margin-left: 5px;">+ EMA 9</button>
+        <button id="btn-ema20" class="indicator-btn" onclick="toggleIndicator('ema20')" style="margin-left: 5px;">+ EMA 20</button>
+        <button id="btn-ema50" class="indicator-btn" onclick="toggleIndicator('ema50')" style="margin-left: 5px;">+ EMA 50</button>
+        <button id="btn-pivot" class="indicator-btn" onclick="toggleIndicator('pivot')">+ Pivot Points</button>
+        <button id="btn-vwap" class="indicator-btn" onclick="toggleIndicator('vwap')" style="margin-left: 5px;">+ VWAP</button>
+        <button id="btn-supertrend" class="indicator-btn" onclick="toggleIndicator('supertrend')" style="margin-left: 5px;">+ Supertrend</button>
+    </div>
+
+    <div class="chart-wrapper">
+        <div class="drawing-toolbar">
+            <button id="tool-cursor" class="tool-btn active" onclick="setTool('cursor')">🏹</button>
+            <button id="tool-line" class="tool-btn" onclick="setTool('line')">╱</button>
+            <button id="tool-rect" class="tool-btn" onclick="setTool('rect')">█</button>
+            <input type="color" id="tool-color" class="color-picker-input" value="#ff9800" title="Custom Draw Color">
+            <button id="tool-lock" class="tool-btn" onclick="toggleGlobalLock()" title="Lock/Unlock All Shapes" style="margin-top: 15px;">🔓</button>
+            <button class="tool-btn" onclick="clearDrawings()" title="Clear All" style="margin-top: 5px; color: #ef5350;">🗑️</button>            
+        </div>
+        <div id="chart-container" style="flex: 1;">
+            <canvas id="pureCanvas"></canvas>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('pureCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        let activeIndicators = { ema9: false, ema20: false, ema50: false, vwap: false, supertrend: false };
+        let current_timeframe = 5; 
+        let current_asset = "NIFTY"; 
+        let latestServerData = null;
+
+        // 🛠️ DRAWING TOOL ENGINE CONFIG
+        let currentTool = 'cursor'; 
+        let drawings = []; // Saari saved drawings yahan rahengi
+        let isDrawing = false;
+        let drawStart = { x: 0, y: 0 };
+        let drawEnd = { x: 0, y: 0 };
+
+        function setTool(toolName) {
+            currentTool = toolName;
+            document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
+            const activeBtn = document.getElementById(`tool-${toolName}`);
+            if(activeBtn) activeBtn.classList.add('active');
+        }
+
+        function clearDrawings() {
+            drawings = [];
+            drawChart();
+        }
+        // 🔒 GLOBAL DRAWING LOCK ENGINE STATE
+        let isDrawingLocked = false;
+
+        function toggleGlobalLock() {
+            isDrawingLocked = !isDrawingLocked;
+            const lockBtn = document.getElementById('tool-lock');
+            if (isDrawingLocked) {
+                lockBtn.innerText = "🔒";
+                lockBtn.style.borderColor = "#ef5350";
+                lockBtn.style.color = "#ef5350";
+                // Lock hote hi automatic cursor mode par shift kar do taaki koi nayi drawing na bane
+                setTool('cursor');
+            } else {
+                lockBtn.innerText = "🔓";
+                lockBtn.style.borderColor = "#434651";
+                lockBtn.style.color = "#d1d4dc";
+            }
+        }
+
+        function toggleIndicator(name) {
+            activeIndicators[name] = !activeIndicators[name];
+            const btn = document.getElementById(`btn-${name}`);
+            let indicatorColors = { ema9: '#ff9800', ema20: '#2196f3', ema50: '#e91e63', vwap: '#00bcd4', supertrend: '#9c27b0', pivot: '#ffeb3b' };
+            
+            if (activeIndicators[name]) {
+                btn.style.background = '#2a2e39'; 
+                btn.style.borderColor = indicatorColors[name] || '#ff9800'; 
+                btn.style.color = indicatorColors[name] || '#ff9800';
+            } else {
+                btn.style.background = '#2b2e3a'; 
+                btn.style.borderColor = '#434651'; 
+                btn.style.color = '#d1d4dc';
+            }
+            drawChart();
+        }
+
+        function changeTimeframe() {
+            const select = document.getElementById('timeframe-select');
+            current_timeframe = parseInt(select.value);
+            drawChart();
+        }
+
+        function changeAsset() {
+            const select = document.getElementById('asset-select');
+            current_asset = select.value;
+            document.getElementById('asset-display').innerText = current_asset + " LIVE";
+            fetchUpdates(); 
+        }
+
+        function resize() {
+            canvas.width = canvas.parentElement.clientWidth;
+            canvas.height = 850;
+            drawChart();
+        }
+
+        function drawChart() {
+            ctx.fillStyle = '#131722';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const rightSidebarWidth = 85; 
+            const chartWidth = canvas.width - rightSidebarWidth;
+            const chartHeight = 560;
+
+            // Grid Background Lines Layout
+            ctx.strokeStyle = '#232634'; ctx.lineWidth = 1;
+            for(let i = 40; i < chartWidth; i += 70) {
+                ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, chartHeight); ctx.stroke();
+            }
+            for(let j = 40; j < chartHeight; j += 45) {
+                ctx.beginPath(); ctx.moveTo(0, j); ctx.lineTo(chartWidth, j); ctx.stroke();
+            }
+
+            // Scale Sidebar Background
+            ctx.fillStyle = '#1c2030';
+            ctx.fillRect(chartWidth, 0, rightSidebarWidth, chartHeight);
+            ctx.strokeStyle = '#2b2e3a'; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(chartWidth, 0); ctx.lineTo(chartWidth, chartHeight); ctx.stroke();
+
+            if (!latestServerData || !latestServerData.master_history || latestServerData.master_history.length === 0) return;
+
+            // CORE COMPACTION ENGINE
+            let compiledCandles = [];
+            let master = latestServerData.master_history;
+            
+            for (let i = 0; i < master.length; i += current_timeframe) {
+                let chunk = master.slice(i, i + current_timeframe);
+                if (chunk.length === 0) continue;
+                
+                let highPrices = chunk.map(c => c.high);
+                let lowPrices = chunk.map(c => c.low);
+                
+                compiledCandles.push({
+                    open: chunk[0].open,
+                    high: Math.max(...highPrices),
+                    low: Math.min(...lowPrices),
+                    close: chunk[chunk.length - 1].close
+                });
+            }
+
+            let displayCandles = compiledCandles.slice(-35);
+            if(displayCandles.length === 0) return;
+
+            let maxPrice = Math.max(...displayCandles.map(c => c.high));
+            let minPrice = Math.min(...displayCandles.map(c => c.low));
+            let priceRange = maxPrice - minPrice;
+            if(priceRange === 0) priceRange = 10;
+            
+            maxPrice += priceRange * 0.15;
+            minPrice -= priceRange * 0.15;
+            priceRange = maxPrice - minPrice;
+
+            function getPixelY(price) {
+                return chartHeight - 40 - ((price - minPrice) / priceRange) * (chartHeight - 80);
+            }
+
+            // Price Labels Output
+            ctx.fillStyle = '#787b86'; ctx.font = '11px sans-serif'; ctx.textBaseline = 'middle';
+            let gridLabelsCount = 8;
+            for(let k = 0; k <= gridLabelsCount; k++) {
+                let labelPrice = minPrice + (priceRange * (k / gridLabelsCount));
+                let labelY = getPixelY(labelPrice);
+                if(labelY >= 0 && labelY <= chartHeight) {
+                    ctx.fillText(labelPrice.toFixed(1), chartWidth + 8, labelY);
+                }
+            }
+
+            // Pro Sizing Metrics
+            let candleWidth = 22; 
+            let candleGap = 34;   
+            let startX = 50; 
+            
+            let totalNeededWidth = displayCandles.length * candleGap;
+            const maxAllowedWidth = chartWidth - 60; 
+
+            if (totalNeededWidth > maxAllowedWidth) {
+                startX = maxAllowedWidth - totalNeededWidth;
+            }
+
+            // Drawing Loop
+            for(let i = 0; i < displayCandles.length; i++) {
+                let candle = displayCandles[i];
+                let x = startX + (i * candleGap);
+
+                if (x + candleWidth < 0) continue;
+
+                let yOpen = getPixelY(candle.open);
+                let yClose = getPixelY(candle.close);
+                let yHigh = getPixelY(candle.high);
+                let yLow = getPixelY(candle.low);
+
+                let isBullish = candle.close >= candle.open;
+
+                // 📊 BORING CANDLE MATHEMATICS (Body vs Total Range < 50%)
+                let candleRange = candle.high - candle.low;
+                let bodySize = Math.abs(candle.close - candle.open);
+                let isBoring = (candleRange > 0 && (bodySize / candleRange) < 0.5);
+
+                // 🎨 COLOR SELECTION
+                let themeColor = isBullish ? '#26a69a' : '#ef5350';
+                if (isBoring) {
+                    themeColor = '#ffeb3b'; // 🌟 Boring candle turns Yellow!
+                }
+
+                ctx.strokeStyle = themeColor; 
+                ctx.fillStyle = themeColor;
+                
+                // Draw Wicks
+                ctx.beginPath();
+                ctx.moveTo(x + candleWidth / 2, yHigh);
+                ctx.lineTo(x + candleWidth / 2, yLow); // Fixed variable to yLow
+                ctx.stroke();
+
+                let bodyHeight = Math.abs(yClose - yOpen);
+                if(bodyHeight < 1.5) bodyHeight = 1.5;
+                ctx.fillRect(x, Math.min(yOpen, yClose), candleWidth, bodyHeight);
+
+                if(i === displayCandles.length - 1) {
+                    ctx.fillStyle = themeColor;
+                    ctx.fillRect(chartWidth + 1, Math.min(yOpen, yClose) - 6, rightSidebarWidth - 2, 16);
+                    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 10px sans-serif';
+                    ctx.fillText(candle.close.toFixed(2), chartWidth + 6, Math.min(yOpen, yClose) + 2);
+                    
+                    ctx.strokeStyle = 'rgba(255,255,255,0.15)'; ctx.setLineDash([2, 2]);
+                    ctx.beginPath(); ctx.moveTo(x + candleWidth, yClose); ctx.lineTo(chartWidth, yClose); ctx.stroke();
+                    ctx.setLineDash([]);
+                }
+            }
+            // 🟡 PIVOT POINTS (FIXED GEOMETRY PANEL LAYER)
+        if (activeIndicators.pivot && displayCandles.length > 0) {
+            let allHighs = displayCandles.map(c => c.high);
+            let allLows = displayCandles.map(c => c.low);
+            let allCloses = displayCandles.map(c => c.close);
+            
+            let H = Math.max(...allHighs);
+            let L = Math.min(...allLows);
+            let C = allCloses[allCloses.length - 1]; 
+
+            let PP = (H + L + C) / 3;
+            let R1 = (2 * PP) - L;
+            let S1 = (2 * PP) - H;
+            let R2 = PP + (H - L);
+            let S2 = PP - (H - L);
+
+            // 🎯 FIXED GEOMETRY BOX COORD
+            const geoPanelTop = 535; 
+            const geoPanelHeight = 40; 
+            let endXStr = chartWidth; 
+
+            // 1. Draw Geometry Panel Top Separation border
+            ctx.strokeStyle = '#2b2e3a'; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(0, geoPanelTop); ctx.lineTo(chartWidth, geoPanelTop); ctx.stroke();
+
+            // Label Header
+            ctx.fillStyle = '#ffeb3b'; ctx.font = 'bold 10px sans-serif';
+            ctx.fillText("PIVOTS", 15, geoPanelTop + 12);
+
+            // Standard Matrix Mapping with static row spacing to avoid dynamic overlap crashes!
+            let pivotLevels = [
+                { val: R2, label: "R2", color: '#ef5350', rowOffset: 8 },
+                { val: R1, label: "R1", color: '#ff7675', rowOffset: 15 },
+                { val: PP, label: "PP", color: '#ffeb3b', rowOffset: 22 },
+                { val: S1, label: "S1", color: '#55efc4', rowOffset: 29 },
+                { val: S2, label: "S2", color: '#26a69a', rowOffset: 36 }
+            ];
+
+            // 🏭 RENDER PERFECT DISTRIBUTED HORIZONTAL LINES
+            pivotLevels.forEach(lvl => {
+                // Static grid allocation inside the 40px panel strip
+                let fixedY = geoPanelTop + lvl.rowOffset;
+
+                ctx.strokeStyle = lvl.color;
+                ctx.lineWidth = 1;
+                ctx.setLineDash([4, 4]); // Clean neat uniform dash tracking
+
+                // Draw Horizontal level inside panel bounds
+                ctx.beginPath();
+                ctx.moveTo(startX, fixedY);
+                ctx.lineTo(endXStr, fixedY);
+                ctx.stroke();
+                ctx.setLineDash([]); // Reset
+
+                // Print sharp dynamic values in the Right Sidebar without any clipping
+                ctx.fillStyle = lvl.color;
+                ctx.font = 'bold 9px sans-serif';
+                ctx.fillText(`${lvl.label}: ${lvl.val.toFixed(2)}`, endXStr + 5, fixedY + 3);
+            });
+        }
+        // 🟡 NEW: CHART PIVOTS (strictly renders horizontal lines on main candle area only)
+        if (activeIndicators.chartpivot && displayCandles.length > 0) {
+            let cHighs = displayCandles.map(c => c.high);
+            let cLows = displayCandles.map(c => c.low);
+            let cCloses = displayCandles.map(c => c.close);
+            
+            let H_c = Math.max(...cHighs);
+            let L_c = Math.min(...cLows);
+            let C_c = cCloses[cCloses.length - 1]; 
+
+            let PP_c = (H_c + L_c + C_c) / 3;
+            let R1_c = (2 * PP_c) - L_c;
+            let S1_c = (2 * PP_c) - H_c;
+            let R2_c = PP_c + (H_c - L_c);
+            let S2_c = PP_c - (H_c - L_c);
+
+            let endXStr_c = chartWidth; 
+
+            let chartPivotLevels = [
+                { val: PP_c, label: "Chart-PP", color: '#ffeb3b', dash: [] },      
+                { val: R1_c, label: "Chart-R1", color: '#ef5350', dash: [5, 5] },  
+                { val: R2_c, label: "Chart-R2", color: '#ff7675', dash: [3, 5] },
+                { val: S1_c, label: "Chart-S1", color: '#26a69a', dash: [5, 5] },  
+                { val: S2_c, label: "Chart-S2", color: '#55efc4', dash: [3, 5] }
+            ];
+
+            chartPivotLevels.forEach(lvl => {
+                let yPixelMain = getPixelY(lvl.val);
+                
+                // Pure main candle area ki boundary security safety check
+                if (yPixelMain >= 0 && yPixelMain <= mainChartHeight) {
+                    ctx.strokeStyle = lvl.color;
+                    ctx.lineWidth = 1.2;
+                    ctx.setLineDash(lvl.dash);
+
+                    // Main Chart horizontal line draw
+                    ctx.beginPath();
+                    ctx.moveTo(startX, yPixelMain);
+                    ctx.lineTo(endXStr_c, yPixelMain);
+                    ctx.stroke();
+                    ctx.setLineDash([]); 
+
+                    // Scale panel text render
+                    ctx.fillStyle = lvl.color;
+                    ctx.font = 'bold 10px sans-serif';
+                    ctx.fillText(`${lvl.label}: ${lvl.val.toFixed(2)}`, endXStr_c + 5, yPixelMain + 3);
+                }
+            });
+        }
+            // =================================================================
+            // 📊 SINGLE PANEL GEOMETRY (Only Volume Panel Left)
+            // =================================================================
+            const totalH = canvas.height;
+            const mainChartHeight = 500;       // Main Candle Area Locked
+            
+            const volumePanelTop = 520;       // Volume Panel starting just below candles
+            const volumePanelHeight = 120;     // Full big area for volume bars
+            
+            // Draw Volume Panel Horizontal Separation Line
+            ctx.strokeStyle = '#2b2e3a'; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(0, volumePanelTop); ctx.lineTo(chartWidth, volumePanelTop); ctx.stroke();
+
+            // Panel Axis Header Text
+            ctx.fillStyle = '#787b86'; ctx.font = 'bold 11px sans-serif';
+            ctx.fillText("VOLUME", 15, volumePanelTop + 15);
+
+            // Fetch Maximum bounds for volume
+            let maxVolume = Math.max(...displayCandles.map(c => c.volume || 1000));
+            if (maxVolume === 0) maxVolume = 1;
+
+            // =================================================================
+            // 🏭 VOLUME PANEL RENDERING LOOP
+            // =================================================================
+            for(let i = 0; i < displayCandles.length; i++) {
+                let candle = displayCandles[i];
+                let x = startX + (i * candleGap);
+                if (x + candleWidth < 0) continue;
+
+                let isBullish = candle.close >= candle.open;
+                
+                // 📊 VOLUME BARS RENDERING
+                let vHeight = ((candle.volume || 1000) / maxVolume) * (volumePanelHeight - 25);
+                let vY = (volumePanelTop + volumePanelHeight) - vHeight - 5;
+                
+                ctx.fillStyle = isBullish ? 'rgba(38, 166, 154, 0.4)' : 'rgba(239, 83, 80, 0.4)'; 
+                ctx.fillRect(x, vY, candleWidth, vHeight);
+            }
+
+            // EMA 9 Indicator Hook
+            if (activeIndicators.ema9 && typeof calculateEMA === "function") {
+                let ema9Series = calculateEMA(displayCandles, 9);
+                if (ema9Series.length > 0) {
+                    ctx.strokeStyle = '#ff9800'; ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    for (let i = 0; i < displayCandles.length; i++) {
+                        if (ema9Series[i] === null) continue;
+                        let x = startX + (i * candleGap) + (candleWidth / 2);
+                        let yEma = getPixelY(ema9Series[i]);
+                        if (i === 0 || ema9Series[i-1] === null) ctx.moveTo(x, yEma);
+                        else ctx.lineTo(x, yEma);
+                    }
+                    ctx.stroke();
+                }
+            }
+
+            // 📈 EMA 20 INDICATOR HOOK
+            if (activeIndicators.ema20 && typeof calculateEMA === "function") {
+                let ema20Series = calculateEMA(displayCandles, 20);
+                if (ema20Series.length > 0) {
+                    ctx.strokeStyle = '#2196f3'; ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    for (let i = 0; i < displayCandles.length; i++) {
+                        if (ema20Series[i] === null) continue;
+                        let x = startX + (i * candleGap) + (candleWidth / 2);
+                        let yEma = getPixelY(ema20Series[i]);
+                        if (i === 0 || ema20Series[i-1] === null) ctx.moveTo(x, yEma);
+                        else ctx.lineTo(x, yEma);
+                    }
+                    ctx.stroke();
+                }
+            }
+
+            // 📈 EMA 50 INDICATOR HOOK
+            if (activeIndicators.ema50 && typeof calculateEMA === "function") {
+                let ema50Series = calculateEMA(displayCandles, 50);
+                if (ema50Series.length > 0) {
+                    ctx.strokeStyle = '#e91e63'; ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    for (let i = 0; i < displayCandles.length; i++) {
+                        if (ema50Series[i] === null) continue;
+                        let x = startX + (i * candleGap) + (candleWidth / 2);
+                        let yEma = getPixelY(ema50Series[i]);
+                        if (i === 0 || ema50Series[i-1] === null) ctx.moveTo(x, yEma);
+                        else ctx.lineTo(x, yEma);
+                    }
+                    ctx.stroke();
+                }
+            }
+
+            // 🎯 VWAP INDICATOR HOOK
+            if (activeIndicators.vwap && typeof calculateVWAP === "function") {
+                let vwapSeries = calculateVWAP(displayCandles);
+                if (vwapSeries.length > 0) {
+                    ctx.strokeStyle = '#00bcd4'; ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    for (let i = 0; i < displayCandles.length; i++) {
+                        if (vwapSeries[i] === null) continue;
+                        let x = startX + (i * candleGap) + (candleWidth / 2);
+                        let yVwap = getPixelY(vwapSeries[i]);
+                        if (i === 0 || vwapSeries[i-1] === null) ctx.moveTo(x, yVwap);
+                        else ctx.lineTo(x, yVwap);
+                    }
+                    ctx.stroke();
+                }
+            }
+
+            // 🟢🔴 SUPERTREND DOTS INDICATOR HOOK
+            if (activeIndicators.supertrend && typeof calculateSupertrend === "function") {
+                let superTrendSeries = calculateSupertrend(displayCandles);
+                if (superTrendSeries.length > 0) {
+                    for (let i = 0; i < displayCandles.length; i++) {
+                        if (!superTrendSeries[i] || superTrendSeries[i].value === null || superTrendSeries[i].value === undefined) continue;
+                        let x = startX + (i * candleGap);
+                        ctx.fillStyle = superTrendSeries[i].direction === "up" ? '#4caf50' : '#ef5350';
+                        ctx.fillRect(x + candleWidth / 2 - 2, getPixelY(superTrendSeries[i].value) - 2, 4, 4);
+                    }
+                }
+            }
+            // =================================================================
+            // 🎨 RENDER CUSTOM USER GEOMETRIC DRAWINGS & RECTANGLE TEXTS
+            // =================================================================
+            drawings.forEach(d => {
+                ctx.strokeStyle = d.color;
+                ctx.fillStyle = d.color;
+                ctx.lineWidth = 2;
+
+                if (d.type === 'line') {
+                    ctx.beginPath();
+                    ctx.moveTo(d.start.x, d.start.y);
+                    ctx.lineTo(d.end.x, d.end.y);
+                    ctx.stroke();
+                } 
+                else if (d.type === 'rect') {
+                    let w = d.end.x - d.start.x;
+                    let h = d.end.y - d.start.y;
+                    
+                    // Translucent border stroke and light solid tint overlay inside box
+                    ctx.strokeRect(d.start.x, d.start.y, w, h);
+                    ctx.fillStyle = d.color + "22"; // Appending hex alpha transparency tint (13%)
+                    ctx.fillRect(d.start.x, d.start.y, w, h);
+
+                    // Write user custom string/value inside the box
+                    if (d.text) {
+                        ctx.fillStyle = '#ffffff';
+                        ctx.font = 'bold 11px sans-serif';
+                        ctx.textBaseline = 'top';
+                        ctx.fillText(d.text, Math.min(d.start.x, d.end.x) + 5, Math.min(d.start.y, d.end.y) + 5);
+                    }
+                }
+            });
+
+            // 👁️ Live preview outline when dragging mouse actively
+            if (isDrawing) {
+                const liveColor = document.getElementById('tool-color').value;
+                ctx.strokeStyle = liveColor; ctx.lineWidth = 1.5; ctx.setLineDash([4, 4]);
+                if (currentTool === 'line') {
+                    ctx.beginPath(); ctx.moveTo(drawStart.x, drawStart.y); ctx.lineTo(drawEnd.x, drawEnd.y); ctx.stroke();
+                } else if (currentTool === 'rect') {
+                    ctx.strokeRect(drawStart.x, drawStart.y, drawEnd.x - drawStart.x, drawEnd.y - drawStart.y);
+                }
+                ctx.setLineDash([]);
+            }
+        }
+
+        // 🎯 AUTOMATIC DAILY BACKUP & LIVE FETCH ENGINE
+        async function fetchUpdates() {
+            // Agar user dropdown me koi purani date dekh raha hai, toh live fetch nahi karenge
+            const dateSelect = document.getElementById('date-history-select');
+            if (dateSelect && dateSelect.value !== "LIVE") return;
+
+            try {
+                const response = await fetch(`/api/live-data?asset=${current_asset}`);
+                const data = await response.json();
+                
+                if (data && data.price > 0) {
+                    document.getElementById('live-price').innerText = "₹" + (data.price / 100).toFixed(2);
+                    document.getElementById('zone-status').innerText = data.status;
+                    
+                    latestServerData = data;
+                    
+                    // 💾 Get Today's Date String (YYYY-MM-DD)
+                    let today = new Date().toISOString().split('T')[0];
+                    
+                    // Save today's exact candle dataset in browser memory
+                    localStorage.setItem(`chart_backup_${current_asset}_${today}`, JSON.stringify(data));
+                    
+                    // Update Dropdown with new saved dates list
+                    refreshSavedDatesDropdown();
+                    
+                    drawChart();
+                }
+            } catch (e) { console.log("Live stream idle, waiting for ticks...", e); }
+        }
+
+        // 💾 REFRESH DROPDOWN LIST WITH ALL SAVED DATES
+        function refreshSavedDatesDropdown() {
+            const select = document.getElementById('date-history-select');
+            if (!select) return;
+            
+            let currentVal = select.value;
+            select.innerHTML = '<option value="LIVE">🔄 LIVE MARKET</option>';
+            
+            // LocalStorage me se is asset ke saare saved days dhoondhiye
+            for (let i = 0; i < localStorage.length; i++) {
+                let key = localStorage.key(i);
+                if (key.startsWith(`chart_backup_${current_asset}_`)) {
+                    let dateStr = key.replace(`chart_backup_${current_asset}_`, "");
+                    let opt = document.createElement('option');
+                    opt.value = dateStr;
+                    opt.innerText = "📅 " + dateStr;
+                    select.appendChild(opt);
+                }
+            }
+            select.value = currentVal;
+        }
+
+        // 🎯 DROPDOWN TRIGGER FUNCTION WHEN DATE IS CHANGED BY USER
+        function changeHistoryDate() {
+            const select = document.getElementById('date-history-select');
+            let selectedDate = select.value;
+            
+            if (selectedDate === "LIVE") {
+                document.getElementById('zone-status').innerText = "LIVE";
+                document.getElementById('zone-status').style.color = "#ff9800";
+                fetchUpdates();
+            } else {
+                // Load Offline Day Data from Memory
+                let savedData = localStorage.getItem(`chart_backup_${current_asset}_${selectedDate}`);
+                if (savedData) {
+                    latestServerData = JSON.parse(savedData);
+                    
+                    document.getElementById('zone-status').innerText = `OFFLINE (${selectedDate})`;
+                    document.getElementById('zone-status').style.color = "#ef5350";
+                    
+                    // Last closed price filter
+                    if(latestServerData.master_history && latestServerData.master_history.length > 0) {
+                        let lastPrice = latestServerData.master_history[latestServerData.master_history.length - 1].close;
+                        document.getElementById('live-price').innerText = "₹" + lastPrice.toFixed(2);
+                    }
+                    
+                    drawChart();
+                }
+            }
+        }
+
+        // Run dropdown check on initial system boot setup
+        setTimeout(refreshSavedDatesDropdown, 500);
+
+        // 🐀 CANVAS MOUSE INTERACTION CLICKS TRACKER
+        canvas.addEventListener('mousedown', (e) => {
+            if (isDrawingLocked || currentTool === 'cursor') return; // 🔒 Lock active hai toh drawing block rahegi
+            
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = (e.clientX - rect.left) * (canvas.width / rect.width);
+            const mouseY = (e.clientY - rect.top) * (canvas.height / rect.height);
+
+            isDrawing = true;
+            drawStart = { x: mouseX, y: mouseY };
+            drawEnd = { x: mouseX, y: mouseY };
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (isDrawingLocked || !isDrawing) return; // 🔒 Lock state safety check
+            
+            const rect = canvas.getBoundingClientRect();
+            drawEnd.x = (e.clientX - rect.left) * (canvas.width / rect.width);
+            drawEnd.y = (e.clientY - rect.top) * (canvas.height / rect.height);
+            
+            drawChart(); // Real-time preview generate karne ke liye loop chalayein
+        });
+
+        canvas.addEventListener('mouseup', (e) => {
+            if (!isDrawing) return;
+            isDrawing = false;
+
+            const chosenColor = document.getElementById('tool-color').value;
+
+            if (currentTool === 'line') {
+                drawings.push({ type: 'line', start: { ...drawStart }, end: { ...drawEnd }, color: chosenColor });
+            } 
+            else if (currentTool === 'rect') {
+                // User se rectangle draw karte hi custom value ya text puchne ke liye Prompt overlay
+                let userText = prompt("Enter text/value to write inside Rectangle (Leave empty if none):", "");
+                drawings.push({ 
+                    type: 'rect', 
+                    start: { ...drawStart }, 
+                    end: { ...drawEnd }, 
+                    color: chosenColor,
+                    text: userText || "" 
+                });
+            }
+            drawChart();
+        });
+
+        // 📐 SMART DYNAMIC RESPONSIVE CANVAS RESIZER
+        function resize() {
+            const container = document.getElementById('chart-container');
+            if (!container) return;
+            
+            // Mobile aur desktop dono ka bounding box dynamic read karega
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+            
+            // Global internal sizing parameters refresh
+            chartWidth = canvas.width - 70; 
+            chartHeight = canvas.height;
+            
+            drawChart();
+        }
+        window.addEventListener('resize', resize);
+        
+        // Pehli baar build setup trigger karne ke liye background execution execution trigger
+        setTimeout(resize, 300);
+
+        // 🔄 LIVE STREAM REFRESH INTERVAL LOOP
+        setInterval(fetchUpdates, 1000);
+    </script>
+</body>
+</html>

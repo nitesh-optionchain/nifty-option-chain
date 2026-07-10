@@ -28,21 +28,19 @@ from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
 
 # ========================================================
-# 🔐 STREAMLIT CLOUD DEEP-SECRET PULL ENGINE
+# 🔐 SECURE OS INJECTION ENGINE (Bypassing SDK Parameter Error)
 # ========================================================
-# Agar dynamic dict access block hai, toh hum internal items parse karenge
 PHONE_NO = None
 MPIN = None
 
 try:
     if hasattr(st, "secrets") and st.secrets is not None:
-        # Pura dict object directly call kar rahe hain setting check karne ke liye
         PHONE_NO = st.secrets.to_dict().get("PHONE_NO")
         MPIN = st.secrets.to_dict().get("MPIN")
 except Exception as e:
-    print(f"Secrets parsing error: {e}")
+    print(f"Secrets parsing check error: {e}")
 
-# OS Level backup fallback injection
+# Agar details mil gayi hain, to dynamic OS parameters injection lagayein
 if PHONE_NO and MPIN:
     os.environ["PHONE_NO"] = str(PHONE_NO)
     os.environ["MPIN"] = str(MPIN)
@@ -55,21 +53,14 @@ if "master_storage" not in st.session_state:
         "SENSEX": {"price": 0, "status": "LIVE", "master_history": []}
     }
 
-# 🔄 System SDK Login Trigger
+# 🔄 System SDK Login Trigger (Using Standard Env Method Only)
 market_engine = None
-if PHONE_NO and MPIN:
-    try:
-        client = InitNubraSdk(NubraEnv.PROD, phone_no=str(PHONE_NO), mpin=str(MPIN))
-        market_engine = MarketData(client)
-    except Exception as e:
-        st.warning(f"⚠️ Broker SDK Authentication issue: {str(e)}")
-else:
-    # Safe system login logic without UI display
-    try:
-        client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
-        market_engine = MarketData(client)
-    except Exception as e:
-        pass
+try:
+    # Parameter pass karna band, direct system environment mapping mode active
+    client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
+    market_engine = MarketData(client)
+except Exception as e:
+    st.warning(f"⚠️ Broker SDK Core Verification Issue: {str(e)}")
 
 # --- DIRECT DATA INGESTION MATRIX ---
 if market_engine:
@@ -99,10 +90,9 @@ if market_engine:
                 st.session_state.master_storage["SENSEX"]["master_history"].pop(0)
 
     except Exception as error:
-        print(f"Data engine tick fail: {error}")
+        print(f"Data stream push warning: {error}")
 else:
-    # Agar abhi bhi setting block hai, toh screen par warning alert dikhega
-    st.error("🔒 Security Key Missing: Streamlit Cloud settings se secrets dictionary block aa rahi hai.")
+    st.error("🔒 Auth Fail: Broker connection structure ready nahi ho paya.")
 
 # 🌐 HTML JavaScript Frame Injector
 if os.path.exists(html_file_path):

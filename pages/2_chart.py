@@ -27,27 +27,13 @@ if BASE_DIR not in sys.path:
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
 
-# 🔐 Direct Environment Injection Bridge
-if "PHONE_NO" in st.secrets:
-    os.environ["PHONE_NO"] = str(st.secrets["PHONE_NO"])
-if "MPIN" in st.secrets:
-    os.environ["MPIN"] = str(st.secrets["MPIN"])
+# 🔐 Direct Environment Injection Bridge (Force Hard Injection)
+PHONE_NO = st.secrets.get("PHONE_NO") or os.environ.get("PHONE_NO")
+MPIN = st.secrets.get("MPIN") or os.environ.get("MPIN")
 
-PHONE_NO = os.environ.get("PHONE_NO")
-MPIN = os.environ.get("MPIN")
-
-# Active Engine Instance Caching
-@st.cache_resource
-def get_cached_market_engine():
-    try:
-        if PHONE_NO and MPIN:
-            client = InitNubraSdk(NubraEnv.PROD, phone_no=str(PHONE_NO), mpin=str(MPIN))
-            return MarketData(client)
-    except Exception as e:
-        print(f"SDK Core Login Exception: {str(e)}")
-    return None
-
-market_engine = get_cached_market_engine()
+if PHONE_NO and MPIN:
+    os.environ["PHONE_NO"] = str(PHONE_NO)
+    os.environ["MPIN"] = str(MPIN)
 
 # Master Storage Framework Setup
 if "master_storage" not in st.session_state:
@@ -56,10 +42,19 @@ if "master_storage" not in st.session_state:
         "SENSEX": {"price": 0, "status": "LIVE", "master_history": []}
     }
 
-# --- DIRECT TICK FETCH ENGINE (NO THREAD DEPENDENCY) ---
+# 🔄 Direct Live Engine Generator (No Cache Dependency)
+market_engine = None
+try:
+    if PHONE_NO and MPIN:
+        client = InitNubraSdk(NubraEnv.PROD, phone_no=str(PHONE_NO), mpin=str(MPIN))
+        market_engine = MarketData(client)
+except Exception as e:
+    print(f"SDK Direct Login Error: {str(e)}")
+
+# --- DIRECT TICK FETCH ENGINE ---
 if market_engine:
     try:
-        # 1. Fetch NIFTY
+        # 1. Fetch NIFTY Ticks
         nifty_snap = market_engine.current_price("NIFTY", exchange="NSE")
         if nifty_snap and nifty_snap.price:
             real_nifty = float(nifty_snap.price) / 100
@@ -71,7 +66,7 @@ if market_engine:
             if len(st.session_state.master_storage["NIFTY"]["master_history"]) > 500:
                 st.session_state.master_storage["NIFTY"]["master_history"].pop(0)
 
-        # 2. Fetch SENSEX
+        # 2. Fetch SENSEX Ticks
         sensex_snap = market_engine.current_price("SENSEX", exchange="BSE")
         if sensex_snap and sensex_snap.price:
             real_sensex = float(sensex_snap.price) / 100
@@ -84,7 +79,7 @@ if market_engine:
                 st.session_state.master_storage["SENSEX"]["master_history"].pop(0)
 
     except Exception as error:
-        print(f"Direct Data Pipeline Warning: {error}")
+        print(f"Pipeline Warning: {error}")
 else:
     st.error("❌ Broker SDK Initialization fail ho gaya. Secrets verify karein!")
 

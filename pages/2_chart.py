@@ -5,7 +5,7 @@ import json
 import streamlit as st
 import streamlit.components.v1 as components
 
-# 📊 Page configuration to wide mode
+# 📊 Wide mode page layout settings
 st.set_page_config(layout="wide")
 st.subheader("📊 Live Multi-Asset Analytical Chart Terminal")
 st.markdown("---")
@@ -16,38 +16,44 @@ if 'pandas' not in sys.modules:
     fake_pandas.DataFrame = lambda *args, **kwargs: None
     sys.modules['pandas'] = fake_pandas
 
-# 📂 Path Setup: Kyunki ye file pages/ folder me hai,
-# isliye iska parent directory hi main root folder hoga jahan index.html rakhi hai
+# 📂 Path Setup: pages/ se parent directory (Main Root) ko verify kar rahe hain
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 html_file_path = os.path.join(BASE_DIR, 'index.html')
 
-# 🔐 Direct Environment Injection Bridge
-# Main page se login hone ke baad credentials ko hardware memory me le rahe hain
+# 🔐 Direct Environment Injection Bridge (Secrets Context)
 if "PHONE_NO" in st.secrets:
     os.environ["PHONE_NO"] = str(st.secrets["PHONE_NO"])
 if "MPIN" in st.secrets:
     os.environ["MPIN"] = str(st.secrets["MPIN"])
 
-# 🌐 HTML File Render Logic (Direct Internal Read from Main Root)
+# Real-Time Data Fallback Matrix
+if "master_storage" not in st.session_state:
+    st.session_state.master_storage = {
+        "NIFTY": {"price": 2444990, "status": "LIVE", "master_history": [{"open":24449.9,"high":24455.0,"low":24430.0,"close":24449.9}]},
+        "SENSEX": {"price": 8035000, "status": "LIVE", "master_history": [{"open":80350.0,"high":80370.0,"low":80310.0,"close":80350.0}]}
+    }
+
+# 🌐 Unified HTML/JS Component Injection Logic
 if os.path.exists(html_file_path):
     with open(html_file_path, "r", encoding="utf-8") as f:
         html_content = f.read()
     
-    # Payload prepared for Javascript native WebSocket context
-    auth_payload = {
-        "PHONE_NO": os.environ.get("PHONE_NO", ""),
-        "MPIN": os.environ.get("MPIN", ""),
-        "STATUS": "ACTIVE"
-    }
+    # JSON Payload structured string conversion
+    json_data = json.dumps(st.session_state.master_storage)
     
-    json_data = json.dumps(auth_payload)
-    html_content = html_content.replace(
-        "<head>", 
-        f"<head><script>window.streamAuthContext = {json_data};</script>"
-    )
+    # JavaScript Bridge Code for Strict Context Binding
+    injection_script = f"""
+    <script>
+        window.chartData = {json_data};
+        window.streamAuthContext = {{"PHONE_NO": "{os.environ.get('PHONE_NO','')}", "MPIN": "{os.environ.get('MPIN','')}", "STATUS": "ACTIVE"}};
+    </script>
+    """
     
-    # Rendering embedded component block
-    components.html(html_content, height=780, scrolling=True)
+    # Head element update parsing
+    html_content = html_content.replace("<head>", f"<head>{injection_script}")
+    
+    # Rendering iframe component locally via Streamlit Context
+    components.html(html_content, height=820, scrolling=True)
 else:
     st.error("❌ 'index.html' file main root folder me nahi mili!")
     st.info(f"🔍 System checked path: {html_file_path}")

@@ -3,7 +3,6 @@ from types import ModuleType
 import os
 import time
 import json
-import threading
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -37,67 +36,57 @@ if "MPIN" in st.secrets:
 PHONE_NO = os.environ.get("PHONE_NO")
 MPIN = os.environ.get("MPIN")
 
-def get_nubra_session():
+# Active Engine Instance Caching
+@st.cache_resource
+def get_cached_market_engine():
     try:
         if PHONE_NO and MPIN:
-            return InitNubraSdk(NubraEnv.PROD, phone_no=str(PHONE_NO), mpin=str(MPIN))
-        return InitNubraSdk(NubraEnv.PROD, env_creds=True)
+            client = InitNubraSdk(NubraEnv.PROD, phone_no=str(PHONE_NO), mpin=str(MPIN))
+            return MarketData(client)
     except Exception as e:
-        print(f"SDK Login Exception: {str(e)}")
-        return None
+        print(f"SDK Core Login Exception: {str(e)}")
+    return None
 
-# Dual Asset Main Memory Matrix
+market_engine = get_cached_market_engine()
+
+# Master Storage Framework Setup
 if "master_storage" not in st.session_state:
     st.session_state.master_storage = {
-        "NIFTY": {"price": 2444990, "status": "LIVE", "master_history": []},
-        "SENSEX": {"price": 8035000, "status": "LIVE", "master_history": []}
+        "NIFTY": {"price": 0, "status": "LIVE", "master_history": []},
+        "SENSEX": {"price": 0, "status": "LIVE", "master_history": []}
     }
 
-# 🔄 LIVE MARKET BACKGROUND WEBSOCKET TICKER PIPELINE
-if "pipeline_active" not in st.session_state:
-    
-    def fetch_data_stream_loop():
-        print("🚀 Dual Asset Live Master Pipeline Starting...")
-        thread_client = get_nubra_session()
-        thread_market_engine = MarketData(thread_client) if thread_client else None
-        
-        if not thread_market_engine:
-            print("❌ Ticker cancelled: Thread environment cannot access auth structures.")
-            return
+# --- DIRECT TICK FETCH ENGINE (NO THREAD DEPENDENCY) ---
+if market_engine:
+    try:
+        # 1. Fetch NIFTY
+        nifty_snap = market_engine.current_price("NIFTY", exchange="NSE")
+        if nifty_snap and nifty_snap.price:
+            real_nifty = float(nifty_snap.price) / 100
+            st.session_state.master_storage["NIFTY"]["price"] = int(nifty_snap.price)
+            st.session_state.master_storage["NIFTY"]["status"] = "LIVE"
+            st.session_state.master_storage["NIFTY"]["master_history"].append({
+                "open": real_nifty, "high": real_nifty, "low": real_nifty, "close": real_nifty
+            })
+            if len(st.session_state.master_storage["NIFTY"]["master_history"]) > 500:
+                st.session_state.master_storage["NIFTY"]["master_history"].pop(0)
 
-        while True:
-            try:
-                # 1. Fetch NIFTY Ticks
-                nifty_snap = thread_market_engine.current_price("NIFTY", exchange="NSE")
-                if nifty_snap and nifty_snap.price:
-                    real_nifty = float(nifty_snap.price) / 100
-                    st.session_state.master_storage["NIFTY"]["price"] = int(nifty_snap.price)
-                    st.session_state.master_storage["NIFTY"]["status"] = "LIVE"
-                    st.session_state.master_storage["NIFTY"]["master_history"].append({
-                        "open": real_nifty, "high": real_nifty, "low": real_nifty, "close": real_nifty
-                    })
-                    if len(st.session_state.master_storage["NIFTY"]["master_history"]) > 1000:
-                        st.session_state.master_storage["NIFTY"]["master_history"].pop(0)
+        # 2. Fetch SENSEX
+        sensex_snap = market_engine.current_price("SENSEX", exchange="BSE")
+        if sensex_snap and sensex_snap.price:
+            real_sensex = float(sensex_snap.price) / 100
+            st.session_state.master_storage["SENSEX"]["price"] = int(sensex_snap.price)
+            st.session_state.master_storage["SENSEX"]["status"] = "LIVE"
+            st.session_state.master_storage["SENSEX"]["master_history"].append({
+                "open": real_sensex, "high": real_sensex, "low": real_sensex, "close": real_sensex
+            })
+            if len(st.session_state.master_storage["SENSEX"]["master_history"]) > 500:
+                st.session_state.master_storage["SENSEX"]["master_history"].pop(0)
 
-                # 2. Fetch SENSEX Ticks
-                sensex_snap = thread_market_engine.current_price("SENSEX", exchange="BSE")
-                if sensex_snap and sensex_snap.price:
-                    real_sensex = float(sensex_snap.price) / 100
-                    st.session_state.master_storage["SENSEX"]["price"] = int(sensex_snap.price)
-                    st.session_state.master_storage["SENSEX"]["status"] = "LIVE"
-                    st.session_state.master_storage["SENSEX"]["master_history"].append({
-                        "open": real_sensex, "high": real_sensex, "low": real_sensex, "close": real_sensex
-                    })
-                    if len(st.session_state.master_storage["SENSEX"]["master_history"]) > 1000:
-                        st.session_state.master_storage["SENSEX"]["master_history"].pop(0)
-                            
-            except Exception as error:
-                print(f"Data Pipe Warning: {error}")
-            time.sleep(1)
-
-    data_thread = threading.Thread(target=fetch_data_stream_loop, daemon=True)
-    data_thread.start()
-    st.session_state.pipeline_active = True
+    except Exception as error:
+        print(f"Direct Data Pipeline Warning: {error}")
+else:
+    st.error("❌ Broker SDK Initialization fail ho gaya. Secrets verify karein!")
 
 # 🌐 Unified HTML/JS Component Injection Logic
 if os.path.exists(html_file_path):
@@ -117,3 +106,7 @@ if os.path.exists(html_file_path):
     components.html(html_content, height=820, scrolling=True)
 else:
     st.error("❌ 'index.html' file main root folder me nahi mili!")
+
+# ⏳ Continuous Native Page Rerun Trigger Loop (1 Second Interval)
+time.sleep(1)
+st.rerun()

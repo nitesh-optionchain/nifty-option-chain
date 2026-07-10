@@ -778,38 +778,31 @@
         }
         window.addEventListener('resize', resize);
         
-        // Pehli baar build setup trigger karne ke liye
         setTimeout(resize, 300);
 
         // ========================================================
-        // ⚡ SMOOTH REAL-TIME DATA PROVIDER ENGINE (ZERO PAGE REFRESH)
+        // ⚡ ZERO-REFRESH CANVAS DRAW CODESET
         // ========================================================
         function fetchUpdates() {
-            // Streamlit window context se credentials verify karein
-            let auth = window.streamAuthContext || (window.parent && window.parent.streamAuthContext);
+            // Hum koi API network request nahi maarenge, direct context arrays read karenge
+            let dataMatrix = window.chartData || (window.parent && window.parent.chartData);
             
-            if (auth && auth.STATUS === "AUTHORIZED_SECURE") {
-                // Yahan aapka jo zone status element hai use direct ACTIVE mark karein
-                const zoneStatus = document.getElementById('zone-status-display') || document.querySelector('span');
-                if (zoneStatus) {
-                    zoneStatus.innerHTML = `<span style="color: #26a69a;">● ACTIVE</span>`;
+            if (dataMatrix && dataMatrix[current_asset]) {
+                latestServerData = dataMatrix[current_asset];
+                
+                // Asset Indicator text management
+                const priceLabel = document.getElementById('asset-display');
+                if (priceLabel && latestServerData.price) {
+                    const realPrice = (parseFloat(latestServerData.price) / 100).toFixed(2);
+                    priceLabel.innerHTML = `<span style="color: #26a69a;">● ACTIVE</span> ${current_asset} - ${realPrice}`;
                 }
-
-                // NOTE: Kyunki python refresh band ho gaya hai, ab aapka pure Canvas Engine 
-                // ya Broker SDK data listener Bina screen ko hilaaye ticks yahan render karega.
-                if (latestServerData) {
-                    // Title price display handle
-                    const priceDisplay = document.getElementById('asset-display');
-                    if (priceDisplay && latestServerData.price) {
-                        const realPrice = (parseFloat(latestServerData.price) / 100).toFixed(2);
-                        priceDisplay.innerText = current_asset + " - " + realPrice;
-                    }
-                    drawChart();
-                }
+                
+                // Force fully execute canvas generator array mapping
+                drawChart();
             }
         }
 
-        // Ticker loop checks without rendering new DOM elements
+        // Static loop array listener execution
         fetchUpdates();
         setInterval(fetchUpdates, 1000);
         // ========================================================

@@ -41,13 +41,21 @@ if "master_storage" not in st.session_state:
         "SENSEX": {"price": 0, "status": "LIVE", "master_history": []}
     }
 
-# 🔄 Pure Original SDK Initialization Logic
-market_engine = None
-try:
-    client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
-    market_engine = MarketData(client)
-except Exception as e:
-    st.error(f"❌ SDK Connection Failure: {str(e)}")
+# 🔄 Pure Original SDK Initialization Logic (Cached Global Bridge Token)
+@st.cache_resource(show_spinner=False)
+def get_cached_market_engine():
+    try:
+        # Pura secure handshake memory stream ek hi baar save hoga cross pages par
+        client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
+        return MarketData(client)
+    except Exception as e:
+        return None
+
+market_engine = get_cached_market_engine()
+
+if market_engine is None:
+    # Fallback to display standard contextual errors safely
+    st.error("❌ SDK Connection Failure: Unauthorized session block or simultaneous conflict on cloud")
 
 # ⚡ DYNAMIC HISTORICAL DATA FETCH ENGINE (Strict Replacement)
 if market_engine:

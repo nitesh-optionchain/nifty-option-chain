@@ -1,7 +1,7 @@
 import sys
-from types import ModuleType
 import os
 import json
+import pandas as pd
 from datetime import datetime, timedelta
 import streamlit as st
 import streamlit.components.v1 as components
@@ -10,12 +10,6 @@ import streamlit.components.v1 as components
 st.set_page_config(layout="wide")
 st.subheader("📊 Live Multi-Asset Analytical Chart Terminal")
 st.markdown("---")
-
-# 🚀 Anti-Crash Pandas Bypass Engine
-if 'pandas' not in sys.modules:
-    fake_pandas = ModuleType('pandas')
-    fake_pandas.DataFrame = lambda *args, **kwargs: None
-    sys.modules['pandas'] = fake_pandas
 
 # 📂 Paths Setup
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -42,7 +36,7 @@ if "master_storage" not in st.session_state:
         "SENSEX": {"price": 0, "status": "LIVE", "master_history": []}
     }
 
-# 🔄 Pure Original SDK Initialization Logic (Restored Exactly)
+# 🔄 Pure Original SDK Initialization Logic
 market_engine = None
 try:
     client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
@@ -53,19 +47,17 @@ except Exception as e:
 # ⚡ CORE DATA INTEGRATION ENGINE
 if market_engine:
     try:
-        # Step A: Pichle 5 din ka structural data ranges setup
         end_dt = datetime.utcnow()
         start_dt = end_dt - timedelta(days=5)
         start_str = start_dt.strftime("%Y-%m-%dT00:00:00.000Z")
         end_str = end_dt.strftime("%Y-%m-%dT23:59:59.000Z")
 
-        # 1. NIFTY Data Pipeline Fetch
+        # 1. NIFTY Data Fetch
         nifty_snap = market_engine.current_price("NIFTY", exchange="NSE")
         if nifty_snap and nifty_snap.price:
             st.session_state.master_storage["NIFTY"]["price"] = int(nifty_snap.price)
             st.session_state.master_storage["NIFTY"]["status"] = "LIVE"
             
-            # 1. NIFTY Bulk Historical Load (With Structural Key Check)
             try:
                 nifty_res = market_engine.historical_data({
                     "exchange": "NSE", "type": "INDEX", "values": ["NIFTY"],
@@ -75,7 +67,6 @@ if market_engine:
                 })
                 if nifty_res and hasattr(nifty_res, 'result') and nifty_res.result and len(nifty_res.result) > 0:
                     res_obj = nifty_res.result[0]
-                    # Dynamic attribute matrix logic to prevent empty node parsing crashes
                     if hasattr(res_obj, 'values') and res_obj.values and len(res_obj.values) > 0:
                         data_map = res_obj.values[0]
                         if isinstance(data_map, dict) and "NIFTY" in data_map:
@@ -86,10 +77,15 @@ if market_engine:
                                      "low": float(raw_n.low[i].value)/100, "close": float(raw_n.close[i].value)/100}
                                     for i in range(len(raw_n.open))
                                 ]
-            except Exception as hist_err:
+            except Exception:
                 pass
 
-            # 2. SENSEX Bulk Historical Load (With Structural Key Check)
+        # 2. SENSEX Data Fetch
+        sensex_snap = market_engine.current_price("SENSEX", exchange="BSE")
+        if sensex_snap and sensex_snap.price:
+            st.session_state.master_storage["SENSEX"]["price"] = int(sensex_snap.price)
+            st.session_state.master_storage["SENSEX"]["status"] = "LIVE"
+            
             try:
                 sensex_res = market_engine.historical_data({
                     "exchange": "BSE", "type": "INDEX", "values": ["SENSEX"],
@@ -109,28 +105,8 @@ if market_engine:
                                      "low": float(raw_s.low[i].value)/100, "close": float(raw_s.close[i].value)/100}
                                     for i in range(len(raw_s.open))
                                 ]
-            except Exception as hist_err_s:
+            except Exception:
                 pass
-
-        # 2. SENSEX Data Pipeline Fetch
-        sensex_snap = market_engine.current_price("SENSEX", exchange="BSE")
-        if sensex_snap and sensex_snap.price:
-            st.session_state.master_storage["SENSEX"]["price"] = int(sensex_snap.price)
-            st.session_state.master_storage["SENSEX"]["status"] = "LIVE"
-            
-            sensex_res = market_engine.historical_data({
-                "exchange": "BSE", "type": "INDEX", "values": ["SENSEX"],
-                "fields": ["open", "high", "low", "close"],
-                "startDate": start_str, "endDate": end_str, "interval": "5m",
-                "intraDay": True, "realTime": False
-            })
-            if sensex_res and hasattr(sensex_res, 'result') and sensex_res.result:
-                raw_s = sensex_res.result[0].values[0]["SENSEX"]
-                st.session_state.master_storage["SENSEX"]["master_history"] = [
-                    {"open": float(raw_s.open[i].value)/100, "high": float(raw_s.high[i].value)/100, 
-                     "low": float(raw_s.low[i].value)/100, "close": float(raw_s.close[i].value)/100}
-                    for i in range(len(raw_s.open))
-                ]
             
     except Exception as error:
         st.warning(f"⚠️ Live data stream update delayed: {error}")

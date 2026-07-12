@@ -42,13 +42,20 @@ if "master_storage" not in st.session_state:
         "SENSEX": {"price": 0, "status": "LIVE", "master_history": []}
     }
 
-# 🔄 Pure Original SDK Initialization Logic (Restored Exactly)
+# 🔄 Pure Global Session Broker Engine Bridge
 market_engine = None
-try:
-    client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
-    market_engine = MarketData(client)
-except Exception as e:
-    st.error(f"❌ SDK Connection Failure: {str(e)}")
+
+# Agar pure application session me engine pehle hi kisi page par ban chuka hai, toh naya login mat karo
+if "global_market_engine" in st.session_state and st.session_state.global_market_engine is not None:
+    market_engine = st.session_state.global_market_engine
+else:
+    try:
+        client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
+        market_engine = MarketData(client)
+        # Is master engine connection ko humesha ke liye session me lock kar do
+        st.session_state.global_market_engine = market_engine
+    except Exception as e:
+        st.error(f"❌ SDK Connection Failure: {str(e)}")
 
 # ⚡ CORE DATA INTEGRATION ENGINE (Strict Documentation Realignment)
 if market_engine:

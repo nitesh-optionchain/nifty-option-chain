@@ -780,30 +780,38 @@
         
         setTimeout(resize, 300);
 
-        // ========================================================
-        // ⚡ REAL REAL-TIME MEMORY PARSER (ZERO PAGE FLICKER)
-        // ========================================================
         function fetchUpdates() {
-            // Direct window object messaging logic read
-            let liveData = window.chartData;
-            
-            if (liveData && liveData[current_asset]) {
-                latestServerData = liveData[current_asset];
-                
-                // Live Price Header text injection
-                const priceTarget = document.getElementById('asset-display');
-                if (priceTarget && latestServerData.price) {
-                    const realPrice = (parseFloat(latestServerData.price) / 100).toFixed(2);
-                    priceTarget.innerHTML = `<span style="color: #26a69a;">● LIVE</span> ${current_asset} - ${realPrice}`;
-                }
-                
-                // Changing status text from FROZEN to ACTIVE
-                const statusSpan = document.querySelector('span'); // Adjust dynamic selector as per your template
-                
-                // Redraw canvas with real updated data arrays
-                drawChart();
-            }
+    // Direct window object messaging logic read
+    let liveData = window.chartData;
+
+    if (liveData && liveData[current_asset]) {
+        latestServerData = liveData[current_asset];
+
+        // 1. Live Price Header text injection
+        const priceTarget = document.getElementById('live-price');
+        if (priceTarget && latestServerData.price) {
+            priceTarget.innerText = (parseFloat(latestServerData.price) / 100).toFixed(2);
         }
+
+        // 2. Asset Display Text Sync
+        const assetTarget = document.getElementById('asset-display');
+        if (assetTarget && latestServerData.price) {
+            assetTarget.innerText = current_asset + " LIVE";
+        }
+
+        // 3. Zone Status Unfreeze
+        const statusTarget = document.getElementById('zone-status');
+        if (statusTarget && latestServerData.master_history && latestServerData.master_history.length > 0) {
+            statusTarget.innerText = "CONNECTED";
+            statusTarget.style.color = "#26a69a";
+        }
+
+        // 4. Trigger Advanced Canvas Render Loop
+        if (typeof drawChart === "function") {
+            drawChart();
+        }
+    }
+}
 
         // Interval listener setup
         fetchUpdates();

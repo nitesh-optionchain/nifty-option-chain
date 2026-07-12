@@ -49,33 +49,60 @@ try:
 except Exception as e:
     st.error(f"❌ SDK Connection Failure: {str(e)}")
 
-# ⚡ DIRECT DATA FETCH (Jo pehle chal raha tha)
+# ⚡ DYNAMIC HISTORICAL DATA FETCH ENGINE (Strict Replacement)
 if market_engine:
     try:
-        # 1. NIFTY Data Fetch
+        from datetime import datetime, timedelta
+        end_dt = datetime.utcnow()
+        # Pichle 5 din ka raw intraday data load karne ke liye depth configuration
+        start_dt = end_dt - timedelta(days=5)
+        
+        start_str = start_dt.strftime("%Y-%m-%dT00:00:00.000Z")
+        end_str = end_dt.strftime("%Y-%m-%dT23:59:59.000Z")
+        
+        # 1. NIFTY Bulk Historical Load
+        nifty_res = market_engine.historical_data({
+            "exchange": "NSE", "type": "INDEX", "values": ["NIFTY"],
+            "fields": ["open", "high", "low", "close"],
+            "startDate": start_str, "endDate": end_str, "interval": "5m",
+            "intraDay": True, "realTime": False
+        })
+        if nifty_res and hasattr(nifty_res, 'result') and nifty_res.result:
+            raw_n = nifty_res.result[0].values[0]["NIFTY"]
+            st.session_state.master_storage["NIFTY"]["master_history"] = [
+                {"open": float(raw_n.open[i].value)/100, "high": float(raw_n.high[i].value)/100, 
+                 "low": float(raw_n.low[i].value)/100, "close": float(raw_n.close[i].value)/100}
+                for i in range(len(raw_n.open))
+            ]
+
+        # 2. SENSEX Bulk Historical Load
+        sensex_res = market_engine.historical_data({
+            "exchange": "BSE", "type": "INDEX", "values": ["SENSEX"],
+            "fields": ["open", "high", "low", "close"],
+            "startDate": start_str, "endDate": end_str, "interval": "5m",
+            "intraDay": True, "realTime": False
+        })
+        if sensex_res and hasattr(sensex_res, 'result') and sensex_res.result:
+            raw_s = sensex_res.result[0].values[0]["SENSEX"]
+            st.session_state.master_storage["SENSEX"]["master_history"] = [
+                {"open": float(raw_s.open[i].value)/100, "high": float(raw_s.high[i].value)/100, 
+                 "low": float(raw_s.low[i].value)/100, "close": float(raw_s.close[i].value)/100}
+                for i in range(len(raw_s.open))
+            ]
+            
+        # Live spot prices for top bar dashboard sync
         nifty_snap = market_engine.current_price("NIFTY", exchange="NSE")
         if nifty_snap and nifty_snap.price:
-            real_nifty = float(nifty_snap.price) / 100
             st.session_state.master_storage["NIFTY"]["price"] = int(nifty_snap.price)
-            st.session_state.master_storage["NIFTY"]["status"] = "LIVE"
-            st.session_state.master_storage["NIFTY"]["master_history"].append({
-                "open": real_nifty, "high": real_nifty, "low": real_nifty, "close": real_nifty
-            })
-
-        # 2. SENSEX Data Fetch
+            
         sensex_snap = market_engine.current_price("SENSEX", exchange="BSE")
         if sensex_snap and sensex_snap.price:
-            real_sensex = float(sensex_snap.price) / 100
             st.session_state.master_storage["SENSEX"]["price"] = int(sensex_snap.price)
-            st.session_state.master_storage["SENSEX"]["status"] = "LIVE"
-            st.session_state.master_storage["SENSEX"]["master_history"].append({
-                "open": real_sensex, "high": real_sensex, "low": real_sensex, "close": real_sensex
-            })
-            
+
     except Exception as error:
         st.warning(f"⚠️ Live data stream update delayed: {error}")
 
-# 🔘 MANUAL REFRESH BUTTON (Bina page ko automatic hilaye data update karne ke liye)
+# 🔘 MANUAL REFRESH BUTTON
 col1, col2 = st.columns([1, 8])
 with col1:
     if st.button("🔄 Refresh Data"):

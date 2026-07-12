@@ -2,6 +2,7 @@ import sys
 from types import ModuleType
 import os
 import json
+from datetime import datetime, timedelta
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -41,76 +42,68 @@ if "master_storage" not in st.session_state:
         "SENSEX": {"price": 0, "status": "LIVE", "master_history": []}
     }
 
-# ✅ Upar wale block ki jagah par strictly sirf yeh naya cached code paste kijiye:
-@st.cache_resource(show_spinner=False)
-def get_shared_market_instance():
-    try:
-        # Cross-page single session bridge token lock
-        client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
-        return MarketData(client)
-    except Exception as e:
-        return None
+# 🔄 Pure Original SDK Initialization Logic (Restored Exactly)
+market_engine = None
+try:
+    client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
+    market_engine = MarketData(client)
+except Exception as e:
+    st.error(f"❌ SDK Connection Failure: {str(e)}")
 
-market_engine = get_shared_market_instance()
-
-if market_engine is None:
-    st.error("❌ SDK Connection Failure: Unauthorized session block or simultaneous conflict on cloud")
-
-# ⚡ DYNAMIC HISTORICAL DATA FETCH ENGINE
+# ⚡ CORE DATA INTEGRATION ENGINE
 if market_engine:
     try:
-        from datetime import datetime, timedelta
+        # Step A: Pichle 5 din ka structural data ranges setup
         end_dt = datetime.utcnow()
-        # Pichle 5 din ka raw intraday data load karne ke liye depth range configuration
         start_dt = end_dt - timedelta(days=5)
-        
         start_str = start_dt.strftime("%Y-%m-%dT00:00:00.000Z")
         end_str = end_dt.strftime("%Y-%m-%dT23:59:59.000Z")
-        
-        # 1. NIFTY Bulk Historical Load
-        nifty_res = market_engine.historical_data({
-            "exchange": "NSE", "type": "INDEX", "values": ["NIFTY"],
-            "fields": ["open", "high", "low", "close"],
-            "startDate": start_str, "endDate": end_str, "interval": "5m",
-            "intraDay": True, "realTime": False
-        })
-        if nifty_res and hasattr(nifty_res, 'result') and nifty_res.result:
-            raw_n = nifty_res.result[0].values[0]["NIFTY"]
-            st.session_state.master_storage["NIFTY"]["master_history"] = [
-                {"open": float(raw_n.open[i].value)/100, "high": float(raw_n.high[i].value)/100, 
-                 "low": float(raw_n.low[i].value)/100, "close": float(raw_n.close[i].value)/100}
-                for i in range(len(raw_n.open))
-            ]
 
-        # 2. SENSEX Bulk Historical Load
-        sensex_res = market_engine.historical_data({
-            "exchange": "BSE", "type": "INDEX", "values": ["SENSEX"],
-            "fields": ["open", "high", "low", "close"],
-            "startDate": start_str, "endDate": end_str, "interval": "5m",
-            "intraDay": True, "realTime": False
-        })
-        if sensex_res and hasattr(sensex_res, 'result') and sensex_res.result:
-            raw_s = sensex_res.result[0].values[0]["SENSEX"]
-            st.session_state.master_storage["SENSEX"]["master_history"] = [
-                {"open": float(raw_s.open[i].value)/100, "high": float(raw_s.high[i].value)/100, 
-                 "low": float(raw_s.low[i].value)/100, "close": float(raw_s.close[i].value)/100}
-                for i in range(len(raw_s.open))
-            ]
-            
-        # Live spot prices for top bar dashboard sync
+        # 1. NIFTY Data Pipeline Fetch
         nifty_snap = market_engine.current_price("NIFTY", exchange="NSE")
         if nifty_snap and nifty_snap.price:
             st.session_state.master_storage["NIFTY"]["price"] = int(nifty_snap.price)
             st.session_state.master_storage["NIFTY"]["status"] = "LIVE"
             
+            # Historical backup data check framework
+            nifty_res = market_engine.historical_data({
+                "exchange": "NSE", "type": "INDEX", "values": ["NIFTY"],
+                "fields": ["open", "high", "low", "close"],
+                "startDate": start_str, "endDate": end_str, "interval": "5m",
+                "intraDay": True, "realTime": False
+            })
+            if nifty_res and hasattr(nifty_res, 'result') and nifty_res.result:
+                raw_n = nifty_res.result[0].values[0]["NIFTY"]
+                st.session_state.master_storage["NIFTY"]["master_history"] = [
+                    {"open": float(raw_n.open[i].value)/100, "high": float(raw_n.high[i].value)/100, 
+                     "low": float(raw_n.low[i].value)/100, "close": float(raw_n.close[i].value)/100}
+                    for i in range(len(raw_n.open))
+                ]
+
+        # 2. SENSEX Data Pipeline Fetch
         sensex_snap = market_engine.current_price("SENSEX", exchange="BSE")
         if sensex_snap and sensex_snap.price:
             st.session_state.master_storage["SENSEX"]["price"] = int(sensex_snap.price)
             st.session_state.master_storage["SENSEX"]["status"] = "LIVE"
-
+            
+            sensex_res = market_engine.historical_data({
+                "exchange": "BSE", "type": "INDEX", "values": ["SENSEX"],
+                "fields": ["open", "high", "low", "close"],
+                "startDate": start_str, "endDate": end_str, "interval": "5m",
+                "intraDay": True, "realTime": False
+            })
+            if sensex_res and hasattr(sensex_res, 'result') and sensex_res.result:
+                raw_s = sensex_res.result[0].values[0]["SENSEX"]
+                st.session_state.master_storage["SENSEX"]["master_history"] = [
+                    {"open": float(raw_s.open[i].value)/100, "high": float(raw_s.high[i].value)/100, 
+                     "low": float(raw_s.low[i].value)/100, "close": float(raw_s.close[i].value)/100}
+                    for i in range(len(raw_s.open))
+                ]
+            
     except Exception as error:
         st.warning(f"⚠️ Live data stream update delayed: {error}")
-# 🔘 MANUAL REFRESH BUTTON (Bina page ko automatic hilaye data update karne ke liye)
+
+# 🔘 MANUAL REFRESH BUTTON
 col1, col2 = st.columns([1, 8])
 with col1:
     if st.button("🔄 Refresh Data"):
@@ -123,7 +116,6 @@ if os.path.exists(html_file_path):
 
     json_data = json.dumps(st.session_state.master_storage)
 
-    # Context mapping into HTML head element
     injection_script = f"""
     <script>
         window.chartData = {json_data};
@@ -132,7 +124,6 @@ if os.path.exists(html_file_path):
     """
     html_content = html_content.replace("<head>", f"<head>{injection_script}")
     
-    # 🎯 Single-Time Component Render (NO LOOP, NO AUTO RERUN)
     components.html(html_content, height=850, scrolling=True)
 else:
     st.error("❌ 'index.html' file main root folder me nahi mili!")

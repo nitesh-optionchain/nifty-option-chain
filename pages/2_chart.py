@@ -1,7 +1,7 @@
 import sys
-from types import ModuleType
 import os
 import json
+import pandas as pd
 from datetime import datetime, timedelta
 import streamlit as st
 import streamlit.components.v1 as components
@@ -10,12 +10,6 @@ import streamlit.components.v1 as components
 st.set_page_config(layout="wide")
 st.subheader("📊 Live Multi-Asset Analytical Chart Terminal")
 st.markdown("---")
-
-# 🚀 Anti-Crash Pandas Bypass Engine
-if 'pandas' not in sys.modules:
-    fake_pandas = ModuleType('pandas')
-    fake_pandas.DataFrame = lambda *args, **kwargs: None
-    sys.modules['pandas'] = fake_pandas
 
 # 📂 Paths Setup
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -42,27 +36,15 @@ if "master_storage" not in st.session_state:
         "SENSEX": {"price": 0, "status": "LIVE", "master_history": []}
     }
 
-# 🔄 Pure Original SDK Initialization Logic (Anti-Collision Shared Instance Wrapper)
+# 🔄 Pure Original SDK Initialization Logic
 market_engine = None
+try:
+    client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
+    market_engine = MarketData(client)
+except Exception as e:
+    st.error(f"❌ SDK Connection Failure: {str(e)}")
 
-if "global_market_engine" in st.session_state and st.session_state.global_market_engine is not None:
-    market_engine = st.session_state.global_market_engine
-else:
-    try:
-        # Strict dynamic single handshake check
-        client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
-        market_engine = MarketData(client)
-        st.session_state.global_market_engine = market_engine
-    except Exception as e:
-        # Fallback system: Agar yahan crash hota hai, toh system context buffer se data reference uthaega
-        if hasattr(st.session_state, 'market_engine') or 'market_data' in st.session_state:
-            market_engine = st.session_state.get('market_engine') or st.session_state.get('market_data')
-        
-        # Agar fir bhi engine nahi mila, tabhi error handle hoga
-        if market_engine is None:
-            pass
-
-# ⚡ CORE DATA INTEGRATION ENGINE (Strict Documentation Realignment)
+# ⚡ CORE DATA INTEGRATION ENGINE (With Safe Native Object Formatter)
 if market_engine:
     try:
         from datetime import datetime, timedelta
@@ -79,6 +61,7 @@ if market_engine:
         # 1. NIFTY Data Fetch
         nifty_snap = market_engine.current_price("NIFTY", exchange="NSE")
         if nifty_snap and nifty_snap.price:
+            # Storing directly as standard price float value to prevent JS parse crash
             st.session_state.master_storage["NIFTY"]["price"] = float(nifty_snap.price)
             st.session_state.master_storage["NIFTY"]["status"] = "LIVE"
             
@@ -98,13 +81,12 @@ if market_engine:
                             lows = unpack_nubra_array(stock_chart.low)
                             closes = unpack_nubra_array(stock_chart.close)
                             
-                            if len(opens) > 0:
-                                st.session_state.master_storage["NIFTY"]["master_history"] = [
-                                    {"open": opens[i]/100, "high": highs[i]/100, "low": lows[i]/100, "close": closes[i]/100}
-                                    for i in range(len(opens))
-                                ]
-            except Exception as e:
-                st.write(f"Nifty Hist Error: {e}")
+                            st.session_state.master_storage["NIFTY"]["master_history"] = [
+                                {"open": opens[i]/100, "high": highs[i]/100, "low": lows[i]/100, "close": closes[i]/100}
+                                for i in range(len(opens))
+                            ]
+            except Exception:
+                pass
 
         # 2. SENSEX Data Fetch
         sensex_snap = market_engine.current_price("SENSEX", exchange="BSE")
@@ -128,13 +110,12 @@ if market_engine:
                             lows_s = unpack_nubra_array(stock_chart_s.low)
                             closes_s = unpack_nubra_array(stock_chart_s.close)
                             
-                            if len(opens_s) > 0:
-                                st.session_state.master_storage["SENSEX"]["master_history"] = [
-                                    {"open": opens_s[i]/100, "high": highs_s[i]/100, "low": lows_s[i]/100, "close": closes_s[i]/100}
-                                    for i in range(len(opens_s))
-                                ]
-            except Exception as e:
-                st.write(f"Sensex Hist Error: {e}")
+                            st.session_state.master_storage["SENSEX"]["master_history"] = [
+                                {"open": opens_s[i]/100, "high": highs_s[i]/100, "low": lows_s[i]/100, "close": closes_s[i]/100}
+                                for i in range(len(opens_s))
+                            ]
+            except Exception:
+                pass
             
     except Exception as error:
         st.warning(f"⚠️ Live data stream update delayed: {error}")
@@ -160,6 +141,7 @@ if os.path.exists(html_file_path):
     """
     html_content = html_content.replace("<head>", f"<head>{injection_script}")
     
+    # Render with scrolling active
     components.html(html_content, height=850, scrolling=True)
 else:
     st.error("❌ 'index.html' file main root folder me nahi mili!")

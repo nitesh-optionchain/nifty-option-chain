@@ -2,23 +2,18 @@ import sys
 import os
 import json
 import pandas as pd
-import numpy as np
 from datetime import datetime, timedelta
 import streamlit as st
 import streamlit.components.v1 as components
-from streamlit_autorefresh import st_autorefresh
 
 # ==============================================================================
-# 🎯 1. TERMINAL LAYOUT CONFIGURATION & HIGH-SPEED SYNC
+# 🎯 1. PURE CLEAN TERMINAL INTERFACE SETUP
 # ==============================================================================
 st.set_page_config(layout="wide")
-st.subheader("📊 Live Multi-Asset Analytical Chart Terminal")
+st.subheader("📊 Historical Data Candlestick Chart Terminal")
 st.markdown("---")
 
-# 🔄 5-Second Rapid UI Counter to seamlessly bind data array memory smoothly into frontend canvas
-st_autorefresh(interval=5000, key="chart_rapid_websocket_sync_engine")
-
-# 📂 Path Management Configuration
+# 📂 Paths Framework Setup
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 html_file_path = os.path.join(BASE_DIR, 'index.html')
 
@@ -27,9 +22,8 @@ if BASE_DIR not in sys.path:
 
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
-from nubra_python_sdk.ticker import websocketdata
 
-# Master Data Session State Framework Initialization
+# Master Data Storage Layout
 if "master_storage" not in st.session_state:
     st.session_state.master_storage = {
         "NIFTY": {"price": 24150.00, "status": "LIVE", "master_history": []},
@@ -37,164 +31,93 @@ if "master_storage" not in st.session_state:
     }
 
 # ==============================================================================
-# 🔐 2. GLOBAL UNIFIED RESOURCE SESSION (Strict Anti-Collision Authentication Token)
+# 🔐 2. CACHED HANDSHAKE RESOURCE ENGINE (Single Authorization Session Lock)
 # ==============================================================================
 @st.cache_resource(show_spinner=False)
-def initialize_unified_nubra_session():
-    """
-    Official SDK Handbook Protocol: Generates the core auth client identity exactly ONCE.
-    Passes this single verified token instance across REST and WebSocket maps.
-    """
+def initialize_cached_nubra_engine():
     try:
-        client_instance = InitNubraSdk(NubraEnv.PROD, env_creds=True)
-        engine_rest = MarketData(client_instance)
-        return client_instance, engine_rest
-    except Exception as auth_failure:
-        print(f"Unified system authorization identity breakdown: {auth_failure}")
-        return None, None
+        # Initializing single instance broker according to official SDK flow
+        client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
+        return MarketData(client)
+    except Exception as network_error:
+        print(f"Master Connection Broker Exception: {network_error}")
+        return None
 
-shared_client, market_engine = initialize_unified_nubra_session()
+market_engine = initialize_cached_nubra_engine()
+
+# Selection Widget
+target_symbol = st.sidebar.selectbox("🔤 Select Asset", ["NIFTY", "SENSEX"], index=0)
 
 # ==============================================================================
-# ⚡ 3. HIGH-SPEED REST HISTORICAL PRE-LOADER (OHLCV DataFrame Buffer)
+# ⚡ 3. STRICT DOCUMENTED HISTORICAL LOADER PIPELINE
 # ==============================================================================
-if market_engine and len(st.session_state.master_storage["NIFTY"]["master_history"]) <= 1:
+if market_engine:
     try:
-        # Requesting optimized short range to prevent payload payload packet congestion
+        # Fetching last 2 days of data for stable 5m interval depths
         end_dt = datetime.utcnow()
         start_dt = end_dt - timedelta(days=2) 
         start_str = start_dt.strftime("%Y-%m-%dT00:00:00.000Z")
         end_str = end_dt.strftime("%Y-%m-%dT23:59:59.000Z")
 
-        def unpack_ts_points(points_list):
-            if not points_list:
-                return []
-            return [float(p.value) for p in points_list]
+        ex_type = "BSE" if target_symbol == "SENSEX" else "NSE"
+        
+        # High speed snapshot price fetch
+        snap = market_engine.current_price(target_symbol, exchange=ex_type)
+        if snap and snap.price:
+            st.session_state.master_storage[target_symbol]["price"] = float(snap.price) / 100.0
 
-        for asset_key in ["NIFTY", "SENSEX"]:
-            ex_type = "BSE" if asset_key == "SENSEX" else "NSE"
-            
-            # Real-time top line pricing snapshot fetch
-            snap = market_engine.current_price(asset_key, exchange=ex_type)
-            if snap and snap.price:
-                st.session_state.master_storage[asset_key]["price"] = float(snap.price) / 100.0
-
-            # Triggering REST query historical block
-            res = market_engine.historical_data({
-                "exchange": ex_type, "type": "INDEX", "values": [asset_key],
-                "fields": ["open", "high", "low", "close", "cumulative_volume"],
-                "startDate": start_str, "endDate": end_str, "interval": "5m",
-                "intraDay": True, "realTime": False
-            })
-            
-            if res and hasattr(res, 'result') and res.result and len(res.result) > 0:
-                for inst_dict in res.result[0].values:
-                    stock_chart = inst_dict.get(asset_key) if isinstance(inst_dict, dict) else getattr(inst_dict, asset_key, None)
+        # Official V3 REST query history implementation
+        res = market_engine.historical_data({
+            "exchange": ex_type, "type": "INDEX", "values": [target_symbol],
+            "fields": ["open", "high", "low", "close"],
+            "startDate": start_str, "endDate": end_str, "interval": "5m",
+            "intraDay": True, "realTime": False
+        })
+        
+        if res and hasattr(res, 'result') and res.result and len(res.result) > 0:
+            for inst_dict in res.result[0].values:
+                stock_chart = inst_dict.get(target_symbol) if isinstance(inst_dict, dict) else getattr(inst_dict, target_symbol, None)
+                
+                if stock_chart and hasattr(stock_chart, 'close') and stock_chart.close:
+                    history_list = []
+                    total_ticks = len(stock_chart.close)
                     
-                    if stock_chart and hasattr(stock_chart, 'close') and stock_chart.close:
-                        history_list = []
-                        total_ticks = len(stock_chart.close)
+                    for i in range(total_ticks):
+                        # Extracting objects matching precise TimeSeriesPoint structure
+                        o = float(stock_chart.open[i].value) / 100.0
+                        h = float(stock_chart.high[i].value) / 100.0
+                        l = float(stock_chart.low[i].value) / 100.0
+                        c = float(stock_chart.close[i].value) / 100.0
                         
-                        for i in range(total_ticks):
-                            # Mapping native paise integers into normal float values
-                            o = float(stock_chart.open[i].value) / 100.0
-                            h = float(stock_chart.high[i].value) / 100.0
-                            l = float(stock_chart.low[i].value) / 100.0
-                            c = float(stock_chart.close[i].value) / 100.0
-                            
-                            # Clean epoch tracking generation for chart mapping
-                            base_time = datetime.now() - timedelta(minutes=5 * (total_ticks - i))
-                            stamp = base_time.strftime("%Y-%m-%d %H:%M:%S")
-                            
-                            history_list.append({
-                                "time": stamp,
-                                "open": o, "high": h, "low": l, "close": c, "volume": 100.0
-                            })
-                        st.session_state.master_storage[asset_key]["master_history"] = history_list
+                        # Timestamp alignment mapping formatted for JavaScript template
+                        base_time = datetime.now() - timedelta(minutes=5 * (total_ticks - i))
+                        stamp = base_time.strftime("%Y-%m-%d %H:%M:%S")
+                        
+                        history_list.append({
+                            "time": stamp,
+                            "open": o, "high": h, "low": l, "close": c, "volume": 100.0
+                        })
+                    st.session_state.master_storage[target_symbol]["master_history"] = history_list
 
     except Exception as history_error:
-        print(f"REST Data validation mismatch: {history_error}")
+        st.warning(f"⚠️ Pipeline Exception: {history_error}")
+
+# Fallback initializer to ensure index.html properties never receive an empty data block
+cell = st.session_state.master_storage[target_symbol]
+if len(cell["master_history"]) == 0:
+    base_val = cell["price"]
+    cell["master_history"] = [
+        {"time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "open": base_val, "high": base_val, "low": base_val, "close": base_val, "volume": 0.0}
+    ]
 
 # ==============================================================================
-# 🔌 4. REALTIME WEBSOCKET TICKER PIPELINE (Safe OHLCV Clean Receiver Mod)
+# 🌐 4. PURE ZERO-FLICKER HTML CANVAS DATA INJECTION BRIDGE
 # ==============================================================================
-@st.cache_resource(show_spinner=False)
-def initialize_live_stream_socket(_client):
-    if _client is None:
-        return None
-    try:
-        def capture_stream_ohlcv(msg):
-            try:
-                # Direct variable extraction matching the verified schema logs
-                symbol_key = getattr(msg, 'indexname', None) or getattr(msg, 'symbol', None)
-                
-                if symbol_key in ["NIFTY", "SENSEX"]:
-                    # Type casting raw integer paise values down to normal numbers safely
-                    o = float(getattr(msg, 'open', 0)) / 100.0
-                    h = float(getattr(msg, 'high', 0)) / 100.0
-                    l = float(getattr(msg, 'low', 0)) / 100.0
-                    c = float(getattr(msg, 'close', 0)) / 100.0
-                    
-                    if c > 0:
-                        target_cell = st.session_state.master_storage[symbol_key]
-                        target_cell["price"] = c
-                        target_cell["status"] = "LIVE"
-                        
-                        history = target_cell["master_history"]
-                        candle_stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        
-                        # Real-time ongoing block candlestick update
-                        if len(history) > 0 and history[-1]["time"] == candle_stamp:
-                            history[-1]["high"] = max(history[-1]["high"], h)
-                            history[-1]["low"] = min(history[-1]["low"], l)
-                            history[-1]["close"] = c
-                        else:
-                            history.append({
-                                "time": candle_stamp,
-                                "open": o, "high": h, "low": l, "close": c, "volume": 100.0
-                            })
-                            
-                        if len(history) > 300:
-                            history.pop(0)
-            except Exception as loop_err:
-                pass
-
-        # Setting up WebSocket connection proxy sharing the primary verified user link
-        socket_instance = websocketdata.NubraDataSocket(
-            client=_client,
-            on_ohlcv_data=capture_stream_ohlcv,
-            on_connect=lambda m: print("[WebSocket Connection: SECURE]"),
-            on_close=lambda r: print(f"Socket connection closed: {r}"),
-            on_error=lambda e: print(f"Socket tracking exception: {e}")
-        )
-        
-        socket_instance.connect()
-        # Registering direct true ohlcv continuous subscription blocks
-        socket_instance.subscribe(["NIFTY"], data_type="ohlcv", interval="5m", exchange="NSE")
-        socket_instance.subscribe(["SENSEX"], data_type="ohlcv", interval="5m", exchange="BSE")
-        
-        return socket_instance
-    except Exception as socket_error:
-        print(f"WebSocket execution thread failure: {socket_error}")
-        return None
-
-active_live_socket = initialize_live_stream_socket(shared_client)
-
-# ==============================================================================
-# 🌐 5. ZERO-FLICKER HTML CANVAS DATA INJECTION BRIDGE
-# ==============================================================================
-for key in ["NIFTY", "SENSEX"]:
-    cell = st.session_state.master_storage[key]
-    if len(cell["master_history"]) == 0:
-        base_val = cell["price"]
-        cell["master_history"] = [
-            {"time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "open": base_val, "high": base_val, "low": base_val, "close": base_val, "volume": 0.0}
-        ]
-
 if os.path.exists(html_file_path):
     with open(html_file_path, "r", encoding="utf-8") as file_reader:
         html_blueprint = file_reader.read()
 
+    # Dynamic JSON serialization mapping structure binding safely
     master_json = json.dumps(st.session_state.master_storage)
 
     javascript_context_bridge = f"""
@@ -206,4 +129,9 @@ if os.path.exists(html_file_path):
     html_blueprint = html_blueprint.replace("<head>", f"<head>{javascript_context_bridge}")
     components.html(html_blueprint, height=850, scrolling=True)
 else:
-    st.error("❌ System core configuration error: 'index.html' module template missing.")
+    st.error("❌ System core exception: 'index.html' module target was not found.")
+
+# Manual Trigger Button for user-driven data retrieval
+if st.button("🔄 Reload Historical Data"):
+    st.cache_resource.clear()
+    st.rerun()

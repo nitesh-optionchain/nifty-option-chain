@@ -9,16 +9,16 @@ import streamlit.components.v1 as components
 from streamlit_autorefresh import st_autorefresh
 
 # ==============================================================================
-# 🎯 1. TERMINAL CONFIGURATION & RAPID UI SYNC ENGINE
+# 🎯 1. TERMINAL CONFIGURATION & UI HEARTBEAT TIMERS
 # ==============================================================================
 st.set_page_config(layout="wide")
 st.subheader("📊 Live Multi-Asset Analytical Chart Terminal")
 st.markdown("---")
 
-# Safe 5-Second layout sync block to seamlessly push stream buffers into UI layout
+# Safe 5-Second layout sync block to seamlessly push stream buffers into UI
 st_autorefresh(interval=5000, key="chart_rapid_websocket_sync_engine")
 
-# 📂 Files Directory Routing Framework Setup
+# 📂 Files Directory Routing System
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 html_file_path = os.path.join(BASE_DIR, 'index.html')
 
@@ -29,7 +29,7 @@ from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
 from nubra_python_sdk.ticker import websocketdata
 
-# Master Data Dictionary Memory Allocation
+# Master Data Dictionary Memory Setup
 if "master_storage" not in st.session_state:
     st.session_state.master_storage = {
         "NIFTY": {"price": 24150.00, "status": "LIVE", "master_history": []},
@@ -37,29 +37,22 @@ if "master_storage" not in st.session_state:
     }
 
 # ==============================================================================
-# 🔐 2. UNIFIED GLOBAL CACHE SESSION BROKER (Strict Anti-Collision Token Lock)
+# 🔐 2. UNIFIED GLOBAL CACHE SESSION BROKER (Strict Single Auth Token Lock)
 # ==============================================================================
 @st.cache_resource(show_spinner=False)
 def initialize_unified_nubra_session():
     """
-    Official Doc Flow: Authenticates the core client exactly ONCE globally.
-    Reuses the exact same login instance token for both REST and WebSocket maps,
-    permanently solving the 'Unauthorized even after re-login' collision loop.
+    Official Flow: Authenticates the client exactly ONCE globally.
+    Shares this unique instance across REST and WebSocket modules to prevent token drops.
     """
     try:
-        # Step 1: Create a single authenticated SDK client session instance
         client_instance = InitNubraSdk(NubraEnv.PROD, env_creds=True)
-        
-        # Step 2: Bind that single instance to the MarketData REST module
         engine_rest = MarketData(client_instance)
-        
-        # Return both so they share the exact same active handshake payload token
         return client_instance, engine_rest
     except Exception as network_error:
         print(f"Master Session Identity Crash: {network_error}")
         return None, None
 
-# Instantiating the shared session components globally
 session_broker = initialize_unified_nubra_session()
 shared_client, market_engine = session_broker
 
@@ -81,7 +74,7 @@ if market_engine and len(st.session_state.master_storage["NIFTY"]["master_histor
             if snap and snap.price:
                 st.session_state.master_storage[asset_key]["price"] = float(snap.price) / 100.0
 
-            # Requesting historical candles according to the precise V3 JSON parameters
+            # Requesting historical contracts using standard JSON parameters
             res = market_engine.historical_data({
                 "exchange": ex_type, "type": "INDEX", "values": [asset_key],
                 "fields": ["open", "high", "low", "close"],
@@ -98,13 +91,12 @@ if market_engine and len(st.session_state.master_storage["NIFTY"]["master_histor
                         total_ticks = len(stock_chart.close)
                         
                         for i in range(total_ticks):
-                            # Converting native integers (paise scale) to decimal rupees format safely
+                            # Converting native integers (paise scale) to decimal rupees safely
                             o = float(stock_chart.open[i].value) / 100.0
                             h = float(stock_chart.high[i].value) / 100.0
                             l = float(stock_chart.low[i].value) / 100.0
                             c = float(stock_chart.close[i].value) / 100.0
                             
-                            # Standardizing human-readable candle timestamps for lightweight wrapper
                             stamp = (datetime.now() - timedelta(minutes=5 * (total_ticks - i))).strftime("%Y-%m-%d %H:%M:%S")
                             
                             history_list.append({
@@ -114,73 +106,70 @@ if market_engine and len(st.session_state.master_storage["NIFTY"]["master_histor
                         st.session_state.master_storage[asset_key]["master_history"] = history_list
 
     except Exception as history_error:
-        print(f"Historical background processing delay: {history_error}")
+        pass
 
 # ==============================================================================
-# 🔌 4. REALTIME WEBSOCKET TICKER PIPELINE (Systematic Shared Client Layout)
+# 🔌 4. REALTIME WEBSOCKET TICKER PIPELINE (Strict True OHLCV Stream Mod)
 # ==============================================================================
 @st.cache_resource(show_spinner=False)
 def initialize_live_stream_socket(_client):
-    """
-    Accepts the globally authenticated unique client token instance.
-    Guarantees no duplicate logins hit the cloud infrastructure.
-    """
     if _client is None:
         return None
     try:
-        def capture_stream_index(msg):
+        def capture_stream_ohlcv(msg):
             try:
+                # ✅ Strictly extracting variables from target OHLCV wrapper payload fields
                 symbol_key = getattr(msg, 'indexname', None) or getattr(msg, 'symbol', None)
                 
                 if symbol_key in ["NIFTY", "SENSEX"]:
-                    # Unpacking continuous index value packets from the official stream fields
-                    current_ltp = float(getattr(msg, 'index_value', 0))
-                    open_val = float(getattr(msg, 'open', current_ltp))
-                    high_val = float(getattr(msg, 'high_index_value', current_ltp))
-                    low_val = float(getattr(msg, 'low_index_value', current_ltp))
+                    # Converting real time integer paise scales safely
+                    o = float(getattr(msg, 'open', 0)) / 100.0
+                    h = float(getattr(msg, 'high', 0)) / 100.0
+                    l = float(getattr(msg, 'low', 0)) / 100.0
+                    c = float(getattr(msg, 'close', 0)) / 100.0
                     
-                    if current_ltp > 0:
+                    if c > 0:
                         target_cell = st.session_state.master_storage[symbol_key]
-                        target_cell["price"] = current_ltp
+                        target_cell["price"] = c
                         target_cell["status"] = "LIVE"
                         
                         history = target_cell["master_history"]
                         candle_stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         
                         if len(history) > 0 and history[-1]["time"] == candle_stamp:
-                            history[-1]["high"] = max(history[-1]["high"], high_val)
-                            history[-1]["low"] = min(history[-1]["low"], low_val)
-                            history[-1]["close"] = current_ltp
+                            history[-1]["high"] = max(history[-1]["high"], h)
+                            history[-1]["low"] = min(history[-1]["low"], l)
+                            history[-1]["close"] = c
                         else:
                             history.append({
                                 "time": candle_stamp,
-                                "open": open_val, "high": high_val, "low": low_val, "close": current_ltp, "volume": 100.0
+                                "open": o, "high": h, "low": l, "close": c, "volume": 100.0
                             })
                             
                         if len(history) > 300:
                             history.pop(0)
             except Exception as stream_err:
-                print(f"Websocket index payload processing error: {stream_err}")
+                print(f"Websocket payload mapping crash: {stream_err}")
 
-        # Constructing persistent WebSocket connection proxy sharing the active broker link
+        # ✅ Re-binding to correct on_ohlcv_data callback handler
         socket_instance = websocketdata.NubraDataSocket(
-            client=_client, # Passing the verified unique parent auth connection
-            on_index_data=capture_stream_index,
+            client=_client,
+            on_ohlcv_data=capture_stream_ohlcv, 
             on_connect=lambda m: print("[Socket Status: CONNECTED]"),
             on_close=lambda r: print(f"Socket connection closed: {r}"),
-            on_error=lambda e: print(f"Streaming data socket tracking exception: {e}")
+            on_error=lambda e: print(f"Socket exception logs: {e}")
         )
         
         socket_instance.connect()
-        socket_instance.subscribe(["NIFTY"], data_type="index", exchange="NSE")
-        socket_instance.subscribe(["SENSEX"], data_type="index", exchange="BSE")
+        # ✅ Using correct ohlcv subscription matching verified log schema
+        socket_instance.subscribe(["NIFTY"], data_type="ohlcv", interval="5m", exchange="NSE")
+        socket_instance.subscribe(["SENSEX"], data_type="ohlcv", interval="5m", exchange="BSE")
         
         return socket_instance
     except Exception as socket_error:
-        print(f"WebSocket client registration thread failure: {socket_error}")
+        print(f"WebSocket execution thread failure: {socket_error}")
         return None
 
-# Triggering the socket pipeline cleanly using the underscore parameter bypass
 active_live_socket = initialize_live_stream_socket(shared_client)
 
 # ==============================================================================

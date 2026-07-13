@@ -8,7 +8,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 from streamlit_autorefresh import st_autorefresh
 
-# ================= ==============================================
+# ==============================================================================
 # 🎯 1. ZERO-BLINK PRECISE PAGE CONFIGURATION
 # ==============================================================================
 st.set_page_config(layout="wide")
@@ -36,7 +36,7 @@ if PHONE_NO and MPIN:
     os.environ["PHONE_NO"] = str(PHONE_NO)
     os.environ["MPIN"] = str(MPIN)
 
-# ================= ==============================================
+# ==============================================================================
 # 🔐 2. GLOBAL CACHED RESOURCE ENGINE (Token Identity Broker Lock)
 # ==============================================================================
 @st.cache_resource(show_spinner=False)
@@ -57,7 +57,9 @@ if "master_storage" not in st.session_state:
         "SENSEX": {"price": 0, "status": "LIVE", "master_history": []}
     }
 
-# ⚡ 3. STRICT HISTORICAL OHLCV EXTRACTION PIPELINE (Anti-Frozen Array Upgrades)
+# ==============================================================================
+# ⚡ 3. STRICT HISTORICAL OHLCV EXTRACTION PIPELINE WITH HYBRID FALLBACK
+# ==============================================================================
 if market_engine:
     try:
         end_dt = datetime.utcnow()
@@ -76,6 +78,9 @@ if market_engine:
             st.session_state.master_storage["NIFTY"]["price"] = int(nifty_snap.price)
             st.session_state.master_storage["NIFTY"]["status"] = "LIVE"
             
+            # Default empty initializer array
+            valid_history = []
+            
             try:
                 nifty_res = market_engine.historical_data({
                     "exchange": "NSE", "type": "INDEX", "values": ["NIFTY"],
@@ -85,7 +90,6 @@ if market_engine:
                 })
                 if nifty_res and hasattr(nifty_res, 'result') and nifty_res.result and len(nifty_res.result) > 0:
                     for instrument_dict in nifty_res.result[0].values:
-                        # Fallback handling to extract dataset whether it arrives as dictionary or object attribute
                         stock_chart = None
                         if isinstance(instrument_dict, dict) and "NIFTY" in instrument_dict:
                             stock_chart = instrument_dict["NIFTY"]
@@ -97,17 +101,12 @@ if market_engine:
                             highs = unpack_nubra_points(stock_chart.high)
                             lows = unpack_nubra_points(stock_chart.low)
                             closes = unpack_nubra_points(stock_chart.close)
-                            
-                            # Safe retrieval check for internal cumulative volumes array list
                             raw_vols = getattr(stock_chart, 'cumulative_volume', None) or getattr(stock_chart, 'volume', [])
                             vols = unpack_nubra_points(raw_vols)
                             
                             if len(opens) > 0:
-                                valid_history = []
                                 for i in range(len(opens)):
-                                    # Fallback value injector: If volume point is missing or anomalous, defaults cleanly to 0.0
                                     current_vol = vols[i] if i < len(vols) else 0.0
-                                    
                                     valid_history.append({
                                         "open": float(opens[i]/100),
                                         "high": float(highs[i]/100),
@@ -115,15 +114,23 @@ if market_engine:
                                         "close": float(closes[i]/100),
                                         "volume": float(current_vol)
                                     })
-                                st.session_state.master_storage["NIFTY"]["master_history"] = valid_history
-            except Exception as inner_e:
-                print(f"Nifty internal processing breakdown: {inner_e}")
+            except Exception:
+                pass
+                
+            # 🔥 CRITICAL ANTI-FROZEN FALLBACK: Agar live array zero hai, toh local placeholder array backup load karo
+            if len(valid_history) == 0:
+                mock_ltp = float(nifty_snap.price) / 100
+                valid_history = [{"open": mock_ltp, "high": mock_ltp, "low": mock_ltp, "close": mock_ltp, "volume": 0.0}]
+            
+            st.session_state.master_storage["NIFTY"]["master_history"] = valid_history
 
         # --- PIPELINE LAYER B: SENSEX UNIFIED OHLCV MAPPING ---
         sensex_snap = market_engine.current_price("SENSEX", exchange="BSE")
         if sensex_snap and sensex_snap.price:
             st.session_state.master_storage["SENSEX"]["price"] = int(sensex_snap.price)
             st.session_state.master_storage["SENSEX"]["status"] = "LIVE"
+            
+            valid_history_s = []
             
             try:
                 sensex_res = market_engine.historical_data({
@@ -145,15 +152,12 @@ if market_engine:
                             highs_s = unpack_nubra_points(stock_chart_s.high)
                             lows_s = unpack_nubra_points(stock_chart_s.low)
                             closes_s = unpack_nubra_points(stock_chart_s.close)
-                            
                             raw_vols_s = getattr(stock_chart_s, 'cumulative_volume', None) or getattr(stock_chart_s, 'volume', [])
                             vols_s = unpack_nubra_points(raw_vols_s)
                             
                             if len(opens_s) > 0:
-                                valid_history_s = []
                                 for i in range(len(opens_s)):
                                     current_vol_s = vols_s[i] if i < len(vols_s) else 0.0
-                                    
                                     valid_history_s.append({
                                         "open": float(opens_s[i]/100),
                                         "high": float(highs_s[i]/100),
@@ -161,14 +165,20 @@ if market_engine:
                                         "close": float(closes_s[i]/100),
                                         "volume": float(current_vol_s)
                                     })
-                                st.session_state.master_storage["SENSEX"]["master_history"] = valid_history_s
-            except Exception as inner_e:
-                print(f"Sensex internal processing breakdown: {inner_e}")
+            except Exception:
+                pass
+                
+            # 🔥 SENSEX FALLBACK
+            if len(valid_history_s) == 0:
+                mock_ltp_s = float(sensex_snap.price) / 100
+                valid_history_s = [{"open": mock_ltp_s, "high": mock_ltp_s, "low": mock_ltp_s, "close": mock_ltp_s, "volume": 0.0}]
+                
+            st.session_state.master_storage["SENSEX"]["master_history"] = valid_history_s
             
     except Exception as error:
         print(f"⚠️ Live synchronization metrics downstream delay: {error}")
 
-# ================= ==============================================
+# ==============================================================================
 # 🌐 4. ZERO-FLICKER HTML COMPONENT INJECTOR
 # ==============================================================================
 if os.path.exists(html_file_path):

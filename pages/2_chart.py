@@ -1,19 +1,20 @@
 import sys
 import os
+import json
 import pandas as pd
-import numpy as np
 from datetime import datetime, timedelta
 import streamlit as st
-import plotly.graph_objects as gr
-from plotly.subplots import make_subplots
+import streamlit.components.v1 as components
 
-# 📊 Wide mode terminal layout configuration
+# 📊 Wide mode page configuration (Aapka original layout)
 st.set_page_config(layout="wide")
 st.subheader("📊 Live Multi-Asset Analytical Chart Terminal")
 st.markdown("---")
 
 # 📂 Paths Setup
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+html_file_path = os.path.join(BASE_DIR, 'index.html')
+
 if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
 
@@ -31,137 +32,106 @@ if PHONE_NO and MPIN:
 # Master Data Storage Framework
 if "master_storage" not in st.session_state:
     st.session_state.master_storage = {
-        "NIFTY": {"price": 0.0, "status": "LIVE"},
-        "SENSEX": {"price": 0.0, "status": "LIVE"}
+        "NIFTY": {"price": 0, "status": "LIVE", "master_history": []},
+        "SENSEX": {"price": 0, "status": "LIVE", "master_history": []}
     }
 
-# 🔄 Shared Session Connection Engine (Anti-Collision Proxy)
+# 🔄 Pure Original SDK Initialization Logic
 market_engine = None
-if "global_market_engine" in st.session_state and st.session_state.global_market_engine is not None:
-    market_engine = st.session_state.global_market_engine
-else:
-    try:
-        client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
-        market_engine = MarketData(client)
-        st.session_state.global_market_engine = market_engine
-    except Exception as e:
-        if 'market_engine' in st.session_state:
-            market_engine = st.session_state['market_engine']
-        elif 'market_data' in st.session_state:
-            market_engine = st.session_state['market_data']
+try:
+    client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
+    market_engine = MarketData(client)
+except Exception as e:
+    st.error(f"❌ SDK Connection Failure: {str(e)}")
 
-# 🔤 Clean Sidebar Menu
-target_symbol = st.sidebar.selectbox("🔤 Select Asset", ["NIFTY", "SENSEX"], index=0)
-show_dma = st.sidebar.checkbox("📈 Show DMAs (9, 20, 50 Lines)", value=True)
-
-df = None
-
-# ⚡ FOOLPROOF HISTORICAL DATA PARSING ENGINE
+# ⚡ CORE DATA INTEGRATION ENGINE
 if market_engine:
     try:
         end_dt = datetime.utcnow()
-        start_dt = end_dt - timedelta(days=5) 
-        
-        exchange_type = "BSE" if target_symbol == "SENSEX" else "NSE"
-        
-        # Live price update for top bar header
+        start_dt = end_dt - timedelta(days=5)
+        start_str = start_dt.strftime("%Y-%m-%dT00:00:00.000Z")
+        end_str = end_dt.strftime("%Y-%m-%dT23:59:59.000Z")
+
+        # 1. NIFTY Data Fetch
         nifty_snap = market_engine.current_price("NIFTY", exchange="NSE")
         if nifty_snap and nifty_snap.price:
-            st.session_state.master_storage["NIFTY"]["price"] = float(nifty_snap.price) / 100.0
+            st.session_state.master_storage["NIFTY"]["price"] = int(nifty_snap.price)
+            st.session_state.master_storage["NIFTY"]["status"] = "LIVE"
             
+            try:
+                nifty_res = market_engine.historical_data({
+                    "exchange": "NSE", "type": "INDEX", "values": ["NIFTY"],
+                    "fields": ["open", "high", "low", "close"],
+                    "startDate": start_str, "endDate": end_str, "interval": "5m",
+                    "intraDay": True, "realTime": False
+                })
+                if nifty_res and hasattr(nifty_res, 'result') and nifty_res.result and len(nifty_res.result) > 0:
+                    res_obj = nifty_res.result[0]
+                    if hasattr(res_obj, 'values') and res_obj.values and len(res_obj.values) > 0:
+                        data_map = res_obj.values[0]
+                        if isinstance(data_map, dict) and "NIFTY" in data_map:
+                            raw_n = data_map["NIFTY"]
+                            if hasattr(raw_n, 'open') and raw_n.open:
+                                st.session_state.master_storage["NIFTY"]["master_history"] = [
+                                    {"open": float(raw_n.open[i].value)/100, "high": float(raw_n.high[i].value)/100, 
+                                     "low": float(raw_n.low[i].value)/100, "close": float(raw_n.close[i].value)/100}
+                                    for i in range(len(raw_n.open))
+                                ]
+            except Exception:
+                pass
+
+        # 2. SENSEX Data Fetch
         sensex_snap = market_engine.current_price("SENSEX", exchange="BSE")
         if sensex_snap and sensex_snap.price:
-            st.session_state.master_storage["SENSEX"]["price"] = float(sensex_snap.price) / 100.0
-
-        # API Historical Call
-        response = market_engine.historical_data({
-            "exchange": exchange_type,
-            "type": "INDEX",
-            "values": [target_symbol],
-            "fields": ["open", "high", "low", "close"],
-            "startDate": start_dt.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-            "endDate": end_dt.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-            "interval": "5m",
-            "intraDay": True,
-            "realTime": False
-        })
-
-        # Foolproof Data Unpacking Logic
-        if response and hasattr(response, 'result') and response.result:
-            # 1. Direct result traversal based on Nubra response format
-            for res_item in response.result:
-                if hasattr(res_item, 'values') and res_item.values:
-                    for v_item in res_item.values:
-                        # Checking if data structure is dictionary or custom object
-                        stock_chart = None
-                        if isinstance(v_item, dict) and target_symbol in v_item:
-                            stock_chart = v_item[target_symbol]
-                        elif hasattr(v_item, target_symbol):
-                            stock_chart = getattr(v_item, target_symbol)
-                        elif hasattr(v_item, 'get'):
-                            stock_chart = v_item.get(target_symbol)
-
-                        # If data block is found, extract arrays immediately
-                        if stock_chart and hasattr(stock_chart, 'close') and stock_chart.close:
-                            timestamps = [pd.to_datetime(p.timestamp, unit="ns", utc=True).tz_convert("Asia/Kolkata") for p in stock_chart.close]
-                            
-                            data = {
-                                "open": [float(p.value / 100.0) for p in stock_chart.open],
-                                "high": [float(p.value / 100.0) for p in stock_chart.high],
-                                "low": [float(p.value / 100.0) for p in stock_chart.low],
-                                "close": [float(p.value / 100.0) for p in stock_chart.close]
-                            }
-                            
-                            df = pd.DataFrame(data, index=timestamps)
-                            df.sort_index(inplace=True)
-                            
-                            # Indicators Computation Layer
-                            df['dma_9'] = df['close'].rolling(window=9, min_periods=1).mean()
-                            df['dma_20'] = df['close'].rolling(window=20, min_periods=1).mean()
-                            df['dma_50'] = df['close'].rolling(window=50, min_periods=1).mean()
-                            break
-                    if df is not None:
-                        break
-                        
+            st.session_state.master_storage["SENSEX"]["price"] = int(sensex_snap.price)
+            st.session_state.master_storage["SENSEX"]["status"] = "LIVE"
+            
+            try:
+                sensex_res = market_engine.historical_data({
+                    "exchange": "BSE", "type": "INDEX", "values": ["SENSEX"],
+                    "fields": ["open", "high", "low", "close"],
+                    "startDate": start_str, "endDate": end_str, "interval": "5m",
+                    "intraDay": True, "realTime": False
+                })
+                if sensex_res and hasattr(sensex_res, 'result') and sensex_res.result and len(sensex_res.result) > 0:
+                    res_obj_s = sensex_res.result[0]
+                    if hasattr(res_obj_s, 'values') and res_obj_s.values and len(res_obj_s.values) > 0:
+                        data_map_s = res_obj_s.values[0]
+                        if isinstance(data_map_s, dict) and "SENSEX" in data_map_s:
+                            raw_s = data_map_s["SENSEX"]
+                            if hasattr(raw_s, 'open') and raw_s.open:
+                                st.session_state.master_storage["SENSEX"]["master_history"] = [
+                                    {"open": float(raw_s.open[i].value)/100, "high": float(raw_s.high[i].value)/100, 
+                                     "low": float(raw_s.low[i].value)/100, "close": float(raw_s.close[i].value)/100}
+                                    for i in range(len(raw_s.open))
+                                ]
+            except Exception:
+                pass
+            
     except Exception as error:
-        pass
+        st.warning(f"⚠️ Live data stream update delayed: {error}")
 
-# ==============================================================================
-# 🖥️ CLEAN PLOTLY CANVAS INJECTION
-# ==============================================================================
-current_ltp = st.session_state.master_storage[target_symbol]["price"]
+# 🔘 MANUAL REFRESH BUTTON
+col1, col2 = st.columns([1, 8])
+with col1:
+    if st.button("🔄 Refresh Data"):
+        st.rerun()
 
-if current_ltp > 0:
-    st.markdown(f"### ₹{current_ltp:,.2f} <span style='font-size:14px; color:#94a3b8;'>({target_symbol} Live LTP)</span>", unsafe_allow_html=True)
+# 🌐 HTML JavaScript Frame Injector
+if os.path.exists(html_file_path):
+    with open(html_file_path, "r", encoding="utf-8") as f:
+        html_content = f.read()
 
-if df is not None and not df.empty:
-    fig = make_subplots(rows=1, cols=1)
+    json_data = json.dumps(st.session_state.master_storage)
 
-    # Candlesticks Trace Layer
-    fig.add_trace(gr.Candlestick(
-        x=df.index, open=df['open'], high=df['high'], low=df['low'], close=df['close'], name="Price",
-        increasing_line_color='#00cc66', decreasing_line_color='#ff3333',
-        increasing_fillcolor='#00cc66', decreasing_fillcolor='#ff3333'
-    ), row=1, col=1)
-
-    # Moving Averages Trace Layer
-    if show_dma:
-        fig.add_trace(gr.Scatter(x=df.index, y=df['dma_9'], line=dict(color="#ffeb3b", width=1.5), name="9 DMA"), row=1, col=1)
-        fig.add_trace(gr.Scatter(x=df.index, y=df['dma_20'], line=dict(color="#00e5ff", width=1.5), name="20 DMA"), row=1, col=1)
-        fig.add_trace(gr.Scatter(x=df.index, y=df['dma_50'], line=dict(color="#e040fb", width=2), name="50 DMA"), row=1, col=1)
-
-    fig.update_layout(
-        height=720,
-        xaxis_rangeslider_visible=False,
-        template="plotly_dark",
-        margin=dict(l=15, r=10, t=10, b=30),
-        yaxis=dict(side="right", showgrid=True, gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=11), tickformat=".2f"),
-        xaxis=dict(showgrid=True, gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=11)),
-        paper_bgcolor='#030712',
-        plot_bgcolor='#030712'
-    )
+    injection_script = f"""
+    <script>
+        window.chartData = {json_data};
+        window.streamAuthContext = {{"STATUS": "AUTHORIZED_SECURE_STABLE"}};
+    </script>
+    """
+    html_content = html_content.replace("<head>", f"<head>{injection_script}")
     
-    fig.update_xaxes(rangebreaks=[dict(bounds=["sat", "mon"]), dict(bounds=[15.5, 9.25], pattern="hour")])
-    st.plotly_chart(fig, use_container_width=True)
+    components.html(html_content, height=850, scrolling=True)
 else:
-    st.info("⏳ Connecting to data feed streams... Please wait.")
+    st.error("❌ 'index.html' file main root folder me nahi mili!")

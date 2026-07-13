@@ -35,8 +35,11 @@ if "master_storage" not in st.session_state:
 # ==============================================================================
 @st.cache_resource(show_spinner=False)
 def initialize_cached_nubra_engine():
+    """
+    Official Handshake Lock: Creates a single authenticated connection session
+    globally across the app to prevent 'Unauthorized' token collisions.
+    """
     try:
-        # Initializing single instance broker according to official SDK flow
         client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
         return MarketData(client)
     except Exception as network_error:
@@ -45,7 +48,7 @@ def initialize_cached_nubra_engine():
 
 market_engine = initialize_cached_nubra_engine()
 
-# Selection Widget
+# Asset Selector Widget
 target_symbol = st.sidebar.selectbox("🔤 Select Asset", ["NIFTY", "SENSEX"], index=0)
 
 # ==============================================================================
@@ -100,7 +103,7 @@ if market_engine:
                     st.session_state.master_storage[target_symbol]["master_history"] = history_list
 
     except Exception as history_error:
-        st.warning(f"⚠️ Pipeline Exception: {history_error}")
+        st.warning(f"⚠️ Pipeline Exception Logged: {history_error}")
 
 # Fallback initializer to ensure index.html properties never receive an empty data block
 cell = st.session_state.master_storage[target_symbol]

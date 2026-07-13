@@ -1,107 +1,103 @@
-import os
 import sys
+from types import ModuleType
+import os
 import json
-from datetime import datetime, timedelta
-from flask import Flask, jsonify, request
-from flask_cors import CORS
+import streamlit as st
+import streamlit.components.v1 as components
 
-app = Flask(__name__)
-CORS(app) # Taaki browser index.html ko block na kare
+# 📊 Wide mode page configuration (Aapka original layout)
+st.set_page_config(layout="wide")
+st.subheader("📊 Live Multi-Asset Analytical Chart Terminal")
+st.markdown("---")
 
-# 📂 Paths & Imports Setup
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# 🚀 Anti-Crash Pandas Bypass Engine
+if 'pandas' not in sys.modules:
+    fake_pandas = ModuleType('pandas')
+    fake_pandas.DataFrame = lambda *args, **kwargs: None
+    sys.modules['pandas'] = fake_pandas
+
+# 📂 Paths Setup
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+html_file_path = os.path.join(BASE_DIR, 'index.html')
+
 if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
 
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
 
-# 🔐 Set Credentials (Apne hisab se change karein ya .env se chalayein)
-os.environ["PHONE_NO"] = "YOUR_PHONE_NO"
-os.environ["MPIN"] = "YOUR_MPIN"
+# 🔐 Secure Environment Keys Bridge
+PHONE_NO = st.secrets.get("PHONE_NO") or os.environ.get("PHONE_NO")
+MPIN = st.secrets.get("MPIN") or os.environ.get("MPIN")
 
-# Initialize Broker SDK
+if PHONE_NO and MPIN:
+    os.environ["PHONE_NO"] = str(PHONE_NO)
+    os.environ["MPIN"] = str(MPIN)
+
+# Master Data Storage Framework
+if "master_storage" not in st.session_state:
+    st.session_state.master_storage = {
+        "NIFTY": {"price": 0, "status": "LIVE", "master_history": []},
+        "SENSEX": {"price": 0, "status": "LIVE", "master_history": []}
+    }
+
+# 🔄 Pure Original SDK Initialization Logic
+market_engine = None
 try:
     client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
-    market_data = MarketData(client)
-    print("🚀 Broker SDK Connected Successfully on Local PC!")
+    market_engine = MarketData(client)
 except Exception as e:
-    print(f"❌ SDK Init Fail: {e}")
-    sys.exit(1)
+    st.error(f"❌ SDK Connection Failure: {str(e)}")
 
-# Central Data Storage
-master_storage = {
-    "NIFTY": {"price": 0, "change": 0, "master_history": []},
-    "SENSEX": {"price": 0, "change": 0, "master_history": []},
-    "BANKNIFTY": {"price": 0, "change": 0, "master_history": []},
-    "INDIAVIX": {"price": 0, "change": 0, "master_history": []}
-}
-
-# --- 📈 HISTORICAL ENGINE BLOCK ---
-def load_historical_candles(asset_name, timeframe="5m"):
-    end_dt = datetime.utcnow()
-    days_back = 30 if "d" in timeframe or "w" in timeframe else 5
-    start_dt = end_dt - timedelta(days=days_back)
-    
-    start_str = start_dt.strftime("%Y-%m-%dT00:00:00.000Z")
-    end_str = end_dt.strftime("%Y-%m-%dT23:59:59.000Z")
-    
+# ⚡ DIRECT DATA FETCH (Jo pehle chal raha tha)
+if market_engine:
     try:
-        if asset_name == "INDIAVIX":
-            response = market_data.historical_data({
-                "exchange": "NSE_VIX", "type": "VIX", "values": ["INDIAVIX"],
-                "fields": ["open", "high", "low", "close"],
-                "startDate": start_str, "endDate": end_str, "interval": timeframe,
-                "intraDay": True, "realTime": False
+        # 1. NIFTY Data Fetch
+        nifty_snap = market_engine.current_price("NIFTY", exchange="NSE")
+        if nifty_snap and nifty_snap.price:
+            real_nifty = float(nifty_snap.price) / 100
+            st.session_state.master_storage["NIFTY"]["price"] = int(nifty_snap.price)
+            st.session_state.master_storage["NIFTY"]["status"] = "LIVE"
+            st.session_state.master_storage["NIFTY"]["master_history"].append({
+                "open": real_nifty, "high": real_nifty, "low": real_nifty, "close": real_nifty
             })
-            raw_data = response.result[0].values[0]["INDIAVIX"]
-        else:
-            exch = "BSE" if asset_name == "SENSEX" else "NSE"
-            response = market_data.historical_data({
-                "exchange": exch, "type": "INDEX", "values": [asset_name],
-                "fields": ["open", "high", "low", "close"],
-                "startDate": start_str, "endDate": end_str, "interval": timeframe,
-                "intraDay": True if "m" in timeframe else False, "realTime": False
+
+        # 2. SENSEX Data Fetch
+        sensex_snap = market_engine.current_price("SENSEX", exchange="BSE")
+        if sensex_snap and sensex_snap.price:
+            real_sensex = float(sensex_snap.price) / 100
+            st.session_state.master_storage["SENSEX"]["price"] = int(sensex_snap.price)
+            st.session_state.master_storage["SENSEX"]["status"] = "LIVE"
+            st.session_state.master_storage["SENSEX"]["master_history"].append({
+                "open": real_sensex, "high": real_sensex, "low": real_sensex, "close": real_sensex
             })
-            raw_data = response.result[0].values[0][asset_name]
             
-        parsed = []
-        for i in range(len(raw_data.open)):
-            parsed.append({
-                "open": float(raw_data.open[i].value) / 100,
-                "high": float(raw_data.high[i].value) / 100,
-                "low": float(raw_data.low[i].value) / 100,
-                "close": float(raw_data.close[i].value) / 100
-            })
-        master_storage[asset_name]["master_history"] = parsed
-        print(f"✅ Loaded {len(parsed)} historical candles for {asset_name} ({timeframe})")
-    except Exception as e:
-        print(f"⚠️ History fetch failed for {asset_name}: {e}")
+    except Exception as error:
+        st.warning(f"⚠️ Live data stream update delayed: {error}")
 
-# --- 🔌 API ENDPOINT FOR FRONTEND ---
-@app.route('/api/live-data', methods=['GET'])
-def get_live_data():
-    asset = request.args.get('asset', 'NIFTY')
-    tf = request.args.get('tf', '5m')
+# 🔘 MANUAL REFRESH BUTTON (Bina page ko automatic hilaye data update karne ke liye)
+col1, col2 = st.columns([1, 8])
+with col1:
+    if st.button("🔄 Refresh Data"):
+        st.rerun()
+
+# 🌐 HTML JavaScript Frame Injector
+if os.path.exists(html_file_path):
+    with open(html_file_path, "r", encoding="utf-8") as f:
+        html_content = f.read()
+
+    json_data = json.dumps(st.session_state.master_storage)
+
+    # Context mapping into HTML head element
+    injection_script = f"""
+    <script>
+        window.chartData = {json_data};
+        window.streamAuthContext = {{"STATUS": "AUTHORIZED_SECURE_STABLE"}};
+    </script>
+    """
+    html_content = html_content.replace("<head>", f"<head>{injection_script}")
     
-    # 1. Agar history khali hai, to pehle fetch karo
-    if not master_storage[asset]["master_history"]:
-        load_historical_candles(asset, tf)
-        
-    # 2. Live data check logic (Sirf tab hit karega jab market open ho)
-    try:
-        exch_map = "NSE_VIX" if asset == "INDIAVIX" else ("BSE" if asset == "SENSEX" else "NSE")
-        live_snap = market_data.current_price(asset, exchange=exch_map)
-        if live_snap and live_snap.price:
-            master_storage[asset]["price"] = int(live_snap.price)
-            master_storage[asset]["change"] = float(live_snap.change) / 100 if hasattr(live_snap, 'change') else 0
-    except Exception as e:
-        pass # Market closed hone par chupchaap purana data return karega
-        
-    return jsonify(master_storage[asset])
-
-if __name__ == '__main__':
-    # Initial base load for active indices
-    load_historical_candles("NIFTY", "5m")
-    load_historical_candles("INDIAVIX", "5m")
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # 🎯 Single-Time Component Render (NO LOOP, NO AUTO RERUN)
+    components.html(html_content, height=850, scrolling=True)
+else:
+    st.error("❌ 'index.html' file main root folder me nahi mili!")

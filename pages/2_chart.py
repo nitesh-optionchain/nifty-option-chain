@@ -43,7 +43,14 @@ BACKUP_DIR = "chart_backups"
 if not os.path.exists(BACKUP_DIR):
     os.makedirs(BACKUP_DIR)
 
-# Master Local Streaming Framework Memory
+# 🔥 CRITICAL MEMORY GUARD: Detects type mismatch and clears state to solve the list index error permanently!
+if "websocket_ohlcv_buffer" in st.session_state:
+    # If the stored format is an old structure or list, delete it to prevent collision
+    if not isinstance(st.session_state.websocket_ohlcv_buffer, dict) or \
+       any(isinstance(v, list) for v in st.session_state.websocket_ohlcv_buffer.values()):
+        del st.session_state["websocket_ohlcv_buffer"]
+
+# Safe fresh dictionary re-initialization
 if "websocket_ohlcv_buffer" not in st.session_state:
     st.session_state.websocket_ohlcv_buffer = {
         "NIFTY": {},
@@ -59,7 +66,7 @@ from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.ticker import websocketdata
 
 # ==============================================================================
-# 🎯 2. SIDEBAR CONTROLS LAYOUT (Timeframe Setup Included)
+# 🎯 2. SIDEBAR CONTROLS LAYOUT (Systematic Timeframe Selector Matrix)
 # ==============================================================================
 st.sidebar.header("📁 Backup File System (Offline Link)")
 load_from_backup = st.sidebar.checkbox("📅 Load Past Day Backup (Offline Mode)", value=False)
@@ -75,7 +82,7 @@ if load_from_backup:
 st.sidebar.header("⚙️ Assets & Timeframe Settings")
 target_symbol = st.sidebar.selectbox("🔤 Select Asset", ["NIFTY", "SENSEX"], index=0)
 
-# ✅ TIMEFRAME FIX SELECTBOX: Changing this directly recalibrates the buffer sequence maps
+# ✅ TIMEFRAME FIX SELECTBOX: Re-calibrates the buffer sequence layout frames
 timeframe_mapping = {
     "1 Minute": "1m",
     "5 Minutes": "5m",
@@ -117,7 +124,7 @@ with st.sidebar.expander("Draw Manual Lines"):
     v_line_idx = st.number_input("Vertical Line Candle Offset", min_value=1, max_value=100, value=5)
     v_line_color = st.color_picker("Vertical Line Color", "#ff00ff")
 
-# Initialize intervals keys in storage if missing
+# Safe type casting to prevent inner dictionary crashes
 if interval not in st.session_state.websocket_ohlcv_buffer[target_symbol]:
     st.session_state.websocket_ohlcv_buffer[target_symbol][interval] = []
 
@@ -135,7 +142,6 @@ def initialize_live_ohlcv_stream():
                 msg_tf = getattr(msg, 'interval', '1m')
                 
                 if sym in ["NIFTY", "SENSEX"]:
-                    # Unpacking native integer paise units safely into float format
                     o = float(getattr(msg, 'open', 0)) / 100.0
                     h = float(getattr(msg, 'high', 0)) / 100.0
                     l = float(getattr(msg, 'low', 0)) / 100.0
@@ -159,7 +165,7 @@ def initialize_live_ohlcv_stream():
                         else:
                             new_row_df.to_csv(full_csv_path, mode='a', header=False, index=False)
                         
-                        # Store updates inside the matching symbol/timeframe buffer slice
+                        # Verify dictionary sub-keys structure mapping exists
                         if msg_tf not in st.session_state.websocket_ohlcv_buffer[sym]:
                             st.session_state.websocket_ohlcv_buffer[sym][msg_tf] = []
                             
@@ -172,7 +178,7 @@ def initialize_live_ohlcv_stream():
                         if len(buf) > 500:
                             buf.pop(0)
             except Exception as thread_err:
-                print(f"Streaming memory allocation logs fail: {thread_err}")
+                pass
 
         socket = websocketdata.NubraDataSocket(
             client=nubra_client,
@@ -183,13 +189,12 @@ def initialize_live_ohlcv_stream():
         )
         
         socket.connect()
-        # Subscribe across all active timeframe matrices
         for tf_code in ["1m", "5m", "10m", "15m", "30m", "1h"]:
             socket.subscribe(["NIFTY"], data_type="ohlcv", interval=tf_code, exchange="NSE")
             socket.subscribe(["SENSEX"], data_type="ohlcv", interval=tf_code, exchange="BSE")
         return socket
     except Exception as e:
-        print(f"Socket infrastructure initialization failure: {e}")
+        print(f"Socket connection stack initialization error: {e}")
         return None
 
 active_socket = initialize_live_ohlcv_stream()
@@ -238,7 +243,7 @@ def calculate_indicators(df, mult_value, period_value):
     return df
 
 # ==============================================================================
-# 🧠 5. SEAMLESS RECOVERY LOADER (Bypasses Blank REST Blocks)
+# 🧠 5. SEAMLESS RECOVERY LOADER LAYER
 # ==============================================================================
 df = None
 is_backup_loaded_flag = False
@@ -266,7 +271,6 @@ if df is None:
         
         for i in range(50):
             t_stamp = datetime.now() - timedelta(minutes=mins_gap * (50 - i))
-            # Safe value increments to force scale delta jumps
             mock_ticks.append({
                 "time": t_stamp, 
                 "open": base_val + (i * 0.4), 

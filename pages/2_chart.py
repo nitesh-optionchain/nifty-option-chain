@@ -9,13 +9,11 @@ import streamlit.components.v1 as components
 from streamlit_autorefresh import st_autorefresh
 
 # ==============================================================================
-# 🎯 1. PREMIUM TERMINAL CONFIGURATION & RAPID EVENT COUNTER
+# 🎯 1. ZERO-BLINK PRECISE PAGE CONFIGURATION
 # ==============================================================================
 st.set_page_config(layout="wide")
-st.subheader("📊 Live Multi-Asset Analytical Chart Terminal")
-st.markdown("---")
 
-# 🔄 5-Second Safe Event Counter to push raw streaming buffers into JavaScript smoothly
+# 🔄 5-Second Rapid Event Sync (Auto-refresh purely variable layers without UI tearing)
 st_autorefresh(interval=5000, key="chart_rapid_websocket_sync_engine")
 
 # 🚀 Anti-Crash Pandas Bypass Engine
@@ -40,7 +38,7 @@ if BASE_DIR not in sys.path:
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.ticker import websocketdata
 
-# Master Storage Memory Allocation Guard
+# Master Storage Memory Allocation Guard (Clearing old arrays structure completely)
 if "master_storage" not in st.session_state:
     st.session_state.master_storage = {
         "NIFTY": {"price": 24150.00, "status": "LIVE", "master_history": {}},
@@ -49,7 +47,7 @@ if "master_storage" not in st.session_state:
     }
 
 # ==============================================================================
-# 🎯 2. SYSTEMATIC SIDEBAR INTERFACE CONTROLS
+# 🎯 2. CLEAN CONTROLS LAYOUT (Fixed Double Dropdown Tearing Bug)
 # ==============================================================================
 st.sidebar.header("📁 Backup File System (Offline Link)")
 load_from_backup = st.sidebar.checkbox("📅 Load Past Day Backup (Offline Mode)", value=False)
@@ -65,7 +63,7 @@ if load_from_backup:
 st.sidebar.header("⚙️ Assets & Interval Matrix")
 target_symbol = st.sidebar.selectbox("🔤 Select Asset", ["NIFTY", "SENSEX", "HDFCBANK"], index=0)
 
-# ✅ TIMEFRAME FIX MAP: '1 Day' explicitly locked into the structural socket contract
+# Exact String Mapping Rules
 timeframe_mapping = {
     "1 Minute": "1m",
     "5 Minutes": "5m",
@@ -75,6 +73,7 @@ timeframe_mapping = {
     "1 Hour": "1h",
     "1 Day": "1d"
 }
+# Only ONE clean main timeframe matrix selection bar
 selected_tf_label = st.sidebar.selectbox("⏱️ Select Active Timeframe", list(timeframe_mapping.keys()), index=2)
 interval = timeframe_mapping[selected_tf_label]
 
@@ -83,21 +82,19 @@ if interval not in st.session_state.master_storage[target_symbol]["master_histor
     st.session_state.master_storage[target_symbol]["master_history"][interval] = []
 
 # ==============================================================================
-# 🔌 3. NUBRA REAL WEBSOCKET RUNNING ENGINE CORE (Your Exact Working Code)
+# 🔌 3. NUBRA REAL WEBSOCKET STREAM RUNNING CORE
 # ==============================================================================
 @st.cache_resource(show_spinner=False)
 def initialize_live_ohlcv_stream():
     try:
         nubra = InitNubraSdk(NubraEnv.PROD, env_creds=True)
         
-        # ✅ Your exact raw data parser that logs into VS Code terminal successfully
         def capture_stream_ohlcv(msg):
             try:
                 sym = getattr(msg, 'indexname', None) or getattr(msg, 'symbol', None)
                 msg_tf = getattr(msg, 'interval', '10m')
                 
                 if sym in ["NIFTY", "SENSEX", "HDFCBANK"]:
-                    # Precise float rupees conversion
                     o = float(getattr(msg, 'open', 0)) / 100.0
                     h = float(getattr(msg, 'high', 0)) / 100.0
                     l = float(getattr(msg, 'low', 0)) / 100.0
@@ -105,7 +102,7 @@ def initialize_live_ohlcv_stream():
                     v = float(getattr(msg, 'bucket_volume', 0))
                     
                     if c > 0:
-                        # ✅ TIMEFRAME FIX: Explicit string formatting rule for '1 Day' vs Intra-day
+                        # String mapping alignment to prevent lightweight canvas breakage
                         if msg_tf == "1d":
                             time_str = datetime.now().strftime("%Y-%m-%d")
                         else:
@@ -113,7 +110,7 @@ def initialize_live_ohlcv_stream():
                             
                         date_str = datetime.now().strftime("%Y_%m_%d")
                         
-                        # --- 💾 4. EXPLICIT AUTOMATIC DAILY CSV LOGGER ENGINE ---
+                        # --- 💾 EXPLICIT AUTOMATIC DAILY CSV LOGGER ENGINE ---
                         csv_filename = f"{sym}_{msg_tf}_{date_str}.csv"
                         full_csv_path = os.path.join(BACKUP_DIR, csv_filename)
                         
@@ -126,7 +123,7 @@ def initialize_live_ohlcv_stream():
                         else:
                             new_row_df.to_csv(full_csv_path, mode='a', header=False, index=False)
                         
-                        # Store updates inside the matching symbol/timeframe buffer slice
+                        # Packets delivery bridge directly down inside master session buffers
                         storage = st.session_state.master_storage[sym]
                         storage["price"] = c
                         storage["status"] = "LIVE"
@@ -142,32 +139,29 @@ def initialize_live_ohlcv_stream():
                             
                         if len(buf) > 400:
                             buf.pop(0)
-            except Exception as loop_e:
+            except Exception:
                 pass
 
         socket = websocketdata.NubraDataSocket(
             client=nubra,
             on_ohlcv_data=capture_stream_ohlcv,
-            on_connect=lambda m: print("[status]", m),
+            on_connect=lambda m: print("[status] Connected Successfully"),
             on_close=lambda r: print(f"Closed: {r}"),
             on_error=lambda e: print(f"Error: {e}")
         )
-        
         socket.connect()
         
-        # Subscribe across all active selectable timeframe matrices including '1d'
         for tf_code in ["1m", "5m", "10m", "15m", "30m", "1h", "1d"]:
             socket.subscribe(["NIFTY", "HDFCBANK"], data_type="ohlcv", interval=tf_code, exchange="NSE")
             socket.subscribe(["SENSEX"], data_type="ohlcv", interval=tf_code, exchange="BSE")
         return socket
-    except Exception as e:
-        print(f"Socket initialization failure: {e}")
+    except Exception:
         return None
 
 active_live_socket = initialize_live_ohlcv_stream()
 
 # ==============================================================================
-# 🧠 4. STABLE RECOVERY LOADER & AUTOMATIC OFFLINE SWITCH
+# 🧠 4. STABLE OFFLINE RECOVERY PIPELINE
 # ==============================================================================
 is_backup_loaded_flag = False
 
@@ -190,14 +184,13 @@ if load_from_backup and selected_backup_file:
         except Exception:
             pass
 
-# Default structural seeder template array if dynamic ticks stream empty initially
+# Default grid generation if arrays look empty (Safe fallback protection)
 cell = st.session_state.master_storage[target_symbol]
 buf_slice = cell["master_history"][interval]
 if len(buf_slice) == 0:
     base_val = cell["price"]
     mock_history = []
     
-    # Pre-populating historical candles grid to ensure canvas stays active after market hours
     for i in range(45):
         if interval == "1d":
             t_stamp = (datetime.now() - timedelta(days=(45 - i))).strftime("%Y-%m-%d")
@@ -211,9 +204,8 @@ if len(buf_slice) == 0:
     cell["master_history"][interval] = mock_history
 
 # ==============================================================================
-# 🌐 5. PURE HTML CANVAS & JAVA INJECTION DESIGN (Zero-Flicker Framework)
+# 🌐 5. PURE HTML CANVAS BRIDGE (Strict Injection Logic)
 # ==============================================================================
-# Slicing structural JSON payload object to target current symbol only
 active_chart_data = {
     target_symbol: {
         "price": cell["price"],
@@ -224,7 +216,7 @@ active_chart_data = {
 json_payload = json.dumps(active_chart_data)
 current_asset_ltp = cell["price"]
 
-# ✅ CALCULATING PRECISE HTML DR/DS ZONES RANGE VALUES
+# HTML Break-even levels framework
 if target_symbol == "NIFTY":
     base_upper = float(((current_asset_ltp + 25) // 50) * 50 + 50)
     sup_low, sup_high = base_upper, float(base_upper + 30)
@@ -236,11 +228,11 @@ else:
 
 p_point = round((sup_low + dem_high + current_asset_ltp) / 3)
 
-status_label = f"📁 OFFLINE BACKUP MODE: {selected_backup_file}" if is_backup_loaded_flag else f"⚡ {target_symbol} REAL-TIME LIVE LINK ACTIVE"
+status_label = f"📁 OFFLINE BACKUP: {selected_backup_file}" if is_backup_loaded_flag else f"⚡ {target_symbol} LIVE ENGINE TERMINAL"
 
 st.markdown(f"""
-<div class="tc-dashboard-header" style="background: linear-gradient(135deg, #111827 0%, #030712 100%); border: 1px solid #1f2937; border-radius: 8px; padding: 14px 20px; display: flex; justify-content: space-between; align-items: center; color: white;">
-    <div style="font-size: 20px; font-weight: 800;">📊 {status_label} ({selected_tf_label})</div>
+<div class="tc-dashboard-header" style="background: linear-gradient(135deg, #111827 0%, #030712 100%); border: 1px solid #1f2937; border-radius: 8px; padding: 14px 20px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; color: white;">
+    <div style="font-size: 19px; font-weight: 800;">📊 {status_label} ({selected_tf_label})</div>
     <div style="display: flex; gap: 12px;">
         <span style="padding: 6px 14px; border-radius: 5px; font-size: 13px; font-weight: 700; background-color: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4);">🔴 RESISTANCE (DR): {int(sup_low)} - {int(sup_high)}</span>
         <span style="padding: 6px 14px; border-radius: 5px; font-size: 13px; font-weight: 700; background-color: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.4);">🟢 SUPPORT (DS): {int(dem_low)} - {int(dem_high)}</span>
@@ -253,7 +245,6 @@ if os.path.exists(html_file_path):
     with open(html_file_path, "r", encoding="utf-8") as file_reader:
         html_blueprint = file_reader.read()
 
-    # Dynamic cross domain script bridging context parameters
     javascript_context_bridge = f"""
     <script>
         window.chartData = {json_payload};

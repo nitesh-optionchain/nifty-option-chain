@@ -56,11 +56,12 @@ show_dma = st.sidebar.checkbox("📈 Show DMAs (9, 20, 50 Lines)", value=True)
 
 df = None
 
-# ⚡ DOCUMENTATION CONVERTED DATA FEED PIPELINE
+# ⚡ DOCUMENTATION CONVERTED DATA FEED PIPELINE (Robust Parameter Fix)
 if market_engine:
     try:
         end_dt = datetime.utcnow()
-        start_dt = end_dt - timedelta(days=7) 
+        # Intraday data fetch karne ke liye range ko 3-4 din tak limit rakhna optimal hai
+        start_dt = end_dt - timedelta(days=4) 
         
         exchange_type = "BSE" if target_symbol == "SENSEX" else "NSE"
         
@@ -73,43 +74,49 @@ if market_engine:
         if sensex_snap and sensex_snap.price:
             st.session_state.master_storage["SENSEX"]["price"] = float(sensex_snap.price) / 100.0
 
-        # Historical array parsing using the exact logic from your working script
+        # Historical array parsing using doc format with strict interval rules
         response = market_engine.historical_data({
             "exchange": exchange_type,
             "type": "INDEX",
             "values": [target_symbol],
             "fields": ["open", "high", "low", "close"],
-            "startDate": start_dt.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-            "endDate": end_dt.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+            "startDate": start_dt.strftime("%Y-%m-%dT00:00:00.000Z"),
+            "endDate": end_dt.strftime("%Y-%m-%dT23:59:59.000Z"),
             "interval": "5m",
-            "intraDay": True,
-            "realTime": False
+            "intraDay": True,  # Ensuring proper intraday block resolution
+            "realTime": True   # Dynamic tick bridge override
         })
 
-        if response and response.result and len(response.result) > 0:
+        if response and hasattr(response, 'result') and response.result and len(response.result) > 0:
             for instrument_dict in response.result[0].values:
                 if target_symbol in instrument_dict:
                     stock_chart = instrument_dict[target_symbol]
                     
-                    # Core timezone matching assignment from your backup script
-                    timestamps = [pd.to_datetime(p.timestamp, unit="ns", utc=True).tz_convert("Asia/Kolkata") for p in stock_chart.close]
-                    
-                    data = {
-                        "open": [float(p.value / 100.0) for p in stock_chart.open],
-                        "high": [float(p.value / 100.0) for p in stock_chart.high],
-                        "low": [float(p.value / 100.0) for p in stock_chart.low],
-                        "close": [float(p.value / 100.0) for p in stock_chart.close]
-                    }
-                    df = pd.DataFrame(data, index=timestamps)
-                    df.sort_index(inplace=True)
-                    
-                    # Dynamically calculate indicators
-                    df['dma_9'] = df['close'].rolling(window=9, min_periods=1).mean()
-                    df['dma_20'] = df['close'].rolling(window=20, min_periods=1).mean()
-                    df['dma_50'] = df['close'].rolling(window=50, min_periods=1).mean()
-                    
+                    if hasattr(stock_chart, 'close') and stock_chart.close:
+                        # Extracting open data points to safely length check array execution depths
+                        total_ticks = len(stock_chart.close)
+                        
+                        # Fallback mapping if object data unpacking has internal structural differences
+                        timestamps = [pd.to_datetime(getattr(p, 'timestamp', None) or datetime.utcnow(), unit="ns", utc=True).tz_convert("Asia/Kolkata") for p in stock_chart.close]
+                        
+                        data = {
+                            "open": [float(stock_chart.open[i].value / 100.0) for i in range(total_ticks)],
+                            "high": [float(stock_chart.high[i].value / 100.0) for i in range(total_ticks)],
+                            "low": [float(stock_chart.low[i].value / 100.0) for i in range(total_ticks)],
+                            "close": [float(stock_chart.close[i].value / 100.0) for i in range(total_ticks)]
+                        }
+                        
+                        df = pd.DataFrame(data, index=timestamps)
+                        df.sort_index(inplace=True)
+                        
+                        # Dynamically calculate moving averages indicators safely
+                        df['dma_9'] = df['close'].rolling(window=9, min_periods=1).mean()
+                        df['dma_20'] = df['close'].rolling(window=20, min_periods=1).mean()
+                        df['dma_50'] = df['close'].rolling(window=50, min_periods=1).mean()
+                        
     except Exception as error:
-        pass
+        # Dynamic tracking fallback print statement visible in cloud logs
+        print(f"Extraction error trace pipeline: {error}")
 
 # ==============================================================================
 # 🖥️ CLEAN PLOTLY CANVAS INJECTION

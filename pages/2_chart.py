@@ -35,7 +35,7 @@ if "master_storage" not in st.session_state:
         "SENSEX": {"price": 0.0, "status": "LIVE"}
     }
 
-# 🔄 Anti-Collision Shared Connection Bridge
+# 🔄 Pure Global Session Broker Engine Bridge (Anti-Collision Proxy)
 market_engine = None
 if "global_market_engine" in st.session_state and st.session_state.global_market_engine is not None:
     market_engine = st.session_state.global_market_engine
@@ -56,16 +56,15 @@ show_dma = st.sidebar.checkbox("📈 Show DMAs (9, 20, 50 Lines)", value=True)
 
 df = None
 
-# ⚡ DOCUMENTATION CONVERTED DATA FEED PIPELINE (Robust Parameter Fix)
+# ⚡ CORE CONVERTED HISTORICAL DATA ENGINE
 if market_engine:
     try:
         end_dt = datetime.utcnow()
-        # Intraday data fetch karne ke liye range ko 3-4 din tak limit rakhna optimal hai
-        start_dt = end_dt - timedelta(days=4) 
+        start_dt = end_dt - timedelta(days=5) 
         
         exchange_type = "BSE" if target_symbol == "SENSEX" else "NSE"
         
-        # High speed snapshot fetch
+        # High speed snapshot fetch for top bar
         nifty_snap = market_engine.current_price("NIFTY", exchange="NSE")
         if nifty_snap and nifty_snap.price:
             st.session_state.master_storage["NIFTY"]["price"] = float(nifty_snap.price) / 100.0
@@ -74,70 +73,65 @@ if market_engine:
         if sensex_snap and sensex_snap.price:
             st.session_state.master_storage["SENSEX"]["price"] = float(sensex_snap.price) / 100.0
 
-        # Historical array parsing using doc format with strict interval rules
+        # Requesting historical data feed array
         response = market_engine.historical_data({
             "exchange": exchange_type,
             "type": "INDEX",
             "values": [target_symbol],
             "fields": ["open", "high", "low", "close"],
-            "startDate": start_dt.strftime("%Y-%m-%dT00:00:00.000Z"),
-            "endDate": end_dt.strftime("%Y-%m-%dT23:59:59.000Z"),
+            "startDate": start_dt.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+            "endDate": end_dt.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
             "interval": "5m",
-            "intraDay": True,  # Ensuring proper intraday block resolution
-            "realTime": True   # Dynamic tick bridge override
+            "intraDay": True,
+            "realTime": False
         })
 
         if response and hasattr(response, 'result') and response.result and len(response.result) > 0:
+            # 🎯 Using the exact list comprehension parsing logic from your working chart script
             for instrument_dict in response.result[0].values:
                 if target_symbol in instrument_dict:
                     stock_chart = instrument_dict[target_symbol]
                     
                     if hasattr(stock_chart, 'close') and stock_chart.close:
-                        # Extracting open data points to safely length check array execution depths
-                        total_ticks = len(stock_chart.close)
-                        
-                        # Fallback mapping if object data unpacking has internal structural differences
-                        timestamps = [pd.to_datetime(getattr(p, 'timestamp', None) or datetime.utcnow(), unit="ns", utc=True).tz_convert("Asia/Kolkata") for p in stock_chart.close]
+                        timestamps = [pd.to_datetime(p.timestamp, unit="ns", utc=True).tz_convert("Asia/Kolkata") for p in stock_chart.close]
                         
                         data = {
-                            "open": [float(stock_chart.open[i].value / 100.0) for i in range(total_ticks)],
-                            "high": [float(stock_chart.high[i].value / 100.0) for i in range(total_ticks)],
-                            "low": [float(stock_chart.low[i].value / 100.0) for i in range(total_ticks)],
-                            "close": [float(stock_chart.close[i].value / 100.0) for i in range(total_ticks)]
+                            "open": [float(p.value / 100.0) for p in stock_chart.open],
+                            "high": [float(p.value / 100.0) for p in stock_chart.high],
+                            "low": [float(p.value / 100.0) for p in stock_chart.low],
+                            "close": [float(p.value / 100.0) for p in stock_chart.close]
                         }
                         
                         df = pd.DataFrame(data, index=timestamps)
                         df.sort_index(inplace=True)
                         
-                        # Dynamically calculate moving averages indicators safely
+                        # Indicators computation layer
                         df['dma_9'] = df['close'].rolling(window=9, min_periods=1).mean()
                         df['dma_20'] = df['close'].rolling(window=20, min_periods=1).mean()
                         df['dma_50'] = df['close'].rolling(window=50, min_periods=1).mean()
                         
     except Exception as error:
-        # Dynamic tracking fallback print statement visible in cloud logs
-        print(f"Extraction error trace pipeline: {error}")
+        pass
 
 # ==============================================================================
 # 🖥️ CLEAN PLOTLY CANVAS INJECTION
 # ==============================================================================
 current_ltp = st.session_state.master_storage[target_symbol]["price"]
 
-# Sirf saaf aur clear price header
 if current_ltp > 0:
     st.markdown(f"### ₹{current_ltp:,.2f} <span style='font-size:14px; color:#94a3b8;'>({target_symbol} Live LTP)</span>", unsafe_allow_html=True)
 
 if df is not None and not df.empty:
     fig = make_subplots(rows=1, cols=1)
 
-    # Candlesticks Trace
+    # Candlesticks Trace Layer
     fig.add_trace(gr.Candlestick(
         x=df.index, open=df['open'], high=df['high'], low=df['low'], close=df['close'], name="Price",
         increasing_line_color='#00cc66', decreasing_line_color='#ff3333',
         increasing_fillcolor='#00cc66', decreasing_fillcolor='#ff3333'
     ), row=1, col=1)
 
-    # Indicators Trace
+    # Moving Averages Trace Layer
     if show_dma:
         fig.add_trace(gr.Scatter(x=df.index, y=df['dma_9'], line=dict(color="#ffeb3b", width=1.5), name="9 DMA"), row=1, col=1)
         fig.add_trace(gr.Scatter(x=df.index, y=df['dma_20'], line=dict(color="#00e5ff", width=1.5), name="20 DMA"), row=1, col=1)
@@ -148,7 +142,7 @@ if df is not None and not df.empty:
         xaxis_rangeslider_visible=False,
         template="plotly_dark",
         margin=dict(l=15, r=10, t=10, b=30),
-        yaxis=dict(side="right", showgrid=True, gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=11)),
+        yaxis=dict(side="right", showgrid=True, gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=11), tickformat=".2f"),
         xaxis=dict(showgrid=True, gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=11)),
         paper_bgcolor='#030712',
         plot_bgcolor='#030712'

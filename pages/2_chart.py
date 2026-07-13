@@ -35,7 +35,7 @@ if "master_storage" not in st.session_state:
         "SENSEX": {"price": 0.0, "status": "LIVE"}
     }
 
-# 🔄 Pure Global Session Broker Engine Bridge (Anti-Collision Proxy)
+# 🔄 Shared Session Connection Engine (Anti-Collision Proxy)
 market_engine = None
 if "global_market_engine" in st.session_state and st.session_state.global_market_engine is not None:
     market_engine = st.session_state.global_market_engine
@@ -56,7 +56,7 @@ show_dma = st.sidebar.checkbox("📈 Show DMAs (9, 20, 50 Lines)", value=True)
 
 df = None
 
-# ⚡ CORE CONVERTED HISTORICAL DATA ENGINE
+# ⚡ FOOLPROOF HISTORICAL DATA PARSING ENGINE
 if market_engine:
     try:
         end_dt = datetime.utcnow()
@@ -64,7 +64,7 @@ if market_engine:
         
         exchange_type = "BSE" if target_symbol == "SENSEX" else "NSE"
         
-        # High speed snapshot fetch for top bar
+        # Live price update for top bar header
         nifty_snap = market_engine.current_price("NIFTY", exchange="NSE")
         if nifty_snap and nifty_snap.price:
             st.session_state.master_storage["NIFTY"]["price"] = float(nifty_snap.price) / 100.0
@@ -73,7 +73,7 @@ if market_engine:
         if sensex_snap and sensex_snap.price:
             st.session_state.master_storage["SENSEX"]["price"] = float(sensex_snap.price) / 100.0
 
-        # Requesting historical data feed array
+        # API Historical Call
         response = market_engine.historical_data({
             "exchange": exchange_type,
             "type": "INDEX",
@@ -86,29 +86,42 @@ if market_engine:
             "realTime": False
         })
 
-        if response and hasattr(response, 'result') and response.result and len(response.result) > 0:
-            # 🎯 Using the exact list comprehension parsing logic from your working chart script
-            for instrument_dict in response.result[0].values:
-                if target_symbol in instrument_dict:
-                    stock_chart = instrument_dict[target_symbol]
-                    
-                    if hasattr(stock_chart, 'close') and stock_chart.close:
-                        timestamps = [pd.to_datetime(p.timestamp, unit="ns", utc=True).tz_convert("Asia/Kolkata") for p in stock_chart.close]
-                        
-                        data = {
-                            "open": [float(p.value / 100.0) for p in stock_chart.open],
-                            "high": [float(p.value / 100.0) for p in stock_chart.high],
-                            "low": [float(p.value / 100.0) for p in stock_chart.low],
-                            "close": [float(p.value / 100.0) for p in stock_chart.close]
-                        }
-                        
-                        df = pd.DataFrame(data, index=timestamps)
-                        df.sort_index(inplace=True)
-                        
-                        # Indicators computation layer
-                        df['dma_9'] = df['close'].rolling(window=9, min_periods=1).mean()
-                        df['dma_20'] = df['close'].rolling(window=20, min_periods=1).mean()
-                        df['dma_50'] = df['close'].rolling(window=50, min_periods=1).mean()
+        # Foolproof Data Unpacking Logic
+        if response and hasattr(response, 'result') and response.result:
+            # 1. Direct result traversal based on Nubra response format
+            for res_item in response.result:
+                if hasattr(res_item, 'values') and res_item.values:
+                    for v_item in res_item.values:
+                        # Checking if data structure is dictionary or custom object
+                        stock_chart = None
+                        if isinstance(v_item, dict) and target_symbol in v_item:
+                            stock_chart = v_item[target_symbol]
+                        elif hasattr(v_item, target_symbol):
+                            stock_chart = getattr(v_item, target_symbol)
+                        elif hasattr(v_item, 'get'):
+                            stock_chart = v_item.get(target_symbol)
+
+                        # If data block is found, extract arrays immediately
+                        if stock_chart and hasattr(stock_chart, 'close') and stock_chart.close:
+                            timestamps = [pd.to_datetime(p.timestamp, unit="ns", utc=True).tz_convert("Asia/Kolkata") for p in stock_chart.close]
+                            
+                            data = {
+                                "open": [float(p.value / 100.0) for p in stock_chart.open],
+                                "high": [float(p.value / 100.0) for p in stock_chart.high],
+                                "low": [float(p.value / 100.0) for p in stock_chart.low],
+                                "close": [float(p.value / 100.0) for p in stock_chart.close]
+                            }
+                            
+                            df = pd.DataFrame(data, index=timestamps)
+                            df.sort_index(inplace=True)
+                            
+                            # Indicators Computation Layer
+                            df['dma_9'] = df['close'].rolling(window=9, min_periods=1).mean()
+                            df['dma_20'] = df['close'].rolling(window=20, min_periods=1).mean()
+                            df['dma_50'] = df['close'].rolling(window=50, min_periods=1).mean()
+                            break
+                    if df is not None:
+                        break
                         
     except Exception as error:
         pass

@@ -37,27 +37,39 @@ if "master_storage" not in st.session_state:
     }
 
 # ==============================================================================
-# 🔐 2. GLOBAL CACHED RESOURCE ENGINE (Single Authorization Session Lock)
+# 🔐 2. UNIFIED GLOBAL CACHE SESSION BROKER (Strict Anti-Collision Token Lock)
 # ==============================================================================
 @st.cache_resource(show_spinner=False)
-def initialize_cached_nubra_engine():
+def initialize_unified_nubra_session():
+    """
+    Official Doc Flow: Authenticates the core client exactly ONCE globally.
+    Reuses the exact same login instance token for both REST and WebSocket maps,
+    permanently solving the 'Unauthorized even after re-login' collision loop.
+    """
     try:
-        # Initializing core cloud token handshake mapping from secrets
-        client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
-        return MarketData(client)
+        # Step 1: Create a single authenticated SDK client session instance
+        client_instance = InitNubraSdk(NubraEnv.PROD, env_creds=True)
+        
+        # Step 2: Bind that single instance to the MarketData REST module
+        engine_rest = MarketData(client_instance)
+        
+        # Return both so they share the exact same active handshake payload token
+        return client_instance, engine_rest
     except Exception as network_error:
         print(f"Master Session Identity Crash: {network_error}")
-        return None
+        return None, None
 
-market_engine = initialize_cached_nubra_engine()
+# Instantiating the shared session components globally
+session_broker = initialize_unified_nubra_session()
+shared_client, market_engine = session_broker
 
 # ==============================================================================
 # ⚡ 3. OFFICIAL V3 HISTORICAL SEED ENGINE (Pre-loads Past Candles to Grid)
 # ==============================================================================
-if market_engine and len(st.session_state.master_storage["NIFTY"]["master_history"]) == 0:
+if market_engine and len(st.session_state.master_storage["NIFTY"]["master_history"]) <= 1:
     try:
         end_dt = datetime.utcnow()
-        start_dt = end_dt - timedelta(days=3) 
+        start_dt = end_dt - timedelta(days=2) 
         start_str = start_dt.strftime("%Y-%m-%dT00:00:00.000Z")
         end_str = end_dt.strftime("%Y-%m-%dT23:59:59.000Z")
 
@@ -105,27 +117,29 @@ if market_engine and len(st.session_state.master_storage["NIFTY"]["master_histor
         print(f"Historical background processing delay: {history_error}")
 
 # ==============================================================================
-# 🔌 4. REALTIME WEBSOCKET TICKER PIPELINE (Systematic 'on_index_data' Layout)
+# 🔌 4. REALTIME WEBSOCKET TICKER PIPELINE (Systematic Shared Client Layout)
 # ==============================================================================
 @st.cache_resource(show_spinner=False)
-def initialize_live_stream_socket():
+def initialize_live_stream_socket(_client):
+    """
+    Accepts the globally authenticated unique client token instance.
+    Guarantees no duplicate logins hit the cloud infrastructure.
+    """
+    if _client is None:
+        return None
     try:
-        nubra_client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
-
         def capture_stream_index(msg):
             try:
-                # Extract index name tracking identity strictly matching user parameters
                 symbol_key = getattr(msg, 'indexname', None) or getattr(msg, 'symbol', None)
                 
                 if symbol_key in ["NIFTY", "SENSEX"]:
-                    # Unpacking continuous ticks matching precise official schema parameters
-                    current_ltp = float(getattr(msg, 'index_value', 0)) / 100.0
-                    open_val = float(getattr(msg, 'index_value', current_ltp)) / 100.0
-                    high_val = float(getattr(msg, 'high_index_value', current_ltp)) / 100.0
-                    low_val = float(getattr(msg, 'low_index_value', current_ltp)) / 100.0
+                    # Unpacking continuous index value packets from the official stream fields
+                    current_ltp = float(getattr(msg, 'index_value', 0))
+                    open_val = float(getattr(msg, 'open', current_ltp))
+                    high_val = float(getattr(msg, 'high_index_value', current_ltp))
+                    low_val = float(getattr(msg, 'low_index_value', current_ltp))
                     
                     if current_ltp > 0:
-                        # Writing stream results securely into thread memory buffer
                         target_cell = st.session_state.master_storage[symbol_key]
                         target_cell["price"] = current_ltp
                         target_cell["status"] = "LIVE"
@@ -133,7 +147,6 @@ def initialize_live_stream_socket():
                         history = target_cell["master_history"]
                         candle_stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         
-                        # Realtime continuous forming candlestick loop calculation modifier
                         if len(history) > 0 and history[-1]["time"] == candle_stamp:
                             history[-1]["high"] = max(history[-1]["high"], high_val)
                             history[-1]["low"] = min(history[-1]["low"], low_val)
@@ -149,9 +162,9 @@ def initialize_live_stream_socket():
             except Exception as stream_err:
                 print(f"Websocket index payload processing error: {stream_err}")
 
-        # Constructing persistent WebSocket connection proxy using your blueprint template
+        # Constructing persistent WebSocket connection proxy sharing the active broker link
         socket_instance = websocketdata.NubraDataSocket(
-            client=nubra_client,
+            client=_client, # Passing the verified unique parent auth connection
             on_index_data=capture_stream_index,
             on_connect=lambda m: print("[Socket Status: CONNECTED]"),
             on_close=lambda r: print(f"Socket connection closed: {r}"),
@@ -167,12 +180,12 @@ def initialize_live_stream_socket():
         print(f"WebSocket client registration thread failure: {socket_error}")
         return None
 
-active_live_socket = initialize_live_stream_socket()
+# Triggering the socket pipeline cleanly using the underscore parameter bypass
+active_live_socket = initialize_live_stream_socket(shared_client)
 
 # ==============================================================================
 # 🌐 5. ZERO-FLICKER HTML CANVAS DATA INJECTION BRIDGE
 # ==============================================================================
-# Final verification guard to keep canvas structured even if initial payload loads empty
 for key in ["NIFTY", "SENSEX"]:
     cell = st.session_state.master_storage[key]
     if len(cell["master_history"]) == 0:
@@ -185,7 +198,6 @@ if os.path.exists(html_file_path):
     with open(html_file_path, "r", encoding="utf-8") as file_reader:
         html_blueprint = file_reader.read()
 
-    # Dynamic JSON serialization mapping structure binding safely
     master_json = json.dumps(st.session_state.master_storage)
 
     javascript_context_bridge = f"""
@@ -197,4 +209,4 @@ if os.path.exists(html_file_path):
     html_blueprint = html_blueprint.replace("<head>", f"<head>{javascript_context_bridge}")
     components.html(html_blueprint, height=850, scrolling=True)
 else:
-    st.error("❌ System core exception: 'index.html' canvas target module was not found.")
+    st.error("❌ System core exception: 'index.html' target module was not found.")

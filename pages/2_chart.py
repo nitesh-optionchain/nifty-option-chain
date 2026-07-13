@@ -90,7 +90,8 @@ if market_engine:
                     "exchange": "NSE", "type": "INDEX", "values": ["NIFTY"],
                     "fields": ["open", "high", "low", "close"],
                     "startDate": start_str, "endDate": end_str, "interval": "5m",
-                    "intraDay": True, "realTime": False
+                    "intraDay": True, 
+                    "realTime": True  # 🔄 Changed to True to fetch the processing forming candle!
                 })
                 if nifty_res and hasattr(nifty_res, 'result') and nifty_res.result and len(nifty_res.result) > 0:
                     for instrument_dict in nifty_res.result[0].values:
@@ -120,7 +121,8 @@ if market_engine:
                     "exchange": "BSE", "type": "INDEX", "values": ["SENSEX"],
                     "fields": ["open", "high", "low", "close"],
                     "startDate": start_str, "endDate": end_str, "interval": "5m",
-                    "intraDay": True, "realTime": False
+                    "intraDay": True, 
+                    "realTime": True  # 🔄 Changed to True for live tracking feed
                 })
                 if sensex_res and hasattr(sensex_res, 'result') and sensex_res.result and len(sensex_res.result) > 0:
                     for instrument_dict in sensex_res.result[0].values:

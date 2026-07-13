@@ -6,13 +6,13 @@ from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
 import os
 import sys
-# ⏱️ 40-Seconds Automatic Live Engine Runner Module Injection
+# ⏱️ Multi-Tick Loop Synchronization
 from streamlit_autorefresh import st_autorefresh
 
 # ================= 1. PAGE SETUP =================
 st.set_page_config(layout="wide", page_title="SmartWealth Premium Terminal")
 
-# 🔄 AUTOMATIC ENGINE TICK RUNNER (Strict 40-Seconds Auto-Refresh Lock)
+# 🔄 PURE ANTI-FROZEN AUTO-REFRESH ENGINE (Strict 40-Seconds Interval Lock)
 refresh_count = st_autorefresh(interval=40000, key="chart_auto_tick_engine")
 
 # 🌟 PREMIUM DARK THEME STYLE SHEET INJECTION
@@ -136,7 +136,7 @@ timeframe_mapping = {
     "30 Minutes": "30m",
     "Daily": "1d"
 }
-selected_tf_label = st.sidebar.selectbox("⏱️ Select Timeframe", list(timeframe_mapping.keys()), index=0) # Default to 5m for dynamic test
+selected_tf_label = st.sidebar.selectbox("⏱️ Select Timeframe", list(timeframe_mapping.keys()), index=0)
 interval = timeframe_mapping[selected_tf_label]
 
 st.sidebar.header("📊 Indicators Visibility")
@@ -169,7 +169,8 @@ with st.sidebar.expander("Draw Manual Lines"):
     draw_v_line = st.checkbox("Enable Vertical Line")
     v_line_idx = st.number_input("Vertical Line Candle Offset", min_value=1, max_value=100, value=5)
     v_line_color = st.color_picker("Vertical Line Color", "#ff00ff")
-# 🔒 3. AUTOMATIC SDK AUTH HANDSHAKE (Anti-Collision Protocol)
+
+# 🔒 3. AUTOMATIC SDK AUTH HANDSHAKE (Anti-Collision Protocol Upgrade)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
@@ -192,9 +193,8 @@ else:
             market_data = st.session_state['market_data']
 
 if market_data is None:
-    st.error("❌ Market engine authentication unavailable due to session conflicts")
+    st.error("❌ Market connection layer unavailable. Please restart stream manager context.")
     st.stop()
-
 # ==============================================================================
 # 🧠 4. MATHEMATICAL INDICATORS COMPUTATION ENGINE
 # ==============================================================================
@@ -233,7 +233,6 @@ def calculate_indicators(df, mult_value, period_value, rsi_pd_value, interval):
     
     df['supertrend'] = np.nan
     df['trend'] = 1
-
     df.iloc[0, df.columns.get_loc('supertrend')] = df['lower_band'].iloc[0]
     
     for i in range(1, len(df)):
@@ -295,7 +294,7 @@ if load_from_backup and selected_backup_file:
         st.sidebar.success(f"Loaded Offline: {selected_backup_file}")
 
 if df is None:
-    with st.spinner(f"Requesting live chart dataset for {target_symbol}..."):
+    with st.spinner(f"Unpacking live structural data metrics for {target_symbol}..."):
         end_dt = datetime.utcnow()
         lookback_days = 60 if interval == "1d" else 4
         start_dt = end_dt - timedelta(days=lookback_days) 
@@ -316,16 +315,16 @@ if df is None:
                 "realTime": False
             })
             
-            if response and hasattr(response, 'result') and response.result and len(response.result) > 0:
-                # 🛠️ Safe Unpacker checking both list array forms and nested dict patterns
+            # Master SDK Data Mapping Structure
+            if response and hasattr(response, 'result') and response.result:
                 stock_chart = None
                 for res_obj in response.result:
                     if hasattr(res_obj, 'values') and res_obj.values:
-                        for item in res_obj.values:
-                            if isinstance(item, dict) and target_symbol in item:
-                                stock_chart = item[target_symbol]
-                            elif hasattr(item, target_symbol):
-                                stock_chart = getattr(item, target_symbol)
+                        for val_item in res_obj.values:
+                            if isinstance(val_item, dict) and target_symbol in val_item:
+                                stock_chart = val_item[target_symbol]
+                            elif hasattr(val_item, target_symbol):
+                                stock_chart = getattr(val_item, target_symbol)
                             if stock_chart:
                                 break
                     if stock_chart:
@@ -366,11 +365,11 @@ if df is None:
                             st.sidebar.info(f"💾 Auto-Backup Created: {backup_name}")
                             
         except Exception as e:
-            st.error(f"API Extraction Error: {e}")
+            st.error(f"Extraction Pipeline Fail Trace: {e}")
             st.stop()
 
 if df is None or len(df) == 0:
-    st.error(f"❌ '{target_symbol}' ke liye data block load nahi ho paya. Server logs check kijiye.")
+    st.error(f"❌ '{target_symbol}' ke liye historical array blank mili. Switch matrix reload maariye.")
     st.stop()
 
 latest_row = df.iloc[-1]
@@ -438,7 +437,7 @@ header_html = f"""
 st.markdown(header_html, unsafe_allow_html=True)
 
 # ==============================================================================
-# 🖥️ 8. PLOTLY SUBPLOT VIEWER
+# 🖥️ 8. PLOTLY MULTI-INDICATOR CANVAS
 # ==============================================================================
 fig = make_subplots(rows=1, cols=1)
 
@@ -517,7 +516,7 @@ fig.add_trace(gr.Scatter(
 ), row=1, col=1)
 
 # ==============================================================================
-# 🚀 VISIBILITY DYNAMIC RANGE ENGINE
+# 🚀 VISIBILITY DYNAMIC SPECTRUM SCALING ENGINE
 # ==============================================================================
 min_price = float(df['low'].min())
 max_price = float(df['high'].max())

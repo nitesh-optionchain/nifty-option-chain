@@ -40,8 +40,8 @@ if PHONE_NO and MPIN:
 # Master Data Storage Context Framework
 if "master_storage" not in st.session_state:
     st.session_state.master_storage = {
-        "NIFTY": {"price": 24130.55, "status": "LIVE", "master_history": []},
-        "SENSEX": {"price": 77335.16, "status": "LIVE", "master_history": []}
+        "NIFTY": {"price": 24154.00, "status": "LIVE", "master_history": []},
+        "SENSEX": {"price": 77335.00, "status": "LIVE", "master_history": []}
     }
 
 # ==============================================================================
@@ -59,7 +59,7 @@ def initialize_cached_nubra_engine():
 market_engine = initialize_cached_nubra_engine()
 
 # ==============================================================================
-# ⚡ 3. HYBRID HISTORICAL LOADER ENGINE (Loads historical records into storage)
+# ⚡ 3. HYBRID HISTORICAL LOADER ENGINE (Pre-loads stable database blocks)
 # ==============================================================================
 if market_engine and len(st.session_state.master_storage["NIFTY"]["master_history"]) == 0:
     try:
@@ -79,10 +79,9 @@ if market_engine and len(st.session_state.master_storage["NIFTY"]["master_histor
             if snap and snap.price:
                 st.session_state.master_storage[asset_key]["price"] = float(snap.price) / 100.0
             
-            # Fetching raw stable history packets to ensure structural grid rendering
             res = market_engine.historical_data({
                 "exchange": ex_type, "type": "INDEX", "values": [asset_key],
-                "fields": ["open", "high", "low", "close", "cumulative_volume"],
+                "fields": ["open", "high", "low", "close"],
                 "startDate": start_str, "endDate": end_str, "interval": "10m",
                 "intraDay": True, "realTime": False
             })
@@ -95,66 +94,63 @@ if market_engine and len(st.session_state.master_storage["NIFTY"]["master_histor
                         highs = unpack_nubra_points(stock_chart.high)
                         lows = unpack_nubra_points(stock_chart.low)
                         closes = unpack_nubra_points(stock_chart.close)
-                        vols = unpack_nubra_points(getattr(stock_chart, 'cumulative_volume', []))
                         
                         if len(opens) > 0:
                             history_list = []
                             for i in range(len(opens)):
-                                c_vol = vols[i] if i < len(vols) else 0.0
-                                # Time allocation logic formatted exactly for trading chart properties
                                 stamp = (datetime.now() - timedelta(minutes=10 * (len(opens) - i))).strftime("%Y-%m-%d %H:%M:%S")
                                 history_list.append({
                                     "time": stamp,
-                                    "open": float(opens[i]/100), "high": float(highs[i]/100),
-                                    "low": float(lows[i]/100), "close": float(closes[i]/100),
-                                    "volume": float(c_vol)
+                                    "open": float(opens[i]/100.0), "high": float(highs[i]/100.0),
+                                    "low": float(lows[i]/100.0), "close": float(closes[i]/100.0),
+                                    "volume": 100.0
                                 })
                             st.session_state.master_storage[asset_key]["master_history"] = history_list
                             
-            # Emergency Safe Baseline Injection if REST API falls back empty
             if len(st.session_state.master_storage[asset_key]["master_history"]) == 0:
                 base_p = st.session_state.master_storage[asset_key]["price"]
                 st.session_state.master_storage[asset_key]["master_history"] = [
                     {"time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "open": base_p, "high": base_p, "low": base_p, "close": base_p, "volume": 1.0}
                 ]
     except Exception as e:
-        print(f"Hybrid loading pipeline fallback: {e}")
+        print(f"Historical pre-load pipeline exception: {e}")
 
 # ==============================================================================
-# 🔌 4. REALTIME LIVE BACKGROUND WEBSOCKET PIPELINE 
+# 🔌 4. REALTIME LIVE BACKGROUND WEBSOCKET PIPELINE (Strict on_index_data Mod)
 # ==============================================================================
 @st.cache_resource(show_spinner=False)
 def initialize_live_stream_socket():
     try:
         nubra_client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
         
-        def capture_stream_ohlcv(msg):
+        # ✅ Fixed to catch index messages matching your accurate verified SDK logs
+        def capture_stream_index(msg):
             try:
                 idx_name = getattr(msg, 'indexname', None) or getattr(msg, 'symbol', None)
                 if idx_name in ["NIFTY", "SENSEX"]:
-                    o = float(getattr(msg, 'open', 0)) / 100.0
-                    h = float(getattr(msg, 'high', 0)) / 100.0
-                    l = float(getattr(msg, 'low', 0)) / 100.0
-                    c = float(getattr(msg, 'close', 0)) / 100.0
-                    v = float(getattr(msg, 'tick_volume', 0)) or float(getattr(msg, 'bucket_volume', 0))
+                    # Extraction mapping logic using strict type check conversions
+                    o = float(getattr(msg, 'open', 0))
+                    h = float(getattr(msg, 'high', 0))
+                    l = float(getattr(msg, 'low', 0))
+                    c = float(getattr(msg, 'close', 0))
                     
                     if c > 0:
                         storage = st.session_state.master_storage[idx_name]
                         storage["price"] = c
+                        storage["status"] = "LIVE"
                         
                         history_arr = storage["master_history"]
                         candle_stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         
                         if len(history_arr) > 0:
-                            # Direct realtime updates matching the forming candlestick properties
+                            # Dynamic real-time expansion adjustments to the forming candlestick parameters
                             history_arr[-1]["high"] = max(history_arr[-1]["high"], h)
                             history_arr[-1]["low"] = min(history_arr[-1]["low"], l)
                             history_arr[-1]["close"] = c
-                            history_arr[-1]["volume"] += v
                         else:
                             history_arr.append({
                                 "time": candle_stamp,
-                                "open": o, "high": h, "low": l, "close": c, "volume": v
+                                "open": o, "high": h, "low": l, "close": c, "volume": 100.0
                             })
                             
                         if len(history_arr) > 300:
@@ -164,22 +160,21 @@ def initialize_live_stream_socket():
 
         socket_instance = websocketdata.NubraDataSocket(
             client=nubra_client,
-            on_ohlcv_data=capture_stream_ohlcv,
+            on_index_data=capture_stream_index,  # ✅ Hooked strictly to index receiver function
             on_connect=lambda m: print("[Socket Connected Successfully]"),
             on_close=lambda r: print(f"Connection closed: {r}"),
             on_error=lambda e: print(f"Socket tracking exception: {e}")
         )
         
         socket_instance.connect()
-        socket_instance.subscribe(["NIFTY"], data_type="ohlcv", interval="10m", exchange="NSE")
-        socket_instance.subscribe(["SENSEX"], data_type="ohlcv", interval="10m", exchange="BSE")
+        socket_instance.subscribe(["NIFTY"], data_type="index", exchange="NSE")
+        socket_instance.subscribe(["SENSEX"], data_type="index", exchange="BSE")
         
         return socket_instance
     except Exception as network_error:
         print(f"WebSocket handshake crash: {network_error}")
         return None
 
-# Instantiating socket pipeline silently inside cache wrapper
 active_live_socket = initialize_live_stream_socket()
 
 # ==============================================================================
@@ -189,7 +184,6 @@ if os.path.exists(html_file_path):
     with open(html_file_path, "r", encoding="utf-8") as f:
         html_content = f.read()
 
-    # Dynamic structural data binding into cross domain layout context
     json_data = json.dumps(st.session_state.master_storage)
 
     injection_script = f"""

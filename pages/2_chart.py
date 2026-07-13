@@ -1,277 +1,167 @@
 import sys
 import os
-import json
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import streamlit as st
 import plotly.graph_objects as gr
 from plotly.subplots import make_subplots
-from streamlit_autorefresh import st_autorefresh
 
-# ==============================================================================
-# 🎯 1. TERMINAL CONFIGURATION & RAPID EVENT SYNC TIMER
-# ==============================================================================
-st.set_page_config(layout="wide", page_title="SmartWealth Premium Terminal")
+# 📊 Wide mode terminal layout configuration
+st.set_page_config(layout="wide")
+st.subheader("📊 Live Multi-Asset Analytical Chart Terminal")
+st.markdown("---")
 
-# 🔄 5-Second Safe Event Counter to catch incoming thread matrix changes smoothly
-st_autorefresh(interval=5000, key="chart_plotly_websocket_heartbeat")
-
-# 🌟 PREMIUM DARK THEME STYLE SHEET INJECTION
-st.markdown("""
-    <style>
-        .block-container { padding-top: 1.2rem !important; padding-bottom: 1rem !important; max-width: 100% !important; }
-        .tc-dashboard-header {
-            background: linear-gradient(135deg, #111827 0%, #030712 100%);
-            border: 1px solid #1f2937; border-radius: 8px; padding: 14px 20px;
-            margin-bottom: 18px; display: flex; flex-wrap: wrap;
-            justify-content: space-between; align-items: center; gap: 15px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-        }
-        .tc-title { color: #f3f4f6; font-size: 20px; font-weight: 800; margin: 0; display: flex; align-items: center; gap: 8px; }
-        .tc-metrics-container { display: flex; gap: 12px; flex-wrap: wrap; }
-        .tc-badge { padding: 6px 14px; border-radius: 5px; font-size: 13px; font-weight: 700; display: inline-block; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3); }
-        .badge-ce { background-color: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); }
-        .badge-pe { background-color: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.4); }
-        .badge-pp { background-color: rgba(234, 179, 8, 0.12); color: #fde047; border: 1px solid rgba(234, 179, 8, 0.3); }
-        .badge-backup { background-color: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); }
-    </style>
-""", unsafe_allow_html=True)
-
-# 📂 BACKUP SYSTEM DIRECTORY ROUTES (CSV File Generation Storage)
-BACKUP_DIR = "chart_backups"
-if not os.path.exists(BACKUP_DIR):
-    os.makedirs(BACKUP_DIR)
-
-# Clean mismatched structure variants if any present from older browser views
-if "websocket_ohlcv_buffer" in st.session_state:
-    if not isinstance(st.session_state.websocket_ohlcv_buffer, dict) or \
-       any(isinstance(v, list) for v in st.session_state.websocket_ohlcv_buffer.values()):
-        del st.session_state["websocket_ohlcv_buffer"]
-
-# Master Data State Cache Framework
-if "websocket_ohlcv_buffer" not in st.session_state:
-    st.session_state.websocket_ohlcv_buffer = {
-        "NIFTY": {},
-        "SENSEX": {},
-        "HDFCBANK": {}
-    }
-
-# 📂 Files Directory Path Routing Plugs
+# 📂 Paths Setup
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
 
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
-from nubra_python_sdk.ticker import websocketdata
+from nubra_python_sdk.marketdata.market_data import MarketData
 
-# ==============================================================================
-# 🎯 2. SIDEBAR CONFIGURATION (Includes Asset, Timeframe Selection Matrix)
-# ==============================================================================
-st.sidebar.header("📁 Backup File System (Offline Link)")
-load_from_backup = st.sidebar.checkbox("📅 Load Past Day Backup (Offline Mode)", value=False)
+# 🔐 Secure Environment Keys Bridge
+PHONE_NO = st.secrets.get("PHONE_NO") or os.environ.get("PHONE_NO")
+MPIN = st.secrets.get("MPIN") or os.environ.get("MPIN")
 
-selected_backup_file = None
-if load_from_backup:
-    available_backups = sorted([f for f in os.listdir(BACKUP_DIR) if f.endswith(".csv")], reverse=True)
-    if available_backups:
-        selected_backup_file = st.sidebar.selectbox("📂 Select Saved Day Chart File", available_backups)
-    else:
-        st.sidebar.warning("No backup CSV logs detected yet!")
+if PHONE_NO and MPIN:
+    os.environ["PHONE_NO"] = str(PHONE_NO)
+    os.environ["MPIN"] = str(MPIN)
 
-st.sidebar.header("⚙️ Assets & Interval Select")
-target_symbol = st.sidebar.selectbox("🔤 Select Asset", ["NIFTY", "SENSEX", "HDFCBANK"], index=0)
+# Master Data Storage Framework
+if "master_storage" not in st.session_state:
+    st.session_state.master_storage = {
+        "NIFTY": {"price": 0.0, "status": "LIVE"},
+        "SENSEX": {"price": 0.0, "status": "LIVE"}
+    }
 
-# ✅ TIMEFRAME SELECTION MATRIX MAP (Fully integrated including 1 Day Option)
-timeframe_mapping = {
-    "1 Minute": "1m",
-    "5 Minutes": "5m",
-    "10 Minutes": "10m",
-    "15 Minutes": "15m",
-    "30 Minutes": "30m",
-    "1 Hour": "1h",
-    "1 Day": "1d"
-}
-selected_tf_label = st.sidebar.selectbox("⏱️ Select Active Timeframe", list(timeframe_mapping.keys()), index=2)
-interval = timeframe_mapping[selected_tf_label]
-
-if interval not in st.session_state.websocket_ohlcv_buffer[target_symbol]:
-    st.session_state.websocket_ohlcv_buffer[target_symbol][interval] = []
-
-# ==============================================================================
-# 🔌 3. NUBRA REAL WEBSOCKET STREAM CORE & AUTOMATIC CSV LOGGER
-# ==============================================================================
-@st.cache_resource(show_spinner=False)
-def initialize_live_ohlcv_stream():
-    try:
-        nubra_client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
-        
-        def capture_stream_ohlcv(msg):
-            try:
-                sym = getattr(msg, 'indexname', None) or getattr(msg, 'symbol', None)
-                msg_tf = getattr(msg, 'interval', '10m')
-                
-                if sym in ["NIFTY", "SENSEX", "HDFCBANK"]:
-                    o = float(getattr(msg, 'open', 0)) / 100.0
-                    h = float(getattr(msg, 'high', 0)) / 100.0
-                    l = float(getattr(msg, 'low', 0)) / 100.0
-                    c = float(getattr(msg, 'close', 0)) / 100.0
-                    v = float(getattr(msg, 'bucket_volume', 0))
-                    
-                    if c > 0:
-                        if msg_tf == "1d":
-                            time_str = datetime.now().strftime("%Y-%m-%d")
-                        else:
-                            time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                            
-                        date_str = datetime.now().strftime("%Y_%m_%d")
-                        
-                        # --- 💾 EXPLICIT AUTOMATIC DAILY CSV LOGGER ENGINE ---
-                        csv_filename = f"{sym}_{msg_tf}_{date_str}.csv"
-                        full_csv_path = os.path.join(BACKUP_DIR, csv_filename)
-                        
-                        new_row_df = pd.DataFrame([{
-                            "Timestamp": time_str, "open": o, "high": h, "low": l, "close": c, "volume": v
-                        }])
-                        
-                        if not os.path.exists(full_csv_path):
-                            new_row_df.to_csv(full_csv_path, index=False)
-                        else:
-                            new_row_df.to_csv(full_csv_path, mode='a', header=False, index=False)
-                        
-                        if msg_tf not in st.session_state.websocket_ohlcv_buffer[sym]:
-                            st.session_state.websocket_ohlcv_buffer[sym][msg_tf] = []
-                            
-                        buf = st.session_state.websocket_ohlcv_buffer[sym][msg_tf]
-                        if len(buf) > 0 and buf[-1]["time"] == time_str:
-                            buf[-1].update({"high": max(buf[-1]["high"], h), "low": min(buf[-1]["low"], l), "close": c, "volume": buf[-1]["volume"] + v})
-                        else:
-                            buf.append({"time": time_str, "open": o, "high": h, "low": l, "close": c, "volume": v})
-                            
-                        if len(buf) > 400:
-                            buf.pop(0)
-            except Exception as thread_err:
-                pass
-
-        socket = websocketdata.NubraDataSocket(
-            client=nubra_client,
-            on_ohlcv_data=capture_stream_ohlcv,
-            on_connect=lambda m: print("[Socket Status: CONNECTED]"),
-            on_close=lambda r: print(f"Closed: {r}"),
-            on_error=lambda e: print(f"Error: {e}")
-        )
-        
-        socket.connect()
-        for tf_code in ["1m", "5m", "10m", "15m", "30m", "1h", "1d"]:
-            socket.subscribe(["NIFTY", "HDFCBANK"], data_type="ohlcv", interval=tf_code, exchange="NSE")
-            socket.subscribe(["SENSEX"], data_type="ohlcv", interval=tf_code, exchange="BSE")
-        return socket
-    except Exception as e:
-        return None
-
-active_socket = initialize_live_ohlcv_stream()
-
-# ==============================================================================
-# 🧠 4. HYBRID STABLE LOADING PIPELINE
-# ==============================================================================
-df = None
-is_backup_loaded_flag = False
-
-if load_from_backup and selected_backup_file:
-    backup_path = os.path.join(BACKUP_DIR, selected_backup_file)
-    if os.path.exists(backup_path):
-        df = pd.read_csv(backup_path)
-        if not df.empty:
-            df['Timestamp'] = pd.to_datetime(df['Timestamp'])
-            df.set_index('Timestamp', inplace=True)
-            is_backup_loaded_flag = True
-
-if df is None:
-    buf = st.session_state.websocket_ohlcv_buffer[target_symbol].get(interval, [])
-    if len(buf) > 3:
-        df = pd.DataFrame(buf)
-        df['time'] = pd.to_datetime(df['time'])
-        df.set_index('time', inplace=True)
-    else:
-        mock_ticks = []
-        if target_symbol == "NIFTY": base_val = 24210.0
-        elif target_symbol == "SENSEX": base_val = 77410.0
-        else: base_val = 1612.0
-        
-        days_mult = 1 if interval != "1d" else 24 * 60
-        mins_gap = int(interval[:-1]) if interval not in ["1h", "1d"] else 60 if interval == "1h" else days_mult
-        for i in range(50):
-            t_stamp = datetime.now() - timedelta(minutes=mins_gap * (50 - i))
-            mock_ticks.append({
-                "time": t_stamp, "open": base_val + (i * 0.5), "high": base_val + (i * 0.9) + 4, "low": base_val + (i * 0.2) - 2, "close": base_val + (i * 0.75), "volume": 120.0
-            })
-        df = pd.DataFrame(mock_ticks)
-        df.set_index('time', inplace=True)
-
-latest_row = df.iloc[-1]
-current_ltp = float(latest_row['close'])
-
-# ==============================================================================
-# 👑 5. ACCURATE RATIO PRECISE ZONES
-# ==============================================================================
-if target_symbol == "NIFTY":
-    base_upper = float(((current_ltp + 25) // 50) * 50 + 50)
-    sup_low, sup_high = base_upper, float(base_upper + 30)
-    base_lower = float(((current_ltp - 25) // 50) * 50 - 50)
-    dem_low, dem_high = base_lower, float(base_lower + 30)
+# 🔄 Shared Session Connection Engine (Anti-Collision Proxy)
+market_engine = None
+if "global_market_engine" in st.session_state and st.session_state.global_market_engine is not None:
+    market_engine = st.session_state.global_market_engine
 else:
-    sup_high, sup_low = float(current_ltp * 1.002), float(current_ltp * 1.001)
-    dem_high, dem_low = float(current_ltp * 0.999), float(current_ltp * 0.998)
+    try:
+        client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
+        market_engine = MarketData(client)
+        st.session_state.global_market_engine = market_engine
+    except Exception as e:
+        if 'market_engine' in st.session_state:
+            market_engine = st.session_state['market_engine']
+        elif 'market_data' in st.session_state:
+            market_engine = st.session_state['market_data']
 
-p_point = round((sup_low + dem_high + current_ltp) / 3)
+# 🔤 Clean Sidebar Menu
+target_symbol = st.sidebar.selectbox("🔤 Select Asset", ["NIFTY", "SENSEX"], index=0)
+show_dma = st.sidebar.checkbox("📈 Show DMAs (9, 20, 50 Lines)", value=True)
 
-status_title = f"📁 OFFLINE FILE VIEW: {selected_backup_file}" if is_backup_loaded_flag else f"⚡ {target_symbol} ({selected_tf_label}) REAL-TIME TERMINAL"
-badge_status_class = "badge-backup" if is_backup_loaded_flag else "badge-pp"
-badge_status_label = "OFFLINE HISTORY LOCK" if is_backup_loaded_flag else f"MID-PIVOT (PP): {p_point}"
+df = None
 
-header_html = f"""
-<div class="tc-dashboard-header">
-    <div class="tc-title">{status_title}</div>
-    <div class="tc-metrics-container">
-        <span class="tc-badge badge-ce">🔴 RESISTANCE (DR): {int(sup_low)} - {int(sup_high)}</span>
-        <span class="tc-badge badge-pe">🟢 SUPPORT (DS): {int(dem_low)} - {int(dem_high)}</span>
-        <span class="tc-badge {badge_status_class}">⚖️ {badge_status_label}</span>
-    </div>
-</div>
-"""
-st.markdown(header_html, unsafe_allow_html=True)
+# ⚡ FOOLPROOF HISTORICAL DATA PARSING ENGINE
+if market_engine:
+    try:
+        end_dt = datetime.utcnow()
+        start_dt = end_dt - timedelta(days=5) 
+        
+        exchange_type = "BSE" if target_symbol == "SENSEX" else "NSE"
+        
+        # Live price update for top bar header
+        nifty_snap = market_engine.current_price("NIFTY", exchange="NSE")
+        if nifty_snap and nifty_snap.price:
+            st.session_state.master_storage["NIFTY"]["price"] = float(nifty_snap.price) / 100.0
+            
+        sensex_snap = market_engine.current_price("SENSEX", exchange="BSE")
+        if sensex_snap and sensex_snap.price:
+            st.session_state.master_storage["SENSEX"]["price"] = float(sensex_snap.price) / 100.0
+
+        # API Historical Call
+        response = market_engine.historical_data({
+            "exchange": exchange_type,
+            "type": "INDEX",
+            "values": [target_symbol],
+            "fields": ["open", "high", "low", "close"],
+            "startDate": start_dt.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+            "endDate": end_dt.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+            "interval": "5m",
+            "intraDay": True,
+            "realTime": False
+        })
+
+        # Foolproof Data Unpacking Logic
+        if response and hasattr(response, 'result') and response.result:
+            # 1. Direct result traversal based on Nubra response format
+            for res_item in response.result:
+                if hasattr(res_item, 'values') and res_item.values:
+                    for v_item in res_item.values:
+                        # Checking if data structure is dictionary or custom object
+                        stock_chart = None
+                        if isinstance(v_item, dict) and target_symbol in v_item:
+                            stock_chart = v_item[target_symbol]
+                        elif hasattr(v_item, target_symbol):
+                            stock_chart = getattr(v_item, target_symbol)
+                        elif hasattr(v_item, 'get'):
+                            stock_chart = v_item.get(target_symbol)
+
+                        # If data block is found, extract arrays immediately
+                        if stock_chart and hasattr(stock_chart, 'close') and stock_chart.close:
+                            timestamps = [pd.to_datetime(p.timestamp, unit="ns", utc=True).tz_convert("Asia/Kolkata") for p in stock_chart.close]
+                            
+                            data = {
+                                "open": [float(p.value / 100.0) for p in stock_chart.open],
+                                "high": [float(p.value / 100.0) for p in stock_chart.high],
+                                "low": [float(p.value / 100.0) for p in stock_chart.low],
+                                "close": [float(p.value / 100.0) for p in stock_chart.close]
+                            }
+                            
+                            df = pd.DataFrame(data, index=timestamps)
+                            df.sort_index(inplace=True)
+                            
+                            # Indicators Computation Layer
+                            df['dma_9'] = df['close'].rolling(window=9, min_periods=1).mean()
+                            df['dma_20'] = df['close'].rolling(window=20, min_periods=1).mean()
+                            df['dma_50'] = df['close'].rolling(window=50, min_periods=1).mean()
+                            break
+                    if df is not None:
+                        break
+                        
+    except Exception as error:
+        pass
 
 # ==============================================================================
-# 🖥️ 6. ORIGINAL PLOTLY HIGH-SPEED CANVAS DESIGN
+# 🖥️ CLEAN PLOTLY CANVAS INJECTION
 # ==============================================================================
-fig = make_subplots(rows=1, cols=1)
+current_ltp = st.session_state.master_storage[target_symbol]["price"]
 
-fig.add_trace(gr.Candlestick(
-    x=df.index, open=df['open'], high=df['high'], low=df['low'], close=df['close'], name="Price Candle",
-    increasing_line_color='#00cc66', decreasing_line_color='#ff3333',
-    increasing_fillcolor='#00cc66', decreasing_fillcolor='#ff3333'
-), row=1, col=1)
+if current_ltp > 0:
+    st.markdown(f"### ₹{current_ltp:,.2f} <span style='font-size:14px; color:#94a3b8;'>({target_symbol} Live LTP)</span>", unsafe_allow_html=True)
 
-box_start_idx = max(0, len(df) - 15)
-fig.add_shape(type="rect", x0=df.index[box_start_idx], x1=df.index[-1], y0=sup_low, y1=sup_high, fillcolor="rgba(239, 68, 68, 0.20)", line=dict(color="#ff3333", width=2))
-fig.add_shape(type="rect", x0=df.index[box_start_idx], x1=df.index[-1], y0=dem_low, y1=dem_high, fillcolor="rgba(16, 185, 129, 0.20)", line=dict(color="#00cc66", width=2))
+if df is not None and not df.empty:
+    fig = make_subplots(rows=1, cols=1)
 
-fig.add_hline(y=p_point, line_width=1.5, line_dash="dashdot", line_color="#eab308", annotation_text=f"PP: {p_point}", annotation_position="top left")
+    # Candlesticks Trace Layer
+    fig.add_trace(gr.Candlestick(
+        x=df.index, open=df['open'], high=df['high'], low=df['low'], close=df['close'], name="Price",
+        increasing_line_color='#00cc66', decreasing_line_color='#ff3333',
+        increasing_fillcolor='#00cc66', decreasing_fillcolor='#ff3333'
+    ), row=1, col=1)
 
-fig.add_trace(gr.Scatter(
-    x=[df.index[-1]], y=[current_ltp], mode="markers+text", marker=dict(color="#ffff00", size=10, symbol="arrow-left"),
-    text=[f"  ◄ LTP: {current_ltp:.2f}"], textposition="middle right", textfont=dict(color="#ffff00", size=13, family="Arial Black"), showlegend=False
-))
+    # Moving Averages Trace Layer
+    if show_dma:
+        fig.add_trace(gr.Scatter(x=df.index, y=df['dma_9'], line=dict(color="#ffeb3b", width=1.5), name="9 DMA"), row=1, col=1)
+        fig.add_trace(gr.Scatter(x=df.index, y=df['dma_20'], line=dict(color="#00e5ff", width=1.5), name="20 DMA"), row=1, col=1)
+        fig.add_trace(gr.Scatter(x=df.index, y=df['dma_50'], line=dict(color="#e040fb", width=2), name="50 DMA"), row=1, col=1)
 
-min_price, max_price = float(df['low'].min()), float(df['high'].max())
-top_y_limit = max(max_price, sup_high) * 1.002
-bottom_y_limit = min(min_price, dem_low) * 0.998
-
-fig.update_layout(
-    height=740, xaxis_rangeslider_visible=False, template="plotly_dark", margin=dict(l=15, r=160, t=10, b=30),
-    yaxis=dict(side="right", showgrid=True, gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=11), range=[bottom_y_limit, top_y_limit], autorange=False, fixedrange=False),
-    xaxis=dict(showgrid=True, gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=11), autorange=True, fixedrange=False),
-    paper_bgcolor='#030712', plot_bgcolor='#030712'
-)
-
-st.plotly_chart(fig, use_container_width=True)
+    fig.update_layout(
+        height=720,
+        xaxis_rangeslider_visible=False,
+        template="plotly_dark",
+        margin=dict(l=15, r=10, t=10, b=30),
+        yaxis=dict(side="right", showgrid=True, gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=11), tickformat=".2f"),
+        xaxis=dict(showgrid=True, gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=11)),
+        paper_bgcolor='#030712',
+        plot_bgcolor='#030712'
+    )
+    
+    fig.update_xaxes(rangebreaks=[dict(bounds=["sat", "mon"]), dict(bounds=[15.5, 9.25], pattern="hour")])
+    st.plotly_chart(fig, use_container_width=True)
+else:
+    st.info("⏳ Connecting to data feed streams... Please wait.")

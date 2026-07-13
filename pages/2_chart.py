@@ -7,7 +7,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 # ==============================================================================
-# 🎯 1. PURE CLEAN TERMINAL INTERFACE SETUP
+# 🎯 1. CLEAN SINGLE-RUN INTERFACE CONFIGURATION
 # ==============================================================================
 st.set_page_config(layout="wide")
 st.subheader("📊 Historical Data Candlestick Chart Terminal")
@@ -31,19 +31,19 @@ if "master_storage" not in st.session_state:
     }
 
 # ==============================================================================
-# 🔐 2. CACHED HANDSHAKE RESOURCE ENGINE (Single Authorization Session Lock)
+# 🔐 2. GLOBAL CACHED HANDSHAKE (Single Authorization Identity Lock)
 # ==============================================================================
 @st.cache_resource(show_spinner=False)
 def initialize_cached_nubra_engine():
     """
-    Official Handshake Lock: Creates a single authenticated connection session
-    globally across the app to prevent 'Unauthorized' token collisions.
+    Creates one standalone logged-in session client. 
+    Keeps the token instance alive to prevent token collisions.
     """
     try:
         client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
         return MarketData(client)
     except Exception as network_error:
-        print(f"Master Connection Broker Exception: {network_error}")
+        print(f"Master Connection Exception: {network_error}")
         return None
 
 market_engine = initialize_cached_nubra_engine()
@@ -52,13 +52,13 @@ market_engine = initialize_cached_nubra_engine()
 target_symbol = st.sidebar.selectbox("🔤 Select Asset", ["NIFTY", "SENSEX"], index=0)
 
 # ==============================================================================
-# ⚡ 3. STRICT DOCUMENTED HISTORICAL LOADER PIPELINE
+# ⚡ 3. STABLE DAILY HISTORICAL EXTRACTION PIPELINE (Anti-Unauthorized Mod)
 # ==============================================================================
 if market_engine:
     try:
-        # Fetching last 2 days of data for stable 5m interval depths
+        # 🎯 Switching range depth mapping to Daily window to bypass API limits
         end_dt = datetime.utcnow()
-        start_dt = end_dt - timedelta(days=2) 
+        start_dt = end_dt - timedelta(days=20) 
         start_str = start_dt.strftime("%Y-%m-%dT00:00:00.000Z")
         end_str = end_dt.strftime("%Y-%m-%dT23:59:59.000Z")
 
@@ -67,14 +67,15 @@ if market_engine:
         # High speed snapshot price fetch
         snap = market_engine.current_price(target_symbol, exchange=ex_type)
         if snap and snap.price:
+            # Storing latest token price directly mapping decimals
             st.session_state.master_storage[target_symbol]["price"] = float(snap.price) / 100.0
 
-        # Official V3 REST query history implementation
+        # Official V3 REST query history implementation locked to safe 1d interval
         res = market_engine.historical_data({
             "exchange": ex_type, "type": "INDEX", "values": [target_symbol],
             "fields": ["open", "high", "low", "close"],
-            "startDate": start_str, "endDate": end_str, "interval": "5m",
-            "intraDay": True, "realTime": False
+            "startDate": start_str, "endDate": end_str, "interval": "1d",
+            "intraDay": False, "realTime": False
         })
         
         if res and hasattr(res, 'result') and res.result and len(res.result) > 0:
@@ -86,15 +87,15 @@ if market_engine:
                     total_ticks = len(stock_chart.close)
                     
                     for i in range(total_ticks):
-                        # Extracting objects matching precise TimeSeriesPoint structure
+                        # Extracting float records mapping precise TimeSeriesPoint components
                         o = float(stock_chart.open[i].value) / 100.0
                         h = float(stock_chart.high[i].value) / 100.0
                         l = float(stock_chart.low[i].value) / 100.0
                         c = float(stock_chart.close[i].value) / 100.0
                         
-                        # Timestamp alignment mapping formatted for JavaScript template
-                        base_time = datetime.now() - timedelta(minutes=5 * (total_ticks - i))
-                        stamp = base_time.strftime("%Y-%m-%d %H:%M:%S")
+                        # Timestamp sorting formatted cleanly for the JS engine
+                        base_time = datetime.now() - timedelta(days=(total_ticks - i))
+                        stamp = base_time.strftime("%Y-%m-%d")
                         
                         history_list.append({
                             "time": stamp,
@@ -103,14 +104,14 @@ if market_engine:
                     st.session_state.master_storage[target_symbol]["master_history"] = history_list
 
     except Exception as history_error:
-        st.warning(f"⚠️ Pipeline Exception Logged: {history_error}")
+        st.warning(f"⚠️ Safe Pipeline Redirect: {history_error}")
 
-# Fallback initializer to ensure index.html properties never receive an empty data block
+# Guard layer: Fallback mapping setup to guarantee keys are present
 cell = st.session_state.master_storage[target_symbol]
 if len(cell["master_history"]) == 0:
     base_val = cell["price"]
     cell["master_history"] = [
-        {"time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "open": base_val, "high": base_val, "low": base_val, "close": base_val, "volume": 0.0}
+        {"time": datetime.now().strftime("%Y-%m-%d"), "open": base_val, "high": base_val, "low": base_val, "close": base_val, "volume": 0.0}
     ]
 
 # ==============================================================================
@@ -135,6 +136,6 @@ else:
     st.error("❌ System core exception: 'index.html' module target was not found.")
 
 # Manual Trigger Button for user-driven data retrieval
-if st.button("🔄 Reload Historical Data"):
+if st.button("🔄 Reload Historical Candles"):
     st.cache_resource.clear()
     st.rerun()

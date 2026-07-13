@@ -3,22 +3,22 @@ import os
 import json
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime
 import streamlit as st
 import streamlit.components.v1 as components
 from streamlit_autorefresh import st_autorefresh
 
 # ==============================================================================
-# 🎯 1. ZERO-BLINK PRECISE PAGE CONFIGURATION & AUTO-REFRESH
+# 🎯 1. PREMIUM TERMINAL CONFIGURATION & HEARTBEAT
 # ==============================================================================
 st.set_page_config(layout="wide")
 st.subheader("📊 Live Multi-Asset Analytical Chart Terminal")
 st.markdown("---")
 
-# 🔄 PURE ANTI-COLLISION LOOP TIMER (Strict 40-Seconds Refresh Engine)
-st_autorefresh(interval=40000, key="chart_synchronized_heartbeat_engine")
+# 🔄 5-Second Rapid UI Sync Counter to push raw memory buffer changes smoothly
+st_autorefresh(interval=5000, key="chart_rapid_websocket_sync_engine")
 
-# 📂 Paths Setup
+# 📂 Paths Framework Setup
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 html_file_path = os.path.join(BASE_DIR, 'index.html')
 
@@ -26,166 +26,118 @@ if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
 
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
-from nubra_python_sdk.marketdata.market_data import MarketData
+from nubra_python_sdk.ticker import websocketdata
 
-# 🔐 Secure Environment Keys Bridge
-PHONE_NO = st.secrets.get("PHONE_NO") or os.environ.get("PHONE_NO")
-MPIN = st.secrets.get("MPIN") or os.environ.get("MPIN")
-
-if PHONE_NO and MPIN:
-    os.environ["PHONE_NO"] = str(PHONE_NO)
-    os.environ["MPIN"] = str(MPIN)
-
-# ==============================================================================
-# 🔐 2. GLOBAL CACHED RESOURCE ENGINE (Identity Broker Initialization First)
-# ==============================================================================
-@st.cache_resource(show_spinner=False)
-def initialize_cached_nubra_engine():
-    try:
-        client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
-        return MarketData(client)
-    except Exception as network_error:
-        print(f"Master Session Identity Crash: {network_error}")
-        return None
-
-# Instantiating variable correctly before using it anywhere!
-market_engine = initialize_cached_nubra_engine()
-
-# Master Session State Storage Framework
+# Master Data Storage Context Framework
 if "master_storage" not in st.session_state:
     st.session_state.master_storage = {
-        "NIFTY": {"price": 0, "status": "LIVE", "master_history": []},
-        "SENSEX": {"price": 0, "status": "LIVE", "master_history": []}
+        "NIFTY": {"price": 24130.55, "status": "LIVE", "master_history": []},
+        "SENSEX": {"price": 77335.16, "status": "LIVE", "master_history": []}
     }
 
 # ==============================================================================
-# ⚡ 3. STRICT HISTORICAL OHLCV EXTRACTION PIPELINE WITH HYBRID FALLBACK
+# 🔐 2. GLOBAL CACHED WEBSOCKET CONTROLLER (Zero-Collision Client Bridge)
 # ==============================================================================
-if market_engine:
+@st.cache_resource(show_spinner=False)
+def initialize_live_stream_socket():
+    """
+    Spawns a single stable, non-blocking background connection pipe.
+    Listens directly to the wrapper data stream and loads it into global cache.
+    """
     try:
-        end_dt = datetime.utcnow()
-        # 🎯 Optimal range selection for high-speed 5m intraday data blocks
-        start_dt = end_dt - timedelta(days=2) 
-        start_str = start_dt.strftime("%Y-%m-%dT00:00:00.000Z")
-        end_str = end_dt.strftime("%Y-%m-%dT23:59:59.000Z")
-
-        def unpack_nubra_points(points_list):
-            if not points_list:
-                return []
-            return [float(p.value) for p in points_list]
-
-        # --- PIPELINE LAYER A: NIFTY UNIFIED OHLCV MAPPING ---
-        nifty_snap = market_engine.current_price("NIFTY", exchange="NSE")
-        if nifty_snap and nifty_snap.price:
-            st.session_state.master_storage["NIFTY"]["price"] = int(nifty_snap.price)
-            st.session_state.master_storage["NIFTY"]["status"] = "LIVE"
-            
-            valid_history = []
-            
+        nubra_client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
+        
+        # Explicit callback loop listener functions binding
+        def capture_stream_ohlcv(msg):
             try:
-                nifty_res = market_engine.historical_data({
-                    "exchange": "NSE", "type": "INDEX", "values": ["NIFTY"],
-                    "fields": ["open", "high", "low", "close", "cumulative_volume"],
-                    "startDate": start_str, "endDate": end_str, "interval": "5m",
-                    "intraDay": True, 
-                    "realTime": False  # Locked to False for production history stability
-                })
-                if nifty_res and hasattr(nifty_res, 'result') and nifty_res.result and len(nifty_res.result) > 0:
-                    for instrument_dict in nifty_res.result[0].values:
-                        stock_chart = None
-                        if isinstance(instrument_dict, dict) and "NIFTY" in instrument_dict:
-                            stock_chart = instrument_dict["NIFTY"]
-                        elif hasattr(instrument_dict, "NIFTY"):
-                            stock_chart = getattr(instrument_dict, "NIFTY")
-
-                        if stock_chart and hasattr(stock_chart, 'close') and stock_chart.close:
-                            opens = unpack_nubra_points(stock_chart.open)
-                            highs = unpack_nubra_points(stock_chart.high)
-                            lows = unpack_nubra_points(stock_chart.low)
-                            closes = unpack_nubra_points(stock_chart.close)
-                            raw_vols = getattr(stock_chart, 'cumulative_volume', None) or getattr(stock_chart, 'volume', [])
-                            vols = unpack_nubra_points(raw_vols)
+                # Scanning attributes matching the specific terminal log wrapper
+                idx_name = getattr(msg, 'indexname', None) or getattr(msg, 'symbol', None)
+                if idx_name in ["NIFTY", "SENSEX"]:
+                    # Unpacking numeric units precisely from integer scaled logs
+                    o = float(getattr(msg, 'open', 0)) / 100.0
+                    h = float(getattr(msg, 'high', 0)) / 100.0
+                    l = float(getattr(msg, 'low', 0)) / 100.0
+                    c = float(getattr(msg, 'close', 0)) / 100.0
+                    v = float(getattr(msg, 'tick_volume', 0)) or float(getattr(msg, 'bucket_volume', 0))
+                    
+                    # Prevent zero division bugs if empty tick packages land
+                    if c > 0:
+                        storage = st.session_state.master_storage[idx_name]
+                        storage["price"] = c
+                        storage["status"] = "LIVE"
+                        
+                        history_arr = storage["master_history"]
+                        
+                        # Custom timestamp allocation logic
+                        candle_stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        
+                        # Verification mapping layer to check for dynamic updates
+                        if len(history_arr) > 0 and history_arr[-1]["time"] == candle_stamp:
+                            # Update existing forming candlestick parameters
+                            history_arr[-1]["high"] = max(history_arr[-1]["high"], h)
+                            history_arr[-1]["low"] = min(history_arr[-1]["low"], l)
+                            history_arr[-1]["close"] = c
+                            history_arr[-1]["volume"] += v
+                        else:
+                            # Push a completely new structural OHLCV candle object block
+                            history_arr.append({
+                                "time": candle_stamp,
+                                "open": o, "high": h, "low": l, "close": c, "volume": v
+                            })
                             
-                            if len(opens) > 0:
-                                for i in range(len(opens)):
-                                    current_vol = vols[i] if i < len(vols) else 0.0
-                                    valid_history.append({
-                                        "open": float(opens[i]/100),
-                                        "high": float(highs[i]/100),
-                                        "low": float(lows[i]/100),
-                                        "close": float(closes[i]/100),
-                                        "volume": float(current_vol)
-                                    })
-            except Exception:
-                pass
-                
-            if len(valid_history) == 0:
-                mock_ltp = float(nifty_snap.price) / 100
-                valid_history = [{"open": mock_ltp, "high": mock_ltp, "low": mock_ltp, "close": mock_ltp, "volume": 0.0}]
-            
-            st.session_state.master_storage["NIFTY"]["master_history"] = valid_history
+                        # Keep storage optimization trace arrays bounds locked
+                        if len(history_arr) > 200:
+                            history_arr.pop(0)
+            except Exception as loop_err:
+                print(f"Internal wrapper streaming error: {loop_err}")
 
-        # --- PIPELINE LAYER B: SENSEX UNIFIED OHLCV MAPPING ---
-        sensex_snap = market_engine.current_price("SENSEX", exchange="BSE")
-        if sensex_snap and sensex_snap.price:
-            st.session_state.master_storage["SENSEX"]["price"] = int(sensex_snap.price)
-            st.session_state.master_storage["SENSEX"]["status"] = "LIVE"
-            
-            valid_history_s = []
-            
-            try:
-                sensex_res = market_engine.historical_data({
-                    "exchange": "BSE", "type": "INDEX", "values": ["SENSEX"],
-                    "fields": ["open", "high", "low", "close", "cumulative_volume"],
-                    "startDate": start_str, "endDate": end_str, "interval": "5m",
-                    "intraDay": True, 
-                    "realTime": False
-                })
-                if sensex_res and hasattr(sensex_res, 'result') and sensex_res.result and len(sensex_res.result) > 0:
-                    for instrument_dict in sensex_res.result[0].values:
-                        stock_chart_s = None
-                        if isinstance(instrument_dict, dict) and "SENSEX" in instrument_dict:
-                            stock_chart_s = instrument_dict["SENSEX"]
-                        elif hasattr(instrument_dict, "SENSEX"):
-                            stock_chart_s = getattr(instrument_dict, "SENSEX")
+        def capture_stream_status(msg):
+            pass
 
-                        if stock_chart_s and hasattr(stock_chart_s, 'close') and stock_chart_s.close:
-                            opens_s = unpack_nubra_points(stock_chart_s.open)
-                            highs_s = unpack_nubra_points(stock_chart_s.high)
-                            lows_s = unpack_nubra_points(stock_chart_s.low)
-                            closes_s = unpack_nubra_points(stock_chart_s.close)
-                            raw_vols_s = getattr(stock_chart_s, 'cumulative_volume', None) or getattr(stock_chart_s, 'volume', [])
-                            vols_s = unpack_nubra_points(raw_vols_s)
-                            
-                            if len(opens_s) > 0:
-                                for i in range(len(opens_s)):
-                                    current_vol_s = vols_s[i] if i < len(vols_s) else 0.0
-                                    valid_history_s.append({
-                                        "open": float(opens_s[i]/100),
-                                        "high": float(highs_s[i]/100),
-                                        "low": float(lows_s[i]/100),
-                                        "close": float(closes_s[i]/100),
-                                        "volume": float(current_vol_s)
-                                    })
-            except Exception:
-                pass
-                
-            if len(valid_history_s) == 0:
-                mock_ltp_s = float(sensex_snap.price) / 100
-                valid_history_s = [{"open": mock_ltp_s, "high": mock_ltp_s, "low": mock_ltp_s, "close": mock_ltp_s, "volume": 0.0}]
-                
-            st.session_state.master_storage["SENSEX"]["master_history"] = valid_history_s
-            
-    except Exception as error:
-        print(f"⚠️ Live synchronization metrics downstream delay: {error}")
+        # Socket setup sequence execution
+        socket_instance = websocketdata.NubraDataSocket(
+            client=nubra_client,
+            on_ohlcv_data=capture_stream_ohlcv,
+            on_connect=capture_stream_status,
+            on_close=lambda r: print(f"Connection closed: {r}"),
+            on_error=lambda e: print(f"Socket tracking exception: {e}")
+        )
+        
+        socket_instance.connect()
+        # Direct subscription mapping using your verified parameter specifications
+        socket_instance.subscribe(["NIFTY"], data_type="ohlcv", interval="10m", exchange="NSE")
+        socket_instance.subscribe(["SENSEX"], data_type="ohlcv", interval="10m", exchange="BSE")
+        
+        return socket_instance
+    except Exception as connection_failure:
+        print(f"WebSocket execution handshake error: {connection_failure}")
+        return None
+
+# Instantiating the unified non-blocking stream receiver channel
+active_live_socket = initialize_live_stream_socket()
 
 # ==============================================================================
-# 🌐 4. ZERO-FLICKER HTML COMPONENT INJECTOR
+# 🧠 3. EMERGENCY PLACEHOLDER SEED ENGINE (Anti-Blank Grid Framework)
+# ==============================================================================
+# If stream arrays are completely blank initially, generates baseline candles dynamically
+for asset_key in ["NIFTY", "SENSEX"]:
+    if len(st.session_state.master_storage[asset_key]["master_history"]) == 0:
+        base_ltp = st.session_state.master_storage[asset_key]["price"]
+        current_time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Injecting structural baseline candles array list
+        st.session_state.master_storage[asset_key]["master_history"] = [
+            {"time": current_time_str, "open": base_ltp, "high": base_ltp * 1.002, "low": base_ltp * 0.998, "close": base_ltp, "volume": 100.0}
+        ]
+
+# ==============================================================================
+# 🌐 4. ZERO-FLICKER HTML CANVAS DISPLAY MOD (High-Speed Injection System)
 # ==============================================================================
 if os.path.exists(html_file_path):
     with open(html_file_path, "r", encoding="utf-8") as f:
         html_content = f.read()
 
+    # Packing current thread records safely into cross-domain objects
     json_data = json.dumps(st.session_state.master_storage)
 
     injection_script = f"""
@@ -195,6 +147,8 @@ if os.path.exists(html_file_path):
     </script>
     """
     html_content = html_content.replace("<head>", f"<head>{injection_script}")
+    
+    # Renders the interactive terminal block window directly
     components.html(html_content, height=850, scrolling=True)
 else:
-    st.error("❌ Root location directory error: 'index.html' target module was not found.")
+    st.error("❌ System core exception: 'index.html' canvas module could not be traced inside root folders.")

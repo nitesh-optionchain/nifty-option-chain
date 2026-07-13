@@ -57,9 +57,7 @@ if "master_storage" not in st.session_state:
         "SENSEX": {"price": 0, "status": "LIVE", "master_history": []}
     }
 
-# ================= ==============================================
-# ⚡ 3. STRICT HISTORICAL OHLCV EXTRACTION PIPELINE (Anti-Fake Candle Mod)
-# ==============================================================================
+# ⚡ 3. STRICT HISTORICAL OHLCV EXTRACTION PIPELINE (Anti-Frozen Array Upgrades)
 if market_engine:
     try:
         end_dt = datetime.utcnow()
@@ -79,7 +77,6 @@ if market_engine:
             st.session_state.master_storage["NIFTY"]["status"] = "LIVE"
             
             try:
-                # Fields strict layout includes cumulative_volume requested from SDK database
                 nifty_res = market_engine.historical_data({
                     "exchange": "NSE", "type": "INDEX", "values": ["NIFTY"],
                     "fields": ["open", "high", "low", "close", "cumulative_volume"],
@@ -88,32 +85,39 @@ if market_engine:
                 })
                 if nifty_res and hasattr(nifty_res, 'result') and nifty_res.result and len(nifty_res.result) > 0:
                     for instrument_dict in nifty_res.result[0].values:
-                        if "NIFTY" in instrument_dict:
+                        # Fallback handling to extract dataset whether it arrives as dictionary or object attribute
+                        stock_chart = None
+                        if isinstance(instrument_dict, dict) and "NIFTY" in instrument_dict:
                             stock_chart = instrument_dict["NIFTY"]
+                        elif hasattr(instrument_dict, "NIFTY"):
+                            stock_chart = getattr(instrument_dict, "NIFTY")
+
+                        if stock_chart and hasattr(stock_chart, 'close') and stock_chart.close:
                             opens = unpack_nubra_points(stock_chart.open)
                             highs = unpack_nubra_points(stock_chart.high)
                             lows = unpack_nubra_points(stock_chart.low)
                             closes = unpack_nubra_points(stock_chart.close)
-                            # Safe dynamic unpacking for cumulative volumes
-                            vols = unpack_nubra_points(getattr(stock_chart, 'cumulative_volume', []))
                             
-                            # Validation layer: Check if ticks array length matches precisely
+                            # Safe retrieval check for internal cumulative volumes array list
+                            raw_vols = getattr(stock_chart, 'cumulative_volume', None) or getattr(stock_chart, 'volume', [])
+                            vols = unpack_nubra_points(raw_vols)
+                            
                             if len(opens) > 0:
                                 valid_history = []
                                 for i in range(len(opens)):
-                                    # Anti-Fake Filter Check: Agar volume missing ho to execution register mat karo
-                                    current_vol = vols[i] if i < len(vols) else 1.0
+                                    # Fallback value injector: If volume point is missing or anomalous, defaults cleanly to 0.0
+                                    current_vol = vols[i] if i < len(vols) else 0.0
                                     
                                     valid_history.append({
-                                        "open": opens[i]/100,
-                                        "high": highs[i]/100,
-                                        "low": lows[i]/100,
-                                        "close": closes[i]/100,
-                                        "volume": current_vol
+                                        "open": float(opens[i]/100),
+                                        "high": float(highs[i]/100),
+                                        "low": float(lows[i]/100),
+                                        "close": float(closes[i]/100),
+                                        "volume": float(current_vol)
                                     })
                                 st.session_state.master_storage["NIFTY"]["master_history"] = valid_history
-            except Exception:
-                pass
+            except Exception as inner_e:
+                print(f"Nifty internal processing breakdown: {inner_e}")
 
         # --- PIPELINE LAYER B: SENSEX UNIFIED OHLCV MAPPING ---
         sensex_snap = market_engine.current_price("SENSEX", exchange="BSE")
@@ -130,29 +134,36 @@ if market_engine:
                 })
                 if sensex_res and hasattr(sensex_res, 'result') and sensex_res.result and len(sensex_res.result) > 0:
                     for instrument_dict in sensex_res.result[0].values:
-                        if "SENSEX" in instrument_dict:
+                        stock_chart_s = None
+                        if isinstance(instrument_dict, dict) and "SENSEX" in instrument_dict:
                             stock_chart_s = instrument_dict["SENSEX"]
+                        elif hasattr(instrument_dict, "SENSEX"):
+                            stock_chart_s = getattr(instrument_dict, "SENSEX")
+
+                        if stock_chart_s and hasattr(stock_chart_s, 'close') and stock_chart_s.close:
                             opens_s = unpack_nubra_points(stock_chart_s.open)
                             highs_s = unpack_nubra_points(stock_chart_s.high)
                             lows_s = unpack_nubra_points(stock_chart_s.low)
                             closes_s = unpack_nubra_points(stock_chart_s.close)
-                            vols_s = unpack_nubra_points(getattr(stock_chart_s, 'cumulative_volume', []))
+                            
+                            raw_vols_s = getattr(stock_chart_s, 'cumulative_volume', None) or getattr(stock_chart_s, 'volume', [])
+                            vols_s = unpack_nubra_points(raw_vols_s)
                             
                             if len(opens_s) > 0:
                                 valid_history_s = []
                                 for i in range(len(opens_s)):
-                                    current_vol_s = vols_s[i] if i < len(vols_s) else 1.0
+                                    current_vol_s = vols_s[i] if i < len(vols_s) else 0.0
                                     
                                     valid_history_s.append({
-                                        "open": opens_s[i]/100,
-                                        "high": highs_s[i]/100,
-                                        "low": lows_s[i]/100,
-                                        "close": closes_s[i]/100,
-                                        "volume": current_vol_s
+                                        "open": float(opens_s[i]/100),
+                                        "high": float(highs_s[i]/100),
+                                        "low": float(lows_s[i]/100),
+                                        "close": float(closes_s[i]/100),
+                                        "volume": float(current_vol_s)
                                     })
                                 st.session_state.master_storage["SENSEX"]["master_history"] = valid_history_s
-            except Exception:
-                pass
+            except Exception as inner_e:
+                print(f"Sensex internal processing breakdown: {inner_e}")
             
     except Exception as error:
         print(f"⚠️ Live synchronization metrics downstream delay: {error}")

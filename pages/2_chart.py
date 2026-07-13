@@ -1,5 +1,65 @@
+import sys
+import os
+import json
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+import streamlit as st
+import streamlit.components.v1 as components
+from streamlit_autorefresh import st_autorefresh
+
 # ==============================================================================
-# ⚡ 3. STRICT HISTORICAL OHLCV EXTRACTION PIPELINE WITH HYBRID FALLBACK (Fixed Range)
+# 🎯 1. ZERO-BLINK PRECISE PAGE CONFIGURATION & AUTO-REFRESH
+# ==============================================================================
+st.set_page_config(layout="wide")
+st.subheader("📊 Live Multi-Asset Analytical Chart Terminal")
+st.markdown("---")
+
+# 🔄 PURE ANTI-COLLISION LOOP TIMER (Strict 40-Seconds Refresh Engine)
+st_autorefresh(interval=40000, key="chart_synchronized_heartbeat_engine")
+
+# 📂 Paths Setup
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+html_file_path = os.path.join(BASE_DIR, 'index.html')
+
+if BASE_DIR not in sys.path:
+    sys.path.append(BASE_DIR)
+
+from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
+from nubra_python_sdk.marketdata.market_data import MarketData
+
+# 🔐 Secure Environment Keys Bridge
+PHONE_NO = st.secrets.get("PHONE_NO") or os.environ.get("PHONE_NO")
+MPIN = st.secrets.get("MPIN") or os.environ.get("MPIN")
+
+if PHONE_NO and MPIN:
+    os.environ["PHONE_NO"] = str(PHONE_NO)
+    os.environ["MPIN"] = str(MPIN)
+
+# ==============================================================================
+# 🔐 2. GLOBAL CACHED RESOURCE ENGINE (Identity Broker Initialization First)
+# ==============================================================================
+@st.cache_resource(show_spinner=False)
+def initialize_cached_nubra_engine():
+    try:
+        client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
+        return MarketData(client)
+    except Exception as network_error:
+        print(f"Master Session Identity Crash: {network_error}")
+        return None
+
+# Instantiating variable correctly before using it anywhere!
+market_engine = initialize_cached_nubra_engine()
+
+# Master Session State Storage Framework
+if "master_storage" not in st.session_state:
+    st.session_state.master_storage = {
+        "NIFTY": {"price": 0, "status": "LIVE", "master_history": []},
+        "SENSEX": {"price": 0, "status": "LIVE", "master_history": []}
+    }
+
+# ==============================================================================
+# ⚡ 3. STRICT HISTORICAL OHLCV EXTRACTION PIPELINE WITH HYBRID FALLBACK
 # ==============================================================================
 if market_engine:
     try:
@@ -118,3 +178,23 @@ if market_engine:
             
     except Exception as error:
         print(f"⚠️ Live synchronization metrics downstream delay: {error}")
+
+# ==============================================================================
+# 🌐 4. ZERO-FLICKER HTML COMPONENT INJECTOR
+# ==============================================================================
+if os.path.exists(html_file_path):
+    with open(html_file_path, "r", encoding="utf-8") as f:
+        html_content = f.read()
+
+    json_data = json.dumps(st.session_state.master_storage)
+
+    injection_script = f"""
+    <script>
+        window.chartData = {json_data};
+        window.streamAuthContext = {{"STATUS": "AUTHORIZED_SECURE_STABLE"}};
+    </script>
+    """
+    html_content = html_content.replace("<head>", f"<head>{injection_script}")
+    components.html(html_content, height=850, scrolling=True)
+else:
+    st.error("❌ Root location directory error: 'index.html' target module was not found.")

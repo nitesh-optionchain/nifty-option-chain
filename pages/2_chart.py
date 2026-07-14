@@ -1,5 +1,4 @@
 import sys
-from types import ModuleType
 import os
 import time
 import json
@@ -36,34 +35,14 @@ def get_sdk_connector():
 
 market_engine = get_sdk_connector()
 
-if "master_storage" not in st.session_state:
-    st.session_state.master_storage = {
-        "NIFTY": {"price": 0, "master_history": []},
-        "SENSEX": {"price": 0, "master_history": []}
-    }
-
 target_index = st.sidebar.selectbox("Active Asset Frame", ["NIFTY", "SENSEX"], index=0)
 
-# ==============================================================================
-# 🧠 CORE ENGINE: INITIAL RESILIENT DATA GENERATION
-# ==============================================================================
-if not st.session_state.master_storage[target_index]["master_history"]:
-    # Sane baseline prices matching close market data ranges
-    base_val = 24350.0 if target_index == "NIFTY" else 79650.0
-    start_unix = int(time.time()) - (150 * 300)
-    
-    # 150 standard candle sequences generation using strict numerical timestamps
-    for step in range(150):
-        current_unix = start_unix + (step * 300)
-        st.session_state.master_storage[target_index]["master_history"].append({
-            "time": current_unix, 
-            "open": base_val + (step % 8) - 4, 
-            "high": base_val + (step % 8) + 18, 
-            "low": base_val + (step % 8) - 12, 
-            "close": base_val + (step % 8) + 6
-        })
-    st.session_state.master_storage[target_index]["price"] = int(base_val * 100)
+# Local local arrays to strictly ensure immediate population context values
+master_history_array = []
+base_val = 24350.0 if target_index == "NIFTY" else 79650.0
+start_unix = int(time.time()) - (100 * 300)
 
+# Pull historical elements directly from broker network endpoint
 if market_engine:
     try:
         symbol_name = "Nifty 50" if target_index == "NIFTY" else "SENSEX"
@@ -78,57 +57,70 @@ if market_engine:
         })
         
         if hist_response and hasattr(hist_response, 'candles') and hist_response.candles:
-            st.session_state.master_storage[target_index]["master_history"] = []
             for candle in hist_response.candles:
                 raw_ts = getattr(candle, 'timestamp', '')
                 unix_ts = int(pd.to_datetime(raw_ts).timestamp()) if raw_ts else int(time.time())
-                st.session_state.master_storage[target_index]["master_history"].append({
+                master_history_array.append({
                     "time": unix_ts,
                     "open": float(getattr(candle, 'open', 0)) / 100,
                     "high": float(getattr(candle, 'high', 0)) / 100,
                     "low": float(getattr(candle, 'low', 0)) / 100,
                     "close": float(getattr(candle, 'close', 0)) / 100
                 })
-
+                
         snap = market_engine.current_price(target_index, exchange=exch_name)
         if snap and getattr(snap, 'price', None):
-            live_val = float(snap.price) / 100
-            st.session_state.master_storage[target_index]["price"] = int(snap.price)
-            if st.session_state.master_storage[target_index]["master_history"]:
-                st.session_state.master_storage[target_index]["master_history"][-1]["close"] = live_val
+            base_val = float(snap.price) / 100
     except Exception:
         pass
 
-if st.session_state.master_storage[target_index]["master_history"]:
-    last_close_val = st.session_state.master_storage[target_index]["master_history"][-1]["close"]
-    if st.session_state.master_storage[target_index]["price"] == 0 or st.session_state.master_storage[target_index]["price"] in [2400000, 7900000]:
-        st.session_state.master_storage[target_index]["price"] = int(last_close_val * 100)
+# Fallback block configuration mapping values instantly if broker fails
+if not master_history_array:
+    for step in range(100):
+        current_unix = start_unix + (step * 300)
+        master_history_array.append({
+            "time": current_unix,
+            "open": base_val + (step % 5) - 2,
+            "high": base_val + (step % 5) + 10,
+            "low": base_val + (step % 5) - 8,
+            "close": base_val + (step % 5) + 3
+        })
 
-st.sidebar.caption("🔄 Network Bridge: Active Sync Mode")
+# Compile final dynamic storage dictionary mapping elements variables
+runtime_payload = {
+    target_index: {
+        "price": int(base_val * 100),
+        "master_history": master_history_array
+    }
+}
+
+st.sidebar.caption("🔄 Status Bridge: Transmission Connected")
 
 # ==============================================================================
-# 🌐 HTML INTEGRATION PIPELINE
+# 🌐 HTML PARSER MATRIX LAYER (Strict String Injector Engine)
 # ==============================================================================
 if os.path.exists(html_file_path):
     with open(html_file_path, "r", encoding="utf-8") as f:
         html_content = f.read()
 
-    json_data = json.dumps(st.session_state.master_storage)
+    json_data = json.dumps(runtime_payload)
     
+    # Absolute script string override engine parameters context layout map
     injection_script = f"""
     <script>
         window.chartData = {json_data};
         window.currentAsset = "{target_index}";
         
-        setTimeout(function() {{
-            window.postMessage({{ type: "LIVE_TICK_UPDATE", payload: {json_data}, asset: "{target_index}" }}, "*");
-        }}, 150);
+        window.onload = function() {{
+            if(typeof renderStaticBars === "function") {{ renderStaticBars(); }}
+        }};
     </script>
     """
     html_content = html_content.replace("<head>", f"<head>{injection_script}")
+    
     components.html(html_content, height=760, scrolling=False)
     
-    time.sleep(1)
+    time.sleep(1.5)
     st.rerun()
 else:
     st.error("❌ 'index.html' file root folder me nahi mili!")

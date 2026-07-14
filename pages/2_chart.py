@@ -9,12 +9,12 @@ import streamlit.components.v1 as components
 from streamlit_autorefresh import st_autorefresh
 
 # ==============================================================================
-# 🎯 1. ZERO-BLINK PRECISE PAGE CONFIGURATION
+# 🎯 1. LIVE PREMIUM TERMINAL CONFIGURATION
 # ==============================================================================
 st.set_page_config(layout="wide")
 
-# 🔄 5-Second Rapid Event Sync (Auto-refresh purely variable layers without UI tearing)
-st_autorefresh(interval=5000, key="chart_rapid_websocket_sync_engine")
+# 🔄 3-Second High-Speed Event Synchronizer to push background state changes into HTML frame
+st_autorefresh(interval=3000, key="smartwealth_live_sync_loop")
 
 # 🚀 Anti-Crash Pandas Bypass Engine
 if 'pandas' not in sys.modules:
@@ -23,12 +23,12 @@ if 'pandas' not in sys.modules:
     sys.modules['pandas'] = fake_pandas
 import pandas as pd
 
-# 📂 BACKUP SYSTEM DIRECTORY ROUTES (CSV Logs Location)
+# 📂 BACKUP SYSTEM DIRECTORY ROUTES (CSV File Logging Framework)
 BACKUP_DIR = "chart_backups"
 if not os.path.exists(BACKUP_DIR):
     os.makedirs(BACKUP_DIR)
 
-# 📂 Paths Framework Setup
+# 📂 Paths Framework Layout Routing
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 html_file_path = os.path.join(BASE_DIR, 'index.html')
 
@@ -38,16 +38,15 @@ if BASE_DIR not in sys.path:
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.ticker import websocketdata
 
-# Master Storage Memory Allocation Guard (Clearing old arrays structure completely)
+# Master Storage Session State Allocation (Purely NIFTY & SENSEX)
 if "master_storage" not in st.session_state:
     st.session_state.master_storage = {
         "NIFTY": {"price": 24150.00, "status": "LIVE", "master_history": {}},
-        "SENSEX": {"price": 77300.00, "status": "LIVE", "master_history": {}},
-        "HDFCBANK": {"price": 1610.00, "status": "LIVE", "master_history": {}}
+        "SENSEX": {"price": 77300.00, "status": "LIVE", "master_history": {}}
     }
 
 # ==============================================================================
-# 🎯 2. CLEAN CONTROLS LAYOUT (Fixed Double Dropdown Tearing Bug)
+# 🎯 2. SIDEBAR INTERFACE CONTROLS
 # ==============================================================================
 st.sidebar.header("📁 Backup File System (Offline Link)")
 load_from_backup = st.sidebar.checkbox("📅 Load Past Day Backup (Offline Mode)", value=False)
@@ -61,7 +60,7 @@ if load_from_backup:
         st.sidebar.warning("No backup CSV logs detected yet!")
 
 st.sidebar.header("⚙️ Assets & Interval Matrix")
-target_symbol = st.sidebar.selectbox("🔤 Select Asset", ["NIFTY", "SENSEX", "HDFCBANK"], index=0)
+target_symbol = st.sidebar.selectbox("🔤 Select Asset", ["NIFTY", "SENSEX"], index=0)
 
 # Exact String Mapping Rules
 timeframe_mapping = {
@@ -73,7 +72,6 @@ timeframe_mapping = {
     "1 Hour": "1h",
     "1 Day": "1d"
 }
-# Only ONE clean main timeframe matrix selection bar
 selected_tf_label = st.sidebar.selectbox("⏱️ Select Active Timeframe", list(timeframe_mapping.keys()), index=2)
 interval = timeframe_mapping[selected_tf_label]
 
@@ -82,19 +80,20 @@ if interval not in st.session_state.master_storage[target_symbol]["master_histor
     st.session_state.master_storage[target_symbol]["master_history"][interval] = []
 
 # ==============================================================================
-# 🔌 3. NUBRA REAL WEBSOCKET STREAM RUNNING CORE
+# 🔌 3. NUBRA REAL WEBSOCKET RUNNING ENGINE CORE
 # ==============================================================================
 @st.cache_resource(show_spinner=False)
 def initialize_live_ohlcv_stream():
     try:
         nubra = InitNubraSdk(NubraEnv.PROD, env_creds=True)
         
+        # ✅ Raw data parser aligned strictly for NIFTY & SENSEX arrays
         def capture_stream_ohlcv(msg):
             try:
                 sym = getattr(msg, 'indexname', None) or getattr(msg, 'symbol', None)
                 msg_tf = getattr(msg, 'interval', '10m')
                 
-                if sym in ["NIFTY", "SENSEX", "HDFCBANK"]:
+                if sym in ["NIFTY", "SENSEX"]:
                     o = float(getattr(msg, 'open', 0)) / 100.0
                     h = float(getattr(msg, 'high', 0)) / 100.0
                     l = float(getattr(msg, 'low', 0)) / 100.0
@@ -123,7 +122,7 @@ def initialize_live_ohlcv_stream():
                         else:
                             new_row_df.to_csv(full_csv_path, mode='a', header=False, index=False)
                         
-                        # Packets delivery bridge directly down inside master session buffers
+                        # Packets delivery bridge directly inside master session buffers
                         storage = st.session_state.master_storage[sym]
                         storage["price"] = c
                         storage["status"] = "LIVE"
@@ -152,7 +151,7 @@ def initialize_live_ohlcv_stream():
         socket.connect()
         
         for tf_code in ["1m", "5m", "10m", "15m", "30m", "1h", "1d"]:
-            socket.subscribe(["NIFTY", "HDFCBANK"], data_type="ohlcv", interval=tf_code, exchange="NSE")
+            socket.subscribe(["NIFTY"], data_type="ohlcv", interval=tf_code, exchange="NSE")
             socket.subscribe(["SENSEX"], data_type="ohlcv", interval=tf_code, exchange="BSE")
         return socket
     except Exception:

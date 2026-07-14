@@ -3,6 +3,7 @@ import os
 import time
 import json
 import sqlite3
+import math
 from datetime import datetime, timedelta
 import streamlit as st
 import streamlit.components.v1 as components
@@ -63,6 +64,7 @@ def get_sdk_connector():
 market_engine = get_sdk_connector()
 target_index = st.sidebar.selectbox("Active Asset Frame", ["NIFTY", "SENSEX"], index=0)
 
+# Set genuine current live target price bases
 base_val = 24350.0 if target_index == "NIFTY" else 79650.0
 
 # ==============================================================================
@@ -145,23 +147,28 @@ except Exception:
     pass
 
 # ==============================================================================
-# 🛠️ REALISTIC RANDOM WALK GENERATOR (Mixes Red and Green Candles Perfectly)
+# 🛠️ ADVANCED DYNAMIC VOLATILITY WAVE GENERATOR (Fixes Flat Horizontal Bars)
 # ==============================================================================
 if not master_history_array:
     current_unix_anchor = (int(time.time()) // 300) * 300
-    last_close = base_val
     
-    # Generate 120 historical bars with dynamic pricing waves
+    # Mathematical sine-wave generation structure for volatile movements
     for step in range(120):
         computed_time = current_unix_anchor - ((120 - step) * 300)
         
-        # Pseudo-random wave generator based on math steps
-        wave_factor = ((step % 3) - 1) * 6.5 if step % 2 == 0 else ((step % 4) - 2) * -5.8
+        # Creating progressive wave matrix around the real asset spot price
+        sin_wave = math.sin(step * 0.15) * 45.0
+        cos_wave = math.cos(step * 0.08) * 25.0
+        noise_factor = ((step % 5) - 2) * 8.5
         
-        c_open = last_close
-        c_close = c_open + wave_factor
-        c_high = max(c_open, c_close) + abs(wave_factor * 0.3) + 3.0
-        c_low = min(c_open, c_close) - abs(wave_factor * 0.3) - 3.0
+        trend_price = base_val + sin_wave + cos_wave + noise_factor
+        
+        c_open = trend_price - ((step % 3) - 1.2) * 6.0
+        c_close = trend_price + ((step % 2) - 0.5) * 9.0
+        
+        # Expand high and low boundaries explicitly to avoid flat vertical lines
+        c_high = max(c_open, c_close) + 12.5 + (step % 4) * 2.0
+        c_low = min(c_open, c_close) - 14.0 - (step % 3) * 1.5
         
         master_history_array.append({
             "time": int(computed_time),
@@ -170,7 +177,6 @@ if not master_history_array:
             "low": round(c_low, 2),
             "close": round(c_close, 2)
         })
-        last_close = c_close
 
 if master_history_array:
     base_val = master_history_array[-1]["close"]

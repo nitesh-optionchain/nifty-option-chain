@@ -132,7 +132,7 @@ with h_col2:
     s_delta_str = f"{sensex_chg:+.2f}%"
     st.metric(label="🔺 SENSEX COMPOSITE INDEX", value=f"{sensex_display_raw:,.2f}", delta=s_delta_str, delta_color="normal" if sensex_chg >= 0 else "inverse")
 with h_col3:
-    st.markdown(f"<div style='text-align:right;color:#64748b;padding-top:25px;'>👤 User Connected: <b>{st.session_state.current_user}</b></div>", unsafe_allow_value=True)
+    st.markdown(f"<div style='text-align:right;color:#64748b;padding-top:25px;'>👤 User Connected: <b>{st.session_state.current_user}</b></div>", unsafe_allow_html=True)
 
 st.markdown("---")
 

@@ -4,7 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TradingView Streamlit Terminal</title>
-    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <script>
+        !function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"function"==typeof define&&define.amd?define(["exports"],e):e((t="undefined"!=typeof globalThis?globalThis:t||self).LightweightCharts={})}(this,(function(t){"use strict";var e=function(t,e){return(e=function(t,e){return{upColor:t,downColor:e,borderUpColor:t,borderDownColor:e,wickUpColor:t,wickDownColor:e}})(t,e)};t.createChart=function(t,r){var n=document.createElement("div"),o=document.createElement("canvas"),i=o.getContext("2d");n.style.position="relative",n.style.width="100%",n.style.height="100%",t.appendChild(n),n.appendChild(o);var s={width:r.width||300,height:r.height||300,data:[]};o.width=s.width,o.height=s.height;var u=e("#26a69a","#ef5350");return{addCandlestickSeries:function(t){return u=e(t.upColor||u.upColor,t.downColor||u.downColor),{setData:function(t){s.data=t;var e=s.data;if(i.fillStyle=r.layout.backgroundColor||"#131722",i.fillRect(0,0,o.width,o.height),!(e.length<2)){var n=Math.max.apply(Math,e.map((function(t){return t.high}))),u=Math.min.apply(Math,e.map((function(t){return t.low}))),h=n-u||1;n+=.05*h,u-=.05*h,h=n-u;var c=o.height-40,a=(o.width-100)/e.length;e.forEach((function(t,e){var l=e*a+20,f=c-((t.open-u)/h)*c,d=c-((t.close-u)/h)*c,v=c-((t.high-u)/h)*c,p=c-((t.low-u)/h)*c;i.strokeStyle=t.close>=t.open?u.upColor:u.downColor,i.fillStyle=t.close>=t.open?u.upColor:u.downColor,i.lineWidth=1,i.beginPath(),i.moveTo(l+a/3,v),i.lineTo(l+a/3,p),i.stroke(),i.fillRect(l,Math.min(f,d),2*a/3,Math.max(Math.abs(d-f),2))}))}}}},resize:function(t,e){o.width=t,o.height=e,s.width=t,s.height=e},chartNode:n}});
+    </script>
     <style>
         body { margin: 0; background-color: #131722; font-family: sans-serif; color: #d1d4dc; padding: 5px; overflow: hidden; }
         .header { background: #1c2030; padding: 10px 15px; display: flex; gap: 25px; border-radius: 4px; margin-bottom: 5px; border: 1px solid #2b2e3a; font-size: 13px; }
@@ -15,82 +17,81 @@
 <body>
 
     <div class="header">
-        <div>Asset: <span id="asset-display" class="header-val">Loading...</span></div>
+        <div>Asset: <span id="asset-display" class="header-val">Loading Core...</span></div>
         <div>Zone Status: <span id="zone-status" class="header-val" style="color: #26a69a;">CONNECTED</span></div>
-        <div>Last Price: <span id="live-price" class="header-val">Loading...</span></div>
+        <div>Last Price: <span id="live-price" class="header-val">Syncing...</span></div>
     </div>
 
     <div id="chart-container"></div>
 
     <script>
         const container = document.getElementById('chart-container');
-        
-        const chart = LightweightCharts.createChart(container, {
-            width: container.clientWidth,
-            height: container.clientHeight,
-            layout: { backgroundColor: '#131722', textColor: '#d1d4dc' },
-            grid: { vertLines: { color: '#232634' }, horzLines: { color: '#232634' } },
-            crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
-            priceScale: { borderColor: '#2b2e3a', autoScale: true },
-            timeScale: { borderColor: '#2b2e3a', timeVisible: true }
-        });
+        let chart = null;
+        let candlestickSeries = null;
 
-        const candlestickSeries = chart.addCandlestickSeries({
-            upColor: '#26a69a', downColor: '#ef5350',
-            borderUpColor: '#26a69a', borderDownColor: '#ef5350',
-            wickUpColor: '#26a69a', wickDownColor: '#ef5350'
-        });
+        function initializeChart() {
+            if (chart) return;
+            chart = LightweightCharts.createChart(container, {
+                width: container.clientWidth,
+                height: container.clientHeight || 680,
+                layout: { backgroundColor: '#131722' }
+            });
+            candlestickSeries = chart.addCandlestickSeries({
+                upColor: '#26a69a', downColor: '#ef5350'
+            });
+        }
 
-        function processAndRender(data, asset) {
-            if (!data || !data[asset]) return;
-            const targetNode = data[asset];
-
-            document.getElementById('asset-display').innerText = asset + " LIVE";
-            if (targetNode.price > 0) {
-                document.getElementById('live-price').innerText = (targetNode.price / 100).toFixed(2);
-            }
-
-            if (targetNode.master_history && targetNode.master_history.length > 0) {
-                let formattedBars = [];
-                let seenTimes = new Set();
-
-                for (let bar of targetNode.master_history) {
-                    let cleanTime = typeof bar.time === 'number' ? bar.time : Math.floor(new Date(bar.time).getTime() / 1000);
-                    
-                    if (!isNaN(cleanTime) && !seenTimes.has(cleanTime)) {
-                        seenTimes.add(cleanTime);
-                        formattedBars.push({
-                            time: cleanTime,
-                            open: parseFloat(bar.open),
-                            high: parseFloat(bar.high),
-                            low: parseFloat(bar.low),
-                            close: parseFloat(bar.close)
-                        });
-                    }
-                }
+        function drawVisualInterface() {
+            initializeChart();
+            let currentAsset = window.currentAsset || "NIFTY";
+            
+            if (window.chartData && window.chartData[currentAsset]) {
+                const targetNode = window.chartData[currentAsset];
                 
-                formattedBars.sort((a, b) => a.time - b.time);
-                if (formattedBars.length > 0) {
-                    candlestickSeries.setData(formattedBars);
+                document.getElementById('asset-display').innerText = currentAsset + " LIVE";
+                if (targetNode.price > 0) {
+                    document.getElementById('live-price').innerText = (targetNode.price / 100).toFixed(2);
+                }
+
+                if (targetNode.master_history && targetNode.master_history.length > 0) {
+                    let formattedBars = [];
+                    let seenTimes = new Set();
+
+                    for (let bar of targetNode.master_history) {
+                        let cleanTime = typeof bar.time === 'number' ? bar.time : Math.floor(new Date(bar.time).getTime() / 1000);
+                        if (!isNaN(cleanTime) && !seenTimes.has(cleanTime)) {
+                            seenTimes.add(cleanTime);
+                            formattedBars.push({
+                                time: cleanTime,
+                                open: parseFloat(bar.open),
+                                high: parseFloat(bar.high),
+                                low: parseFloat(bar.low),
+                                close: parseFloat(bar.close)
+                            });
+                        }
+                    }
+                    
+                    formattedBars.sort((a, b) => a.time - b.time);
+                    if (formattedBars.length > 0 && candlestickSeries) {
+                        candlestickSeries.setData(formattedBars);
+                    }
                 }
             }
         }
 
-        // Parent window se aane wale real-time ticks listener engine
         window.addEventListener("message", function(e) {
             if (e.data && e.data.type === "LIVE_TICK_UPDATE") {
-                processAndRender(e.data.payload, e.data.asset);
+                window.chartData = e.data.payload;
+                window.currentAsset = e.data.asset;
+                drawVisualInterface();
             }
         });
 
-        // Window direct scope data fallback check logic
-        setTimeout(() => {
-            if (window.chartData && window.currentAsset) {
-                processAndRender(window.chartData, window.currentAsset);
-            }
-        }, 100);
-
-        window.addEventListener('resize', () => { chart.resize(container.clientWidth, container.clientHeight); });
+        // Loop framework execution hooks
+        setInterval(drawVisualInterface, 1000);
+        window.addEventListener('resize', () => { 
+            if(chart) chart.resize(container.clientWidth, container.clientHeight); 
+        });
     </script>
 </body>
 </html>

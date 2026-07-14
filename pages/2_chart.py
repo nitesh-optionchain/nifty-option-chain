@@ -5,16 +5,17 @@ import time
 import json
 from datetime import datetime, timedelta
 import streamlit as st
-import streamlit.components.v1 as components
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 from streamlit_autorefresh import st_autorefresh
 
 # ==============================================================================
-# 🎯 1. LIVE PREMIUM TERMINAL CONFIGURATION & AUTO-REFRESH
+# 🎯 1. TERMINAL INTERFACE CONFIGURATION & HIGH-SPEED TIMER
 # ==============================================================================
-st.set_page_config(layout="wide")
+st.set_page_config(layout="wide", page_title="SmartWealth Premium Terminal")
 
-# 🔄 3-Second UI Event Synchronizer: Variable update checks purely without tearing elements
-st_autorefresh(interval=3000, key="smartwealth_live_sync_loop")
+# 🔄 3-Second UI Event Synchronizer: Auto-refresh data variables natively without flashing elements
+st_autorefresh(interval=3000, key="chart_plotly_websocket_sync_loop")
 
 # 🚀 Anti-Crash Pandas Bypass Engine
 if 'pandas' not in sys.modules:
@@ -23,40 +24,34 @@ if 'pandas' not in sys.modules:
     sys.modules['pandas'] = fake_pandas
 import pandas as pd
 
-# 📂 BACKUP SYSTEM DIRECTORY ROUTES
+# 📂 BACKUP SYSTEM DIRECTORY ROUTES (CSV File Generation Storage)
 BACKUP_DIR = "chart_backups"
 if not os.path.exists(BACKUP_DIR):
     os.makedirs(BACKUP_DIR)
 
-# 📂 Smart Path Detector Framework
+# Clear old structural dict formats variants if any stored in current session state
+if "master_storage" in st.session_state:
+    if not isinstance(st.session_state.master_storage, dict) or \
+       any(isinstance(v, list) for v in st.session_state.master_storage.values()):
+        del st.session_state["master_storage"]
+
+# Master Data Store Memory Cache Framework
+if "master_storage" not in st.session_state:
+    st.session_state.master_storage = {
+        "NIFTY": {},
+        "SENSEX": {}
+    }
+
+# 📂 Path Routing Plugs
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-possible_paths = [
-    os.path.join(BASE_DIR, 'index.html'),
-    os.path.join(os.getcwd(), 'index.html'),
-    'index.html'
-]
-
-html_file_path = None
-for p in possible_paths:
-    if os.path.exists(p):
-        html_file_path = p
-        break
-
 if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
 
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.ticker import websocketdata
 
-# Master Data Store Memory Framework Allocation (Pure NIFTY & SENSEX logs matching keys)
-if "master_storage" not in st.session_state:
-    st.session_state.master_storage = {
-        "NIFTY": {"price": 24220.00, "status": "LIVE", "master_history": {}},
-        "SENSEX": {"price": 77450.00, "status": "LIVE", "master_history": {}}
-    }
-
 # ==============================================================================
-# 🎯 2. SIDEBAR INTERFACE CONTROLS
+# 🎯 2. SIDEBAR CONTROLS LAYOUT (Clean Framework, Zero Duplicate Dropdowns)
 # ==============================================================================
 st.sidebar.header("📁 Backup File System (Offline Link)")
 load_from_backup = st.sidebar.checkbox("📅 Load Past Day Backup (Offline Mode)", value=False)
@@ -72,7 +67,7 @@ if load_from_backup:
 st.sidebar.header("⚙️ Assets & Interval Matrix")
 target_symbol = st.sidebar.selectbox("🔤 Select Asset", ["NIFTY", "SENSEX"], index=0)
 
-# Verified Active String Mapping Rules
+# Timframe mappings variables matrix
 timeframe_mapping = {
     "1 Minute": "1m",
     "5 Minutes": "5m",
@@ -85,11 +80,11 @@ timeframe_mapping = {
 selected_tf_label = st.sidebar.selectbox("⏱️ Select Active Timeframe", list(timeframe_mapping.keys()), index=2)
 interval = timeframe_mapping[selected_tf_label]
 
-if interval not in st.session_state.master_storage[target_symbol]["master_history"]:
-    st.session_state.master_storage[target_symbol]["master_history"][interval] = []
+if interval not in st.session_state.master_storage[target_symbol]:
+    st.session_state.master_storage[target_symbol][interval] = []
 
 # ==============================================================================
-# 🔌 3. NUBRA REAL WEBSOCKET RUNNING ENGINE CORE (Your exact raw operational data loop)
+# 🔌 3. NUBRA REAL WEBSOCKET STREAM CORE & AUTOMATIC CSV LOGGER
 # ==============================================================================
 @st.cache_resource(show_spinner=False)
 def initialize_live_ohlcv_stream():
@@ -102,7 +97,7 @@ def initialize_live_ohlcv_stream():
                 msg_tf = getattr(msg, 'interval', '10m')
                 
                 if sym in ["NIFTY", "SENSEX"]:
-                    # Converting native integers into decimal float scales matching your terminal logs
+                    # Precise float scaling conversion from your working raw logs
                     o = float(getattr(msg, 'open', 0)) / 100.0
                     h = float(getattr(msg, 'high', 0)) / 100.0
                     l = float(getattr(msg, 'low', 0)) / 100.0
@@ -117,7 +112,7 @@ def initialize_live_ohlcv_stream():
                             
                         date_str = datetime.now().strftime("%Y_%m_%d")
                         
-                        # --- 💾 EXPLICIT AUTOMATIC DAILY CSV LOGGER ENGINE ---
+                        # --- 💾 AUTOMATIC CSV BACKUP ENGINE ---
                         csv_filename = f"{sym}_{msg_tf}_{date_str}.csv"
                         full_csv_path = os.path.join(BACKUP_DIR, csv_filename)
                         
@@ -130,15 +125,11 @@ def initialize_live_ohlcv_stream():
                         else:
                             new_row_df.to_csv(full_csv_path, mode='a', header=False, index=False)
                         
-                        # Store updates inside the matching symbol session buffers
-                        storage = st.session_state.master_storage[sym]
-                        storage["price"] = c
-                        storage["status"] = "LIVE"
-                        
-                        if msg_tf not in storage["master_history"]:
-                            storage["master_history"][msg_tf] = []
+                        # Appending arrays inside dictionary context state memory buffer
+                        if msg_tf not in st.session_state.master_storage[sym]:
+                            st.session_state.master_storage[sym][msg_tf] = []
                             
-                        buf = storage["master_history"][msg_tf]
+                        buf = st.session_state.master_storage[sym][msg_tf]
                         if len(buf) > 0 and buf[-1]["time"] == time_str:
                             buf[-1].update({"high": max(buf[-1]["high"], h), "low": min(buf[-1]["low"], l), "close": c, "volume": buf[-1]["volume"] + v})
                         else:
@@ -168,77 +159,63 @@ def initialize_live_ohlcv_stream():
 active_live_socket = initialize_live_ohlcv_stream()
 
 # ==============================================================================
-# 🧠 4. STABLE OFFLINE RECOVERY PIPELINE
+# 🧠 4. LOAD MATRIX FLOW PIPELINE
 # ==============================================================================
+df = None
 is_backup_loaded_flag = False
 
 if load_from_backup and selected_backup_file:
     backup_path = os.path.join(BACKUP_DIR, selected_backup_file)
     if os.path.exists(backup_path):
-        try:
-            backup_df = pd.read_csv(backup_path)
-            if not backup_df.empty:
-                offline_history = []
-                for _, row in backup_df.iterrows():
-                    offline_history.append({
-                        "time": str(row["Timestamp"]),
-                        "open": float(row["open"]), "high": float(row["high"]),
-                        "low": float(row["low"]), "close": float(row["close"]),
-                        "volume": float(row.get("volume", 0.0))
-                    })
-                st.session_state.master_storage[target_symbol]["master_history"][interval] = offline_history
-                is_backup_loaded_flag = True
-        except Exception:
-            pass
+        df = pd.read_csv(backup_path)
+        if not df.empty:
+            df['Timestamp'] = pd.to_datetime(df['Timestamp'])
+            df.set_index('Timestamp', inplace=True)
+            is_backup_loaded_flag = True
 
-# Default grid generation if arrays look empty (Safe fallback protection)
-cell = st.session_state.master_storage[target_symbol]
-buf_slice = cell["master_history"][interval]
-if len(buf_slice) == 0:
-    base_val = cell["price"]
-    mock_history = []
-    
-    for i in range(45):
-        if interval == "1d":
-            t_stamp = (datetime.now() - timedelta(days=(45 - i))).strftime("%Y-%m-%d")
-        else:
-            mins_gap = int(interval[:-1]) if interval != "1h" else 60
-            t_stamp = (datetime.now() - timedelta(minutes=mins_gap * (45 - i))).strftime("%Y-%m-%d %H:%M:%S")
-            
-        mock_history.append({
-            "time": t_stamp, "open": base_val, "high": base_val + 10, "low": base_val - 10, "close": base_val, "volume": 100.0
-        })
-    cell["master_history"][interval] = mock_history
+if df is None:
+    buf = st.session_state.master_storage[target_symbol].get(interval, [])
+    if len(buf) > 3:
+        df = pd.DataFrame(buf)
+        df['time'] = pd.to_datetime(df['time'])
+        df.set_index('time', inplace=True)
+    else:
+        # Off-Market / Initial boot incremental pricing seeder context pipeline
+        mock_ticks = []
+        base_val = 24220.0 if target_symbol == "NIFTY" else 77450.0
+        
+        days_mult = 1 if interval != "1d" else 24 * 60
+        mins_gap = int(interval[:-1]) if interval not in ["1h", "1d"] else 60 if interval == "1h" else days_mult
+        for i in range(50):
+            t_stamp = datetime.now() - timedelta(minutes=mins_gap * (50 - i)) if interval != "1d" else datetime.now() - timedelta(days=(50 - i))
+            mock_ticks.append({
+                "time": t_stamp, "open": base_val + (i * 0.5), "high": base_val + (i * 0.9) + 4, "low": base_val + (i * 0.2) - 2, "close": base_val + (i * 0.75), "volume": 120.0
+            })
+        df = pd.DataFrame(mock_ticks)
+        df.set_index('time', inplace=True)
+
+latest_row = df.iloc[-1]
+current_ltp = float(latest_row['close'])
 
 # ==============================================================================
-# 🌐 5. PURE HTML CANVAS BRIDGE & JAVASCRIPT CORRELATION
+# ⚖️ 5. DR/DS BREAKEVEN CALCULATOR LEVEL RENDERING
 # ==============================================================================
-active_chart_data = {
-    target_symbol: {
-        "price": cell["price"],
-        "status": cell["status"],
-        "master_history": cell["master_history"][interval]
-    }
-}
-json_payload = json.dumps(active_chart_data)
-current_asset_ltp = cell["price"]
-
 if target_symbol == "NIFTY":
-    base_upper = float(((current_asset_ltp + 25) // 50) * 50 + 50)
+    base_upper = float(((current_ltp + 25) // 50) * 50 + 50)
     sup_low, sup_high = base_upper, float(base_upper + 30)
-    base_lower = float(((current_asset_ltp - 25) // 50) * 50 - 50)
+    base_lower = float(((current_asset_ltp := current_ltp) - 25) // 50) * 50 - 50
     dem_low, dem_high = base_lower, float(base_lower + 30)
 else:
-    sup_high, sup_low = float(current_asset_ltp * 1.002), float(current_asset_ltp * 1.001)
-    dem_high, dem_low = float(current_asset_ltp * 0.999), float(current_asset_ltp * 0.998)
+    sup_high, sup_low = float(current_ltp * 1.002), float(current_ltp * 1.001)
+    dem_high, dem_low = float(current_ltp * 0.999), float(current_ltp * 0.998)
 
-p_point = round((sup_low + dem_high + current_asset_ltp) / 3)
+p_point = round((sup_low + dem_high + current_ltp) / 3)
 
-status_label = f"📁 OFFLINE BACKUP: {selected_backup_file}" if is_backup_loaded_flag else f"⚡ {target_symbol} LIVE ENGINE TERMINAL"
+status_title = f"📁 OFFLINE BACKUP MODE: {selected_backup_file}" if is_backup_loaded_flag else f"⚡ {target_symbol} ({selected_tf_label}) REAL-TIME TERMINAL ACTIVE"
 
 st.markdown(f"""
-<div class="tc-dashboard-header" style="background: linear-gradient(135deg, #111827 0%, #030712 100%); border: 1px solid #1f2937; border-radius: 8px; padding: 14px 20px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; color: white;">
-    <div style="font-size: 19px; font-weight: 800;">📊 {status_label} ({selected_tf_label})</div>
+<div style="background: linear-gradient(135deg, #111827 0%, #030712 100%); border: 1px solid #1f2937; border-radius: 8px; padding: 14px 20px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; color: white;">
+    <div style="font-size: 19px; font-weight: 800;">📊 {status_title}</div>
     <div style="display: flex; gap: 12px;">
         <span style="padding: 6px 14px; border-radius: 5px; font-size: 13px; font-weight: 700; background-color: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4);">🔴 RESISTANCE (DR): {int(sup_low)} - {int(sup_high)}</span>
         <span style="padding: 6px 14px; border-radius: 5px; font-size: 13px; font-weight: 700; background-color: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.4);">🟢 SUPPORT (DS): {int(dem_low)} - {int(dem_high)}</span>
@@ -247,32 +224,39 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-if html_file_path:
-    with open(html_file_path, "r", encoding="utf-8") as file_reader:
-        html_blueprint = file_reader.read()
+# ==============================================================================
+# 🖥️ 6. BORING YELLOW CANDLES HIGH-SPEED CANVAS DESIGN
+# ==============================================================================
+fig = make_subplots(rows=1, cols=1)
 
-    # ✅ INJECTION SCRIPT CORRELATION BIND: Bridges structural window data object to the parent series engine context securely
-    javascript_context_bridge = f"""
-    <script>
-        window.chartData = {json_payload};
-        window.streamAuthContext = {{
-            "STATUS": "AUTHORIZED_SECURE_STABLE",
-            "TARGET_SYMBOL": "{target_symbol}",
-            "INTERVAL": "{interval}",
-            "DR_LOW": {sup_low}, "DR_HIGH": {sup_high},
-            "DS_LOW": {dem_low}, "DS_HIGH": {dem_high},
-            "PIVOT": {p_point}
-        }};
-        
-        // Broadcast dynamic event bridge data update downward directly to series handlers
-        document.addEventListener("DOMContentLoaded", function() {{
-            if(window.parent) {{
-                window.parent.postMessage({{ type: "LIVE_TICK_UPDATE", payload: window.chartData }}, "*");
-            }}
-        }});
-    </script>
-    """
-    html_blueprint = html_blueprint.replace("<head>", f"<head>{javascript_context_bridge}")
-    components.html(html_blueprint, height=760, scrolling=True)
-else:
-    st.error("❌ System core configuration exception: 'index.html' target was not found inside application workspace directory root.")
+# Pure Plotly verified layout drawing blocks matching your local PC screen view
+fig.add_trace(go.Candlestick(
+    x=df.index, open=df['open'], high=df['high'], low=df['low'], close=df['close'], name="Price Candle",
+    increasing_line_color='#facc15', decreasing_line_color='#eab308',
+    increasing_fillcolor='#facc15', decreasing_fillcolor='#eab308'
+), row=1, col=1)
+
+# Highlighting DR / DS blocks zones on the right dynamic axis bounds
+box_start_idx = max(0, len(df) - 15)
+fig.add_shape(type="rect", x0=df.index[box_start_idx], x1=df.index[-1], y0=sup_low, y1=sup_high, fillcolor="rgba(239, 68, 68, 0.18)", line=dict(color="#f87171", width=1.5))
+fig.add_shape(type="rect", x0=df.index[box_start_idx], x1=df.index[-1], y0=dem_low, y1=dem_high, fillcolor="rgba(34, 197, 94, 0.18)", line=dict(color="#4ade80", width=1.5))
+
+fig.add_hline(y=p_point, line_width=1.5, line_dash="dashdot", line_color="#eab308")
+
+fig.add_trace(go.Scatter(
+    x=[df.index[-1]], y=[current_ltp], mode="markers+text", marker=dict(color="#ffff00", size=10, symbol="arrow-left"),
+    text=[f"  ◄ LTP: {current_ltp:.2f}"], textposition="middle right", textfont=dict(color="#ffff00", size=13, family="Arial Black"), showlegend=False
+))
+
+min_price, max_price = float(df['low'].min()), float(df['high'].max())
+top_y_limit = max(max_price, sup_high) * 1.002
+bottom_y_limit = min(min_price, dem_low) * 0.998
+
+fig.update_layout(
+    height=740, xaxis_rangeslider_visible=False, template="plotly_dark", margin=dict(l=15, r=160, t=10, b=30),
+    yaxis=dict(side="right", showgrid=True, gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=11), range=[bottom_y_limit, top_y_limit], autorange=False, fixedrange=False),
+    xaxis=dict(showgrid=True, gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=11), autorange=True, fixedrange=False),
+    paper_bgcolor='#030712', plot_bgcolor='#030712'
+)
+
+st.plotly_chart(fig, use_container_width=True)

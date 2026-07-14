@@ -10,11 +10,11 @@ from plotly.subplots import make_subplots
 from streamlit_autorefresh import st_autorefresh
 
 # ==============================================================================
-# 🎯 1. TERMINAL INTERFACE CONFIGURATION & HIGH-SPEED TIMER
+# 🎯 1. TERMINAL INTERFACE CONFIGURATION & TIMER BUFFER
 # ==============================================================================
 st.set_page_config(layout="wide", page_title="SmartWealth Premium Terminal")
 
-# 🔄 3-Second UI Event Synchronizer: Auto-refresh data variables natively without flashing elements
+# 🔄 3-Second High-Speed UI Synchronizer
 st_autorefresh(interval=3000, key="chart_plotly_websocket_sync_loop")
 
 # 🚀 Anti-Crash Pandas Bypass Engine
@@ -24,18 +24,12 @@ if 'pandas' not in sys.modules:
     sys.modules['pandas'] = fake_pandas
 import pandas as pd
 
-# 📂 BACKUP SYSTEM DIRECTORY ROUTES (CSV File Generation Storage)
+# 📂 BACKUP SYSTEM DIRECTORY ROUTES
 BACKUP_DIR = "chart_backups"
 if not os.path.exists(BACKUP_DIR):
     os.makedirs(BACKUP_DIR)
 
-# Clear old structural dict formats variants if any stored in current session state
-if "master_storage" in st.session_state:
-    if not isinstance(st.session_state.master_storage, dict) or \
-       any(isinstance(v, list) for v in st.session_state.master_storage.values()):
-        del st.session_state["master_storage"]
-
-# Master Data Store Memory Cache Framework
+# Master Data Cache Allocation Guard (Ensuring structure arrays match perfectly)
 if "master_storage" not in st.session_state:
     st.session_state.master_storage = {
         "NIFTY": {},
@@ -47,11 +41,8 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
 
-from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
-from nubra_python_sdk.ticker import websocketdata
-
 # ==============================================================================
-# 🎯 2. SIDEBAR CONTROLS LAYOUT (Clean Framework, Zero Duplicate Dropdowns)
+# 🎯 2. SIDEBAR CONTROLS LAYOUT (Clean Matrix Selection)
 # ==============================================================================
 st.sidebar.header("📁 Backup File System (Offline Link)")
 load_from_backup = st.sidebar.checkbox("📅 Load Past Day Backup (Offline Mode)", value=False)
@@ -67,7 +58,7 @@ if load_from_backup:
 st.sidebar.header("⚙️ Assets & Interval Matrix")
 target_symbol = st.sidebar.selectbox("🔤 Select Asset", ["NIFTY", "SENSEX"], index=0)
 
-# Timframe mappings variables matrix
+# Timeframe variables matrix keys mappings
 timeframe_mapping = {
     "1 Minute": "1m",
     "5 Minutes": "5m",
@@ -84,11 +75,14 @@ if interval not in st.session_state.master_storage[target_symbol]:
     st.session_state.master_storage[target_symbol][interval] = []
 
 # ==============================================================================
-# 🔌 3. NUBRA REAL WEBSOCKET STREAM CORE & AUTOMATIC CSV LOGGER
+# 🔌 3. EXPLICIT ERROR-ISOLATED WEBSOCKET ASYNC LAUNCHER Engine
 # ==============================================================================
 @st.cache_resource(show_spinner=False)
 def initialize_live_ohlcv_stream():
     try:
+        from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
+        from nubra_python_sdk.ticker import websocketdata
+        
         nubra = InitNubraSdk(NubraEnv.PROD, env_creds=True)
         
         def capture_stream_ohlcv(msg):
@@ -97,7 +91,6 @@ def initialize_live_ohlcv_stream():
                 msg_tf = getattr(msg, 'interval', '10m')
                 
                 if sym in ["NIFTY", "SENSEX"]:
-                    # Precise float scaling conversion from your working raw logs
                     o = float(getattr(msg, 'open', 0)) / 100.0
                     h = float(getattr(msg, 'high', 0)) / 100.0
                     l = float(getattr(msg, 'low', 0)) / 100.0
@@ -112,7 +105,7 @@ def initialize_live_ohlcv_stream():
                             
                         date_str = datetime.now().strftime("%Y_%m_%d")
                         
-                        # --- 💾 AUTOMATIC CSV BACKUP ENGINE ---
+                        # --- 💾 AUTOMATIC CSV BACKUP WRITER ---
                         csv_filename = f"{sym}_{msg_tf}_{date_str}.csv"
                         full_csv_path = os.path.join(BACKUP_DIR, csv_filename)
                         
@@ -125,7 +118,6 @@ def initialize_live_ohlcv_stream():
                         else:
                             new_row_df.to_csv(full_csv_path, mode='a', header=False, index=False)
                         
-                        # Appending arrays inside dictionary context state memory buffer
                         if msg_tf not in st.session_state.master_storage[sym]:
                             st.session_state.master_storage[sym][msg_tf] = []
                             
@@ -156,10 +148,11 @@ def initialize_live_ohlcv_stream():
     except Exception:
         return None
 
+# Silently run ticker engine context inside error sandbox protection
 active_live_socket = initialize_live_ohlcv_stream()
 
 # ==============================================================================
-# 🧠 4. LOAD MATRIX FLOW PIPELINE
+# 🧠 4. STABLE OFFLINE RECOVERY LOADING PIPELINE
 # ==============================================================================
 df = None
 is_backup_loaded_flag = False
@@ -180,7 +173,7 @@ if df is None:
         df['time'] = pd.to_datetime(df['time'])
         df.set_index('time', inplace=True)
     else:
-        # Off-Market / Initial boot incremental pricing seeder context pipeline
+        # Standard structural seeder template to bypass frozen views blank canvases
         mock_ticks = []
         base_val = 24220.0 if target_symbol == "NIFTY" else 77450.0
         
@@ -203,7 +196,7 @@ current_ltp = float(latest_row['close'])
 if target_symbol == "NIFTY":
     base_upper = float(((current_ltp + 25) // 50) * 50 + 50)
     sup_low, sup_high = base_upper, float(base_upper + 30)
-    base_lower = float(((current_asset_ltp := current_ltp) - 25) // 50) * 50 - 50
+    base_lower = float((current_ltp - 25) // 50) * 50 - 50
     dem_low, dem_high = base_lower, float(base_lower + 30)
 else:
     sup_high, sup_low = float(current_ltp * 1.002), float(current_ltp * 1.001)
@@ -211,7 +204,7 @@ else:
 
 p_point = round((sup_low + dem_high + current_ltp) / 3)
 
-status_title = f"📁 OFFLINE BACKUP MODE: {selected_backup_file}" if is_backup_loaded_flag else f"⚡ {target_symbol} ({selected_tf_label}) REAL-TIME TERMINAL ACTIVE"
+status_title = f"📁 OFFLINE BACKUP MODE: {selected_backup_file}" if is_backup_loaded_flag else f"⚡ {target_symbol} ({selected_tf_label}) TERMINAL LINK"
 
 st.markdown(f"""
 <div style="background: linear-gradient(135deg, #111827 0%, #030712 100%); border: 1px solid #1f2937; border-radius: 8px; padding: 14px 20px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; color: white;">
@@ -225,18 +218,17 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 🖥️ 6. BORING YELLOW CANDLES HIGH-SPEED CANVAS DESIGN
+# 🖥️ 6. BORING YELLOW CANDLES PLOTLY CANVAS DESIGN
 # ==============================================================================
 fig = make_subplots(rows=1, cols=1)
 
-# Pure Plotly verified layout drawing blocks matching your local PC screen view
+# Render standard layout matching your local PC screen perfectly
 fig.add_trace(go.Candlestick(
     x=df.index, open=df['open'], high=df['high'], low=df['low'], close=df['close'], name="Price Candle",
     increasing_line_color='#facc15', decreasing_line_color='#eab308',
     increasing_fillcolor='#facc15', decreasing_fillcolor='#eab308'
 ), row=1, col=1)
 
-# Highlighting DR / DS blocks zones on the right dynamic axis bounds
 box_start_idx = max(0, len(df) - 15)
 fig.add_shape(type="rect", x0=df.index[box_start_idx], x1=df.index[-1], y0=sup_low, y1=sup_high, fillcolor="rgba(239, 68, 68, 0.18)", line=dict(color="#f87171", width=1.5))
 fig.add_shape(type="rect", x0=df.index[box_start_idx], x1=df.index[-1], y0=dem_low, y1=dem_high, fillcolor="rgba(34, 197, 94, 0.18)", line=dict(color="#4ade80", width=1.5))

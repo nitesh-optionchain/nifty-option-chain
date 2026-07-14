@@ -228,13 +228,28 @@ if market_engine:
     except Exception:
         pass
 
-# Safe Fallback Engine Array if Connection Delays
+# Safe Fallback Engine Array if Connection Delays (Standard Real Candle Pattern)
 if len(st.session_state.master_storage[selected_index_target]["master_history"]) == 0:
     base_val = nifty_display_raw if selected_index_target == "NIFTY" else sensex_display_raw
+    current_time = datetime.now()
+    
+    # Intraday dynamic wave model to create realistic thick bodies
     for i in range(50):
-        t_stamp = (datetime.now() - timedelta(minutes=10 * (50 - i))).strftime("%Y-%m-%d %H:%M:%S")
+        t_stamp = (current_time - timedelta(minutes=10 * (50 - i))).strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Simulating standard open/close wave fluctuations
+        c_open = base_val + (i * 1.2) if i % 2 == 0 else base_val + (i * 1.2) + 8
+        c_close = c_open + 14 if i % 3 == 0 else c_open - 10
+        c_high = max(c_open, c_close) + 6
+        c_low = min(c_open, c_close) - 5
+        
         st.session_state.master_storage[selected_index_target]["master_history"].append({
-            "time": t_stamp, "open": base_val + (i*0.4), "high": base_val + (i*0.9)+5, "low": base_val + (i*0.1)-4, "close": base_val + (i*0.7), "volume": 2000
+            "time": t_stamp,
+            "open": round(c_open, 2),
+            "high": round(c_high, 2),
+            "low": round(c_low, 2),
+            "close": round(c_close, 2),
+            "volume": 15000 + (i * 200)
         })
 
 # ==============================================================================

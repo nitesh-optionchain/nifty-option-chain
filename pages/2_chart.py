@@ -55,7 +55,7 @@ if "master_storage" not in st.session_state:
         "SENSEX": {"price": 0, "status": "LIVE", "master_history": []}
     }
 
-# 🌐 HISTORICAL DATA PARSING PIPELINE
+# 🌐 PURE HISTORICAL PRODUCTION DATA PARSING PIPELINE
 if os.path.exists(html_file_path):
     with open(html_file_path, "r", encoding="utf-8") as f:
         html_content = f.read()
@@ -64,18 +64,16 @@ if os.path.exists(html_file_path):
     st.session_state.master_storage["NIFTY"]["master_history"] = []
     st.session_state.master_storage["SENSEX"]["master_history"] = []
 
-    has_data = False
-
     if market_engine:
         try:
             end_date = datetime.utcnow()
             start_date = end_date - timedelta(days=5)
             
-            # 1. Fetch HISTORICAL Data for NIFTY (Standardized Payload Array)
+            # 1. Fetch REAL Data for NIFTY from PROD API
             nifty_res = market_engine.historical_data({
                 "exchange": "NSE",
-                "type": "INDEX",  # Standard Index mapping code
-                "values": ["Nifty 50"],  # Precise native query parameter
+                "type": "INDEX",
+                "values": ["Nifty 50"],
                 "fields": ["open", "high", "low", "close", "cumulative_volume"],
                 "startDate": start_date.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
                 "endDate": end_date.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
@@ -85,7 +83,6 @@ if os.path.exists(html_file_path):
             })
             
             if nifty_res and hasattr(nifty_res, 'candles') and nifty_res.candles:
-                has_data = True
                 for candle in nifty_res.candles:
                     raw_close = float(getattr(candle, 'close', 0)) / 100
                     st.session_state.master_storage["NIFTY"]["price"] = int(getattr(candle, 'close', 0))
@@ -98,7 +95,7 @@ if os.path.exists(html_file_path):
                         "volume": float(getattr(candle, 'cumulative_volume', 0))
                     })
 
-            # 2. Fetch HISTORICAL Data for SENSEX
+            # 2. Fetch REAL Data for SENSEX from PROD API
             sensex_res = market_engine.historical_data({
                 "exchange": "BSE",
                 "type": "INDEX",
@@ -112,7 +109,6 @@ if os.path.exists(html_file_path):
             })
             
             if sensex_res and hasattr(sensex_res, 'candles') and sensex_res.candles:
-                has_data = True
                 for candle in sensex_res.candles:
                     raw_close = float(getattr(candle, 'close', 0)) / 100
                     st.session_state.master_storage["SENSEX"]["price"] = int(getattr(candle, 'close', 0))
@@ -126,23 +122,7 @@ if os.path.exists(html_file_path):
                     })
 
         except Exception as data_err:
-            pass
-
-    # If API database is locked or empty, inject a structural safe array to force plot candles immediately
-    if not has_data or len(st.session_state.master_storage["NIFTY"]["master_history"]) == 0:
-        st.warning("⚠️ Data pipeline sync is waiting for connection updates. Rendering base matrix...")
-        base_nifty = 24230.0
-        base_sensex = 77460.0
-        for i in range(40):
-            t_stamp = (datetime.now() - timedelta(minutes=10 * (40 - i))).strftime("%Y-%m-%d %H:%M:%S")
-            st.session_state.master_storage["NIFTY"]["master_history"].append({
-                "time": t_stamp, "open": base_nifty + (i*0.2), "high": base_nifty + (i*0.4)+3, "low": base_nifty + (i*0.1)-2, "close": base_nifty + (i*0.35), "volume": 100
-            })
-            st.session_state.master_storage["SENSEX"]["master_history"].append({
-                "time": t_stamp, "open": base_sensex + (i*0.5), "high": base_sensex + (i*0.9)+5, "low": base_sensex + (i*0.2)-4, "close": base_sensex + (i*0.7), "volume": 100
-            })
-        st.session_state.master_storage["NIFTY"]["price"] = int(base_nifty * 100)
-        st.session_state.master_storage["SENSEX"]["price"] = int(base_sensex * 100)
+            print(f"Data API collection exception: {data_err}")
 
     # JSON dynamic generation
     json_data = json.dumps(st.session_state.master_storage)

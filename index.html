@@ -41,62 +41,55 @@
             wickUpColor: '#26a69a', wickDownColor: '#ef5350'
         });
 
-        function renderStaticBars() {
-            if (window.chartData && window.currentAsset) {
-                const targetNode = window.chartData[window.currentAsset];
+        function processAndRender(data, asset) {
+            if (!data || !data[asset]) return;
+            const targetNode = data[asset];
+
+            document.getElementById('asset-display').innerText = asset + " LIVE";
+            if (targetNode.price > 0) {
+                document.getElementById('live-price').innerText = (targetNode.price / 100).toFixed(2);
+            }
+
+            if (targetNode.master_history && targetNode.master_history.length > 0) {
+                let formattedBars = [];
+                let seenTimes = new Set();
+
+                for (let bar of targetNode.master_history) {
+                    let cleanTime = typeof bar.time === 'number' ? bar.time : Math.floor(new Date(bar.time).getTime() / 1000);
+                    
+                    if (!isNaN(cleanTime) && !seenTimes.has(cleanTime)) {
+                        seenTimes.add(cleanTime);
+                        formattedBars.push({
+                            time: cleanTime,
+                            open: parseFloat(bar.open),
+                            high: parseFloat(bar.high),
+                            low: parseFloat(bar.low),
+                            close: parseFloat(bar.close)
+                        });
+                    }
+                }
                 
-                if (targetNode) {
-                    document.getElementById('asset-display').innerText = window.currentAsset + " LIVE";
-                    if (targetNode.price > 0) {
-                        document.getElementById('live-price').innerText = (targetNode.price / 100).toFixed(2);
-                    }
-
-                    if (targetNode.master_history && targetNode.master_history.length > 0) {
-                        let formattedBars = [];
-                        let seenTimes = new Set();
-
-                        for (let bar of targetNode.master_history) {
-                            let cleanTime = typeof bar.time === 'number' ? bar.time : Math.floor(new Date(bar.time).getTime() / 1000);
-                            
-                            if (!isNaN(cleanTime) && !seenTimes.has(cleanTime)) {
-                                seenTimes.add(cleanTime);
-                                formattedBars.push({
-                                    time: cleanTime,
-                                    open: parseFloat(bar.open),
-                                    high: parseFloat(bar.high),
-                                    low: parseFloat(bar.low),
-                                    close: parseFloat(bar.close)
-                                });
-                            }
-                        }
-                        
-                        // Strict chronological sorting sequence required by TV lightweight engine
-                        formattedBars.sort((a, b) => a.time - b.time);
-                        
-                        if (formattedBars.length > 0) {
-                            try {
-                                candlestickSeries.setData(formattedBars);
-                            } catch(err) {
-                                console.log("Chart render error mapping: ", err);
-                            }
-                        }
-                    }
+                formattedBars.sort((a, b) => a.time - b.time);
+                if (formattedBars.length > 0) {
+                    candlestickSeries.setData(formattedBars);
                 }
             }
         }
 
+        // Parent window se aane wale real-time ticks listener engine
         window.addEventListener("message", function(e) {
             if (e.data && e.data.type === "LIVE_TICK_UPDATE") {
-                window.chartData = e.data.payload;
-                window.currentAsset = e.data.asset;
-                renderStaticBars();
+                processAndRender(e.data.payload, e.data.asset);
             }
         });
 
-        setTimeout(renderStaticBars, 100);
-        setTimeout(renderStaticBars, 500);
-        setInterval(renderStaticBars, 1000);
-        
+        // Window direct scope data fallback check logic
+        setTimeout(() => {
+            if (window.chartData && window.currentAsset) {
+                processAndRender(window.chartData, window.currentAsset);
+            }
+        }, 100);
+
         window.addEventListener('resize', () => { chart.resize(container.clientWidth, container.clientHeight); });
     </script>
 </body>

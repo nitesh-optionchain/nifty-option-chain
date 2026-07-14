@@ -1,63 +1,22 @@
 import sys
 import os
-import sqlite3
 import time
 from datetime import datetime, timedelta
 import streamlit as st
 import plotly.graph_objects as go
 from streamlit_autorefresh import st_autorefresh
 
-# 📊 Wide mode terminal configuration
-st.set_page_config(layout="wide", page_title="SmartWealth Live Terminal")
+# 📊 Wide mode configuration
+st.set_page_config(layout="wide", page_title="SmartWealth Live Chart Terminal")
 
 # Anti-Crash Module
 import pandas as pd
 
-# ==============================================================================
-# 🗄️ 1. PERMANENT SQLITE USER SECURITY ENGINE
-# ==============================================================================
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "user_management.db")
-
-def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            user_id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at TEXT NOT NULL
-        )
-    """)
-    cursor.execute("INSERT OR IGNORE INTO users (user_id, name, created_at) VALUES ('admin', 'Admin Chief', ?)", (str(datetime.now()),))
-    conn.commit()
-    conn.close()
-
-init_db()
-
-if "authenticated" not in st.session_state:
-    st.session_state.authenticated = False
-
-# Security Validation Interface
-if not st.session_state.authenticated:
-    st.sidebar.subheader("🔒 Terminal Access Controller")
-    login_id = st.sidebar.text_input("User ID Key", type="password")
-    if st.sidebar.button("Verify Authentication", use_container_width=True):
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute("SELECT name FROM users WHERE user_id = ?", (login_id,))
-        user_row = cursor.fetchone()
-        conn.close()
-        if user_row:
-            st.session_state.authenticated = True
-            st.session_state.current_user = user_row[0]
-            st.rerun()
-        else:
-            st.sidebar.error("❌ Invalid Access Key.")
-    st.stop()
-
 # 🔄 2-SECOND REALTIME PIPELINE SYNCHRONIZER
-st_autorefresh(interval=2000, key="realtime_nubra_stream_bridge")
+st_autorefresh(interval=2000, key="clean_direct_stream_bridge")
 
 # ==============================================================================
-# 🔌 2. SDK BROKER WEBSOCKET DATA STREAM INTEGRATION
+# 🔌 NUBRA SDK BROKER CONNECTION
 # ==============================================================================
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
@@ -73,19 +32,12 @@ def connect_broker_pipeline():
 market_engine = connect_broker_pipeline()
 
 # ==============================================================================
-# 🎛️ SIDEBAR SELECTIONS
+# 🎛️ SIDEBAR SELECTIONS (Bina Kisi Login Gateway Ke)
 # ==============================================================================
-st.sidebar.markdown(f"### 👤 Active: {st.session_state.current_user}")
-if st.sidebar.button("🔒 Secure Logout", use_container_width=True):
-    st.session_state.authenticated = False
-    st.rerun()
-
+st.sidebar.markdown("### 📊 Chart Configuration")
 selected_index_target = st.sidebar.selectbox("Select Target Index", ["NIFTY", "SENSEX"], index=0)
 selected_tf = st.sidebar.selectbox("Timeframe Matrix", ["5m", "10m", "15m", "30m", "1d"], index=0)
 
-# ==============================================================================
-# 🧠 3. HISTORICAL ENGINE AND REALTIME DICTIONARY PARSER
-# ==============================================================================
 times, opens, highs, lows, closes = [], [], [], [], []
 live_price = 0.0
 live_change = 0.0
@@ -96,7 +48,7 @@ if market_engine:
         symbol_name = "Nifty 50" if selected_index_target == "NIFTY" else "SENSEX"
         exch_name = "NSE" if selected_index_target == "NIFTY" else "BSE"
         
-        # A. Pull strictly HISTORICAL array for baseline candles grid
+        # Pull Historical Data for baseline candles grid
         end_dt = datetime.utcnow()
         start_dt = end_dt - timedelta(days=3)
         
@@ -120,7 +72,7 @@ if market_engine:
                 lows.append(float(getattr(candle, 'low', 0)) / 100)
                 closes.append(float(getattr(candle, 'close', 0)) / 100)
 
-        # B. Map WebSocket live response variables strictly from user docs format
+        # Map WebSocket live response variables
         snap = market_engine.current_price(selected_index_target, exchange=exch_name)
         if snap:
             raw_val = getattr(snap, 'index_value', getattr(snap, 'price', None))
@@ -131,31 +83,28 @@ if market_engine:
                 live_change = float(raw_chg)
                 is_market_open = True
                 
-                # Append live price node directly to update the active ongoing candle stream
                 if len(closes) > 0:
                     closes[-1] = live_price
                     if live_price > highs[-1]: highs[-1] = live_price
                     if live_price < lows[-1]: lows[-1] = live_price
                     
     except Exception as e:
-        st.sidebar.error(f"Stream Status: {str(e)}")
+        st.sidebar.error(f"Data Fetch Notice: {str(e)}")
 
-# Safe check: If no data at all (neither historical nor live)
+# If market is closed or API response lags, use fallback from last available candles
 if not closes:
-    st.error("⚠️ Data connection failed. Please check your Nubra SDK API status.")
+    st.error("⚠️ Data link offline. Connecting to broker repository...")
     st.stop()
 
-# If market is closed, use the last historical close price for display header
 if not is_market_open:
     live_price = closes[-1]
-    # Calculate difference percentage between last two candles for header look
     if len(closes) > 1:
         live_change = ((closes[-1] - closes[-2]) / closes[-2]) * 100
 
 # ==============================================================================
-# 📈 PHASE 4: LIVE TOP HEADER UI (GREEN / RED DYNAMIC INDICATORS)
+# 📈 PHASE 2: LIVE UP/DOWN INDEX HEADER INTERFACE
 # ==============================================================================
-h_col1, h_col2, h_col3 = st.columns([2, 2, 4])
+h_col1, h_col2 = st.columns([4, 4])
 with h_col1:
     delta_str = f"{live_change:+.2f}%"
     label_status = "REALTIME SPOT" if is_market_open else "LAST CLOSED PRICE"
@@ -166,18 +115,13 @@ with h_col1:
         delta_color="normal" if live_change >= 0 else "inverse"
     )
 with h_col2:
-    st.write(f"**Asset Node:** {selected_index_target} | **Interval:** {selected_tf}")
-    if is_market_open:
-        st.caption("🟢 Market is OPEN - Streaming Live Ticks")
-    else:
-        st.caption("🔴 Market is CLOSED - Showing Historical Base Candles")
-with h_col3:
-    st.markdown(f"<div style='text-align:right;color:#64748b;padding-top:10px;'>👤 User Connected: <b>{st.session_state.current_user}</b></div>", unsafe_allow_html=True)
+    status_tag = "🟢 Market Open" if is_market_open else "🔴 Market Closed"
+    st.markdown(f"<div style='text-align:right;padding-top:15px;'><b>Engine Status:</b> {status_tag} | <b>Interval:</b> {selected_tf}</div>", unsafe_allow_html=True)
 
 st.markdown("---")
 
 # ==============================================================================
-# 🖥️ PHASE 5: REAL GREEN & RED CANDLESTICK TERMINAL
+# 🖥️ PHASE 3: STRICT RED & GREEN CANDLESTICK GRAPH
 # ==============================================================================
 fig = go.Figure(data=[go.Candlestick(
     x=times, open=opens, high=highs, low=lows, close=closes,
@@ -190,8 +134,8 @@ fig.update_layout(
     height=620, xaxis_rangeslider_visible=False, template="plotly_dark",
     paper_bgcolor='#030712', plot_bgcolor='#030712',
     margin=dict(l=15, r=70, t=10, b=30),
-    xaxis=dict(showgrid=True, gridcolor="#1e293b", linewidth=1, linecolor='#334155'),
-    yaxis=dict(side="right", showgrid=True, gridcolor="#1e293b", linewidth=1, linecolor='#334155')
+    xaxis=dict(showgrid=True, gridcolor="#1e293b"),
+    yaxis=dict(side="right", showgrid=True, gridcolor="#1e293b")
 )
 
 st.plotly_chart(fig, use_container_width=True)

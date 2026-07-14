@@ -18,6 +18,9 @@ DB_PATH = os.path.join(BASE_DIR, "market_ticks.db")
 if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
 
+# ==============================================================================
+# 🗄️ 1. DATA CENTER: DATABASE INITIALIZATION
+# ==============================================================================
 def init_market_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -37,6 +40,9 @@ def init_market_db():
 
 init_market_db()
 
+# ==============================================================================
+# 🔌 2. NUBRA SDK BROKER PIPELINE CONNECTIONS
+# ==============================================================================
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
 
@@ -58,14 +64,18 @@ def get_sdk_connector():
 market_engine = get_sdk_connector()
 target_index = st.sidebar.selectbox("Active Asset Frame", ["NIFTY", "SENSEX"], index=0)
 
-# Set base anchor rates directly using current realistic levels
+# Aligned initial prices matching the Option Chain matrix
 base_val = 24035.15 if target_index == "NIFTY" else 79650.0
 
+# ==============================================================================
+# 🧠 3. CORE PROCESSING PIPELINE (API FETCH & DATABASE STORAGE)
+# ==============================================================================
 if market_engine:
     try:
         symbol_name = "Nifty 50" if target_index == "NIFTY" else "SENSEX"
         exch_name = "NSE" if target_index == "NIFTY" else "BSE"
         
+        # Pulling data matching standard broker rules without division error
         hist_response = market_engine.historical_data({
             "exchange": exch_name, "type": "INDEX", "values": [symbol_name],
             "fields": ["open", "high", "low", "close"],
@@ -92,6 +102,7 @@ if market_engine:
             conn.commit()
             conn.close()
 
+        # Real-time Spot tick connection
         snap = market_engine.current_price(target_index, exchange=exch_name)
         if snap and getattr(snap, 'price', None):
             base_val = float(snap.price)
@@ -118,6 +129,9 @@ if market_engine:
     except Exception:
         pass
 
+# ==============================================================================
+# 📊 4. LOCAL DATABASE RECOVERY LAYER
+# ==============================================================================
 master_history_array = []
 try:
     conn = sqlite3.connect(DB_PATH)
@@ -137,7 +151,7 @@ except Exception:
     pass
 
 # ==============================================================================
-# ⚡ DYNAMIC VOLATILITY RECOVERY ENGINE (Fixes Flat Horizontal Lines)
+# ⚡ DYNAMIC VOLATILITY WAVE GENERATOR (Fallback Engine When Market is Closed)
 # ==============================================================================
 if not master_history_array:
     current_unix_anchor = (int(time.time()) // 300) * 300
@@ -145,7 +159,7 @@ if not master_history_array:
     for step in range(80):
         computed_time = current_unix_anchor - ((80 - step) * 300)
         
-        # Creating progressive wave around target price parameters
+        # Creating progressive wave logic around base_val to fix horizontal lines
         sin_wave = math.sin(step * 0.2) * (35.0 if target_index == "NIFTY" else 110.0)
         noise = ((step % 4) - 2) * (6.0 if target_index == "NIFTY" else 18.0)
         
@@ -174,6 +188,9 @@ runtime_payload = {
 
 st.sidebar.caption("🟢 Genuine Live Sync Module: ONLINE")
 
+# ==============================================================================
+# 🌐 5. HTML TRANSMISSION ENGINE
+# ==============================================================================
 if os.path.exists(html_file_path):
     with open(html_file_path, "r", encoding="utf-8") as f:
         html_content = f.read()
@@ -200,3 +217,5 @@ if os.path.exists(html_file_path):
     
     time.sleep(1.5)
     st.rerun()
+else:
+    st.error("❌ 'index.html' file root folder me nahi mili!")

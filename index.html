@@ -42,7 +42,6 @@
         });
 
         function syncTradingViewData() {
-            // Streamlit variables se real-time state fetch karein
             let currentAsset = window.currentAsset || "NIFTY";
             
             if (window.chartData && window.chartData[currentAsset]) {
@@ -50,45 +49,42 @@
                 
                 if (targetNode.price > 0) {
                     document.getElementById('live-price').innerText = (targetNode.price / 100).toFixed(2);
-                } else if (targetNode.master_history && targetNode.master_history.length > 0) {
-                    document.getElementById('live-price').innerText = targetNode.master_history[targetNode.master_history.length - 1].close.toFixed(2);
                 }
                 
                 document.getElementById('asset-display').innerText = currentAsset + " LIVE";
-                document.getElementById('zone-status').innerText = "CONNECTED";
 
                 if (targetNode.master_history && targetNode.master_history.length > 0) {
-                    const formattedBars = targetNode.master_history.map(bar => {
-                        let standardTime = Math.floor(new Date(bar.time).getTime() / 1000);
-                        if (isNaN(standardTime)) {
-                            standardTime = Math.floor(Date.now() / 1000);
-                        }
-                        return {
-                            time: standardTime,
-                            open: parseFloat(bar.open),
-                            high: parseFloat(bar.high),
-                            low: parseFloat(bar.low),
-                            close: parseFloat(bar.close)
-                        };
-                    });
-
-                    // Deduplicate timestamps arrays
-                    const uniqueBars = [];
+                    const formattedBars = [];
                     const seenTimes = new Set();
-                    for (const bar of formattedBars) {
-                        if (!seenTimes.has(bar.time)) {
-                            seenTimes.add(bar.time);
-                            uniqueBars.push(bar);
+
+                    for (let bar of targetNode.master_history) {
+                        // Direct integer unix mapping engine to fix empty visual render bugs
+                        let cleanTime = typeof bar.time === 'number' ? bar.time : Math.floor(new Date(bar.time).getTime() / 1000);
+                        
+                        if (isNaN(cleanTime)) {
+                            cleanTime = Math.floor(Date.now() / 1000);
+                        }
+
+                        if (!seenTimes.has(cleanTime)) {
+                            seenTimes.add(cleanTime);
+                            formattedBars.push({
+                                time: cleanTime,
+                                open: parseFloat(bar.open),
+                                high: parseFloat(bar.high),
+                                low: parseFloat(bar.low),
+                                close: parseFloat(bar.close)
+                            });
                         }
                     }
                     
-                    uniqueBars.sort((a, b) => a.time - b.time);
-                    candlestickSeries.setData(uniqueBars);
+                    if (formattedBars.length > 0) {
+                        formattedBars.sort((a, b) => a.time - b.time);
+                        candlestickSeries.setData(formattedBars);
+                    }
                 }
             }
         }
 
-        // PostMessage connection listeners
         window.addEventListener("message", function(e) {
             if (e.data && e.data.type === "LIVE_TICK_UPDATE") {
                 window.chartData = e.data.payload;
@@ -97,10 +93,7 @@
             }
         });
 
-        // 🔄 IMMEDIATE TRIGGER ENGINE (Bypasses the 1-second delay lag)
-        setTimeout(syncTradingViewData, 100);
-        setTimeout(syncTradingViewData, 500);
-        
+        setTimeout(syncTradingViewData, 200);
         setInterval(syncTradingViewData, 1000);
         window.addEventListener('resize', () => { chart.resize(container.clientWidth, container.clientHeight); });
     </script>

@@ -42,16 +42,20 @@
         });
 
         function syncTradingViewData() {
-            // Python dashboard dwara update kiya gaya current asset pick karo
+            // Streamlit variables se real-time state fetch karein
             let currentAsset = window.currentAsset || "NIFTY";
             
             if (window.chartData && window.chartData[currentAsset]) {
                 const targetNode = window.chartData[currentAsset];
                 
-                if(targetNode.price > 0) {
+                if (targetNode.price > 0) {
                     document.getElementById('live-price').innerText = (targetNode.price / 100).toFixed(2);
+                } else if (targetNode.master_history && targetNode.master_history.length > 0) {
+                    document.getElementById('live-price').innerText = targetNode.master_history[targetNode.master_history.length - 1].close.toFixed(2);
                 }
+                
                 document.getElementById('asset-display').innerText = currentAsset + " LIVE";
+                document.getElementById('zone-status').innerText = "CONNECTED";
 
                 if (targetNode.master_history && targetNode.master_history.length > 0) {
                     const formattedBars = targetNode.master_history.map(bar => {
@@ -68,7 +72,7 @@
                         };
                     });
 
-                    // Remove unexpected duplicate timestamps array entries
+                    // Deduplicate timestamps arrays
                     const uniqueBars = [];
                     const seenTimes = new Set();
                     for (const bar of formattedBars) {
@@ -84,6 +88,7 @@
             }
         }
 
+        // PostMessage connection listeners
         window.addEventListener("message", function(e) {
             if (e.data && e.data.type === "LIVE_TICK_UPDATE") {
                 window.chartData = e.data.payload;
@@ -92,6 +97,10 @@
             }
         });
 
+        // 🔄 IMMEDIATE TRIGGER ENGINE (Bypasses the 1-second delay lag)
+        setTimeout(syncTradingViewData, 100);
+        setTimeout(syncTradingViewData, 500);
+        
         setInterval(syncTradingViewData, 1000);
         window.addEventListener('resize', () => { chart.resize(container.clientWidth, container.clientHeight); });
     </script>

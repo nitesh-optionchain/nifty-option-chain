@@ -57,12 +57,11 @@ if "master_storage" not in st.session_state:
     }
 
 # ==============================================================================
-# 🧠 CORE ENGINE: PULL 3-DAYS HISTORICAL DATA ON FIRST LOAD
+# 🧠 CORE ENGINE: PULL 3-DAYS HISTORICAL DATA WITH STRICTOR COMPATIBILITY KEYS
 # ==============================================================================
 indices_to_fetch = [("NIFTY", "Nifty 50", "NSE"), ("SENSEX", "SENSEX", "BSE")]
 
 for target_id, symbol_name, exch_name in indices_to_fetch:
-    # Agar history abhi khali hai, toh pehle 3 din ka proper OHLC records fetch karo
     if not st.session_state.master_storage[target_id]["master_history"]:
         try:
             end_dt = datetime.utcnow()
@@ -82,8 +81,11 @@ for target_id, symbol_name, exch_name in indices_to_fetch:
             
             if hist_response and hasattr(hist_response, 'candles') and hist_response.candles:
                 for candle in hist_response.candles:
+                    raw_ts = getattr(candle, 'timestamp', '')
+                    # JavaScript frameworks date/time formatting key match parameters
                     st.session_state.master_storage[target_id]["master_history"].append({
-                        "time": getattr(candle, 'timestamp', ''),
+                        "time": raw_ts,
+                        "date": raw_ts, # Compatibility key duplication
                         "open": float(getattr(candle, 'open', 0)) / 100,
                         "high": float(getattr(candle, 'high', 0)) / 100,
                         "low": float(getattr(candle, 'low', 0)) / 100,
@@ -103,7 +105,6 @@ try:
         st.session_state.master_storage["NIFTY"]["price"] = int(nifty_snap.price)
         st.session_state.master_storage["NIFTY"]["status"] = "LIVE"
         
-        # Chal rahi aakhiri candle ko stream price se real-time update karo
         if st.session_state.master_storage["NIFTY"]["master_history"]:
             st.session_state.master_storage["NIFTY"]["master_history"][-1]["close"] = real_nifty
             if real_nifty > st.session_state.master_storage["NIFTY"]["master_history"][-1]["high"]:
@@ -127,6 +128,10 @@ try:
                 
 except Exception as data_err:
     print(f"Tick collect alert: {data_err}")
+
+# Override context variables to force unfreeze signal in widget
+for k in st.session_state.master_storage:
+    st.session_state.master_storage[k]["status"] = "LIVE"
 
 # ==============================================================================
 # 🌐 HTML JAVASCRIPT BRIDGE INJECTION

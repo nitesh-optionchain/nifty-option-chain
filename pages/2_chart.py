@@ -63,19 +63,16 @@ def get_sdk_connector():
 market_engine = get_sdk_connector()
 target_index = st.sidebar.selectbox("Active Asset Frame", ["NIFTY", "SENSEX"], index=0)
 
-# Realistic pricing configurations
 base_val = 24350.0 if target_index == "NIFTY" else 79650.0
 
 # ==============================================================================
 # 🧠 3. DATABASE INJECTOR & STREAM BUFFER LAYER
 # ==============================================================================
-# A. Fetch Fresh Real Data from Broker SDK and Commit to SQLite
 if market_engine:
     try:
         symbol_name = "Nifty 50" if target_index == "NIFTY" else "SENSEX"
         exch_name = "NSE" if target_index == "NIFTY" else "BSE"
         
-        # 1. Historical fetch to build strong database foundation
         hist_response = market_engine.historical_data({
             "exchange": exch_name, "type": "INDEX", "values": [symbol_name],
             "fields": ["open", "high", "low", "close"],
@@ -100,15 +97,13 @@ if market_engine:
             conn.commit()
             conn.close()
 
-        # 2. Live Spot updates processing directly inside SQLite matrix
         snap = market_engine.current_price(target_index, exchange=exch_name)
         if snap and getattr(snap, 'price', None):
             base_val = float(snap.price) / 100
-            current_rounded_unix = (int(time.time()) // 300) * 300  # Sync with 5m candle window block
+            current_rounded_unix = (int(time.time()) // 300) * 300
             
             conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
-            # Check if active bar node already exists in file storage
             cursor.execute("SELECT open, high, low FROM market_history WHERE asset=? AND timestamp=?", (target_index, current_rounded_unix))
             existing_node = cursor.fetchone()
             
@@ -129,7 +124,7 @@ if market_engine:
         pass
 
 # ==============================================================================
-# 📊 4. HARD DRIVE RECOVERY ENGINE (Ensures Chart Renders from Local Storage)
+# 📊 4. HARD DRIVE RECOVERY ENGINE
 # ==============================================================================
 master_history_array = []
 try:
@@ -149,16 +144,33 @@ try:
 except Exception:
     pass
 
-# Strong hardcoded generator backup pattern if DB engine is entirely empty
+# ==============================================================================
+# 🛠️ REALISTIC RANDOM WALK GENERATOR (Mixes Red and Green Candles Perfectly)
+# ==============================================================================
 if not master_history_array:
     current_unix_anchor = (int(time.time()) // 300) * 300
+    last_close = base_val
+    
+    # Generate 120 historical bars with dynamic pricing waves
     for step in range(120):
         computed_time = current_unix_anchor - ((120 - step) * 300)
+        
+        # Pseudo-random wave generator based on math steps
+        wave_factor = ((step % 3) - 1) * 6.5 if step % 2 == 0 else ((step % 4) - 2) * -5.8
+        
+        c_open = last_close
+        c_close = c_open + wave_factor
+        c_high = max(c_open, c_close) + abs(wave_factor * 0.3) + 3.0
+        c_low = min(c_open, c_close) - abs(wave_factor * 0.3) - 3.0
+        
         master_history_array.append({
             "time": int(computed_time),
-            "open": base_val + (step * 0.1), "high": base_val + (step * 0.1) + 6,
-            "low": base_val + (step * 0.1) - 4, "close": base_val + (step * 0.1) + 2
+            "open": round(c_open, 2),
+            "high": round(c_high, 2),
+            "low": round(c_low, 2),
+            "close": round(c_close, 2)
         })
+        last_close = c_close
 
 if master_history_array:
     base_val = master_history_array[-1]["close"]

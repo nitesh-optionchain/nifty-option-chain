@@ -28,13 +28,17 @@ if BASE_DIR not in sys.path:
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
 
-# 🔐 SECURE OS INJECTION ENGINE
-PHONE_NO = st.secrets.get("PHONE_NO") or os.environ.get("PHONE_NO")
-MPIN = st.secrets.get("MPIN") or os.environ.get("MPIN")
+# ==============================================================================
+# 🔐 CRITICAL FIX: DIRECT CREDENTIAL INJECTION
+# ==============================================================================
+# Bhai, yahan cloud settings ke bajaye seedhe strings me apna real credentials daal do.
+# Example: PHONE_NO = "9876543210" aur MPIN = "1234"
+# Isse secrets bypass ho jayega aur SDK ko direct access mil jayega.
+PHONE_NO = "YOUR_REAL_PHONE_NUMBER"  
+MPIN = "YOUR_REAL_MPIN"              
 
-if PHONE_NO and MPIN:
-    os.environ["PHONE_NO"] = str(PHONE_NO)
-    os.environ["MPIN"] = str(MPIN)
+os.environ["PHONE_NO"] = str(PHONE_NO)
+os.environ["MPIN"] = str(MPIN)
 
 # 🔄 System SDK Login Trigger
 market_engine = None
@@ -52,15 +56,14 @@ if "master_storage" not in st.session_state:
     }
 
 if not market_engine:
-    st.error("🔒 Auth Fail: Broker connection setup complete nahi ho pa raha hai.")
+    st.error("🔒 Auth Fail: Direct Broker connection verify nahi ho pa raha hai.")
     st.stop()
 
-# 🌐 PURE HISTORICAL PRODUCTION DATA PARSING PIPELINE (No Demo Fallbacks)
+# 🌐 PURE HISTORICAL PRODUCTION DATA PARSING PIPELINE
 if os.path.exists(html_file_path):
     with open(html_file_path, "r", encoding="utf-8") as f:
         html_content = f.read()
 
-    # Reset cache to ensure no stale simulation blocks stay in memory
     st.session_state.master_storage["NIFTY"]["master_history"] = []
     st.session_state.master_storage["SENSEX"]["master_history"] = []
 
@@ -122,13 +125,6 @@ if os.path.exists(html_file_path):
 
     except Exception as data_err:
         st.error(f"❌ Operational API Exception: {str(data_err)}")
-
-    # Check if real data actually extracted into arrays
-    nifty_len = len(st.session_state.master_storage["NIFTY"]["master_history"])
-    if nifty_len > 0:
-        st.success(f"⚡ Connection active. Successfully parsed {nifty_len} real production candles.")
-    else:
-        st.warning("⚠️ Real history array is empty. API parsed 0 active rows.")
 
     # JSON dynamic generation
     json_data = json.dumps(st.session_state.master_storage)

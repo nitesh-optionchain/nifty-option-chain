@@ -6,16 +6,16 @@
     <title>TradingView Streamlit Terminal</title>
     <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     <style>
-        body { margin: 0; background-color: #131722; font-family: sans-serif; color: #d1d4dc; padding: 10px; }
-        .header { background: #1c2030; padding: 12px; display: flex; gap: 25px; border-radius: 4px; margin-bottom: 10px; border: 1px solid #2b2e3a; }
+        body { margin: 0; background-color: #131722; font-family: sans-serif; color: #d1d4dc; padding: 5px; overflow: hidden; }
+        .header { background: #1c2030; padding: 10px 15px; display: flex; gap: 25px; border-radius: 4px; margin-bottom: 5px; border: 1px solid #2b2e3a; font-size: 13px; }
         .header-val { font-weight: bold; margin-left: 5px; color: #26a69a; }
-        #chart-container { width: 100%; height: 680px; position: relative; }
+        #chart-container { width: 100%; height: calc(100vh - 55px); position: relative; }
     </style>
 </head>
 <body>
 
     <div class="header">
-        <div>Asset: <span id="asset-display" class="header-val">NIFTY LIVE</span></div>
+        <div>Asset: <span id="asset-display" class="header-val">Awaiting...</span></div>
         <div>Zone Status: <span id="zone-status" class="header-val" style="color: #26a69a;">CONNECTED</span></div>
         <div>Last Price: <span id="live-price" class="header-val">Awaiting Tick...</span></div>
     </div>
@@ -25,40 +25,36 @@
     <script>
         const container = document.getElementById('chart-container');
         
-        // 📈 Initialize Dynamic TradingView Canvas Grid Configuration
         const chart = LightweightCharts.createChart(container, {
             width: container.clientWidth,
-            height: 680,
+            height: container.clientHeight,
             layout: { backgroundColor: '#131722', textColor: '#d1d4dc' },
             grid: { vertLines: { color: '#232634' }, horzLines: { color: '#232634' } },
             crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
-            priceScale: { borderColor: '#2b2e3a', mode: LightweightCharts.PriceScaleMode.Normal, autoScale: true },
-            timeScale: { borderColor: '#2b2e3a', timeVisible: true, secondsVisible: false }
+            priceScale: { borderColor: '#2b2e3a', autoScale: true },
+            timeScale: { borderColor: '#2b2e3a', timeVisible: true }
         });
 
-        // Strict Red & Green Candle Configurations
         const candlestickSeries = chart.addCandlestickSeries({
             upColor: '#26a69a', downColor: '#ef5350',
             borderUpColor: '#26a69a', borderDownColor: '#ef5350',
             wickUpColor: '#26a69a', wickDownColor: '#ef5350'
         });
 
-        let currentAsset = "NIFTY";
-
         function syncTradingViewData() {
+            // Python dashboard dwara update kiya gaya current asset pick karo
+            let currentAsset = window.currentAsset || "NIFTY";
+            
             if (window.chartData && window.chartData[currentAsset]) {
                 const targetNode = window.chartData[currentAsset];
                 
-                // Header Metrics Sync Execution
                 if(targetNode.price > 0) {
                     document.getElementById('live-price').innerText = (targetNode.price / 100).toFixed(2);
                 }
                 document.getElementById('asset-display').innerText = currentAsset + " LIVE";
 
-                // Map local data elements to strict TradingView matrix format
                 if (targetNode.master_history && targetNode.master_history.length > 0) {
                     const formattedBars = targetNode.master_history.map(bar => {
-                        // Creating strict timestamp structures
                         let standardTime = Math.floor(new Date(bar.time).getTime() / 1000);
                         if (isNaN(standardTime)) {
                             standardTime = Math.floor(Date.now() / 1000);
@@ -78,27 +74,26 @@
                     for (const bar of formattedBars) {
                         if (!seenTimes.has(bar.time)) {
                             seenTimes.add(bar.time);
-                            uniqueBars.push(bar.time);
+                            uniqueBars.push(bar);
                         }
                     }
                     
-                    // Sort items chronologically
-                    formattedBars.sort((a, b) => a.time - b.time);
-                    candlestickSeries.setData(formattedBars);
+                    uniqueBars.sort((a, b) => a.time - b.time);
+                    candlestickSeries.setData(uniqueBars);
                 }
             }
         }
 
-        // Catch explicit Streamlit updates instantly
         window.addEventListener("message", function(e) {
             if (e.data && e.data.type === "LIVE_TICK_UPDATE") {
                 window.chartData = e.data.payload;
+                if(e.data.asset) window.currentAsset = e.data.asset;
                 syncTradingViewData();
             }
         });
 
         setInterval(syncTradingViewData, 1000);
-        window.addEventListener('resize', () => { chart.resize(container.clientWidth, 680); });
+        window.addEventListener('resize', () => { chart.resize(container.clientWidth, container.clientHeight); });
     </script>
 </body>
 </html>

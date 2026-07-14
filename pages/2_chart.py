@@ -1,22 +1,16 @@
 import sys
-from types import ModuleType
 import os
 import time
 import json
 from datetime import datetime, timedelta
 import streamlit as st
 import streamlit.components.v1 as components
+import pandas as pd  # Asli Pandas import kiya bina kisi bypass engine ke
 
 # 📊 Wide mode configuration
 st.set_page_config(layout="wide")
 st.subheader("📊 Live Multi-Asset Analytical Chart Terminal")
 st.markdown("---")
-
-# 🚀 Anti-Crash Pandas Bypass Engine
-if 'pandas' not in sys.modules:
-    fake_pandas = ModuleType('pandas')
-    fake_pandas.DataFrame = lambda *args, **kwargs: None
-    sys.modules['pandas'] = fake_pandas
 
 # 📂 Paths Setup
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -57,7 +51,7 @@ if "master_storage" not in st.session_state:
     }
 
 # ==============================================================================
-# 🧠 CORE ENGINE: PULL 3-DAYS HISTORICAL DATA WITH STRICTOR COMPATIBILITY KEYS
+# 🧠 CORE ENGINE: PULL 3-DAYS HISTORICAL DATA WITH VALID DATETIME FORMAT
 # ==============================================================================
 indices_to_fetch = [("NIFTY", "Nifty 50", "NSE"), ("SENSEX", "SENSEX", "BSE")]
 
@@ -82,10 +76,9 @@ for target_id, symbol_name, exch_name in indices_to_fetch:
             if hist_response and hasattr(hist_response, 'candles') and hist_response.candles:
                 for candle in hist_response.candles:
                     raw_ts = getattr(candle, 'timestamp', '')
-                    # JavaScript frameworks date/time formatting key match parameters
                     st.session_state.master_storage[target_id]["master_history"].append({
                         "time": raw_ts,
-                        "date": raw_ts, # Compatibility key duplication
+                        "date": raw_ts,
                         "open": float(getattr(candle, 'open', 0)) / 100,
                         "high": float(getattr(candle, 'high', 0)) / 100,
                         "low": float(getattr(candle, 'low', 0)) / 100,

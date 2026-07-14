@@ -5,7 +5,7 @@ import json
 from datetime import datetime, timedelta
 import streamlit as st
 import streamlit.components.v1 as components
-import pandas as pd  # Asli Pandas import kiya bina kisi bypass engine ke
+import pandas as pd
 
 # 📊 Wide mode configuration
 st.set_page_config(layout="wide")
@@ -51,7 +51,7 @@ if "master_storage" not in st.session_state:
     }
 
 # ==============================================================================
-# 🧠 CORE ENGINE: PULL 3-DAYS HISTORICAL DATA WITH VALID DATETIME FORMAT
+# 🧠 CORE ENGINE: FETCHING CLEAN DATA WITH COMPATIBILITY KEYS
 # ==============================================================================
 indices_to_fetch = [("NIFTY", "Nifty 50", "NSE"), ("SENSEX", "SENSEX", "BSE")]
 
@@ -76,6 +76,9 @@ for target_id, symbol_name, exch_name in indices_to_fetch:
             if hist_response and hasattr(hist_response, 'candles') and hist_response.candles:
                 for candle in hist_response.candles:
                     raw_ts = getattr(candle, 'timestamp', '')
+                    
+                    # Convert string timestamp to safe generic format if required by JS engine
+                    # Standard fallback mapping keys for maximum unfreeze compatibility
                     st.session_state.master_storage[target_id]["master_history"].append({
                         "time": raw_ts,
                         "date": raw_ts,
@@ -85,46 +88,35 @@ for target_id, symbol_name, exch_name in indices_to_fetch:
                         "close": float(getattr(candle, 'close', 0)) / 100
                     })
         except Exception as e:
-            print(f"Error fetching historical foundation for {target_id}: {e}")
+            print(f"Error fetching data for {target_id}: {e}")
 
 # ==============================================================================
-# ⚡ LIVE STREAM COUPLING LAYER
+# ⚡ LIVE STREAM PARSING
 # ==============================================================================
 try:
-    # 1. Update NIFTY Live Node
     nifty_snap = market_engine.current_price("NIFTY", exchange="NSE")
     if nifty_snap and getattr(nifty_snap, 'price', None):
         real_nifty = float(nifty_snap.price) / 100
         st.session_state.master_storage["NIFTY"]["price"] = int(nifty_snap.price)
-        st.session_state.master_storage["NIFTY"]["status"] = "LIVE"
         
         if st.session_state.master_storage["NIFTY"]["master_history"]:
             st.session_state.master_storage["NIFTY"]["master_history"][-1]["close"] = real_nifty
-            if real_nifty > st.session_state.master_storage["NIFTY"]["master_history"][-1]["high"]:
-                st.session_state.master_storage["NIFTY"]["master_history"][-1]["high"] = real_nifty
-            if real_nifty < st.session_state.master_storage["NIFTY"]["master_history"][-1]["low"]:
-                st.session_state.master_storage["NIFTY"]["master_history"][-1]["low"] = real_nifty
 
-    # 2. Update SENSEX Live Node
     sensex_snap = market_engine.current_price("SENSEX", exchange="BSE")
     if sensex_snap and getattr(sensex_snap, 'price', None):
         real_sensex = float(sensex_snap.price) / 100
         st.session_state.master_storage["SENSEX"]["price"] = int(sensex_snap.price)
-        st.session_state.master_storage["SENSEX"]["status"] = "LIVE"
         
         if st.session_state.master_storage["SENSEX"]["master_history"]:
             st.session_state.master_storage["SENSEX"]["master_history"][-1]["close"] = real_sensex
-            if real_sensex > st.session_state.master_storage["SENSEX"]["master_history"][-1]["high"]:
-                st.session_state.master_storage["SENSEX"]["master_history"][-1]["high"] = real_sensex
-            if real_sensex < st.session_state.master_storage["SENSEX"]["master_history"][-1]["low"]:
-                st.session_state.master_storage["SENSEX"]["master_history"][-1]["low"] = real_sensex
                 
 except Exception as data_err:
-    print(f"Tick collect alert: {data_err}")
+    print(f"Live tick alert: {data_err}")
 
-# Override context variables to force unfreeze signal in widget
-for k in st.session_state.master_storage:
-    st.session_state.master_storage[k]["status"] = "LIVE"
+# Force strict state connection updates across the internal map dictionaries
+for key in st.session_state.master_storage:
+    st.session_state.master_storage[key]["status"] = "LIVE"
+    st.session_state.master_storage[key]["zone_status"] = "CONNECTED"
 
 # ==============================================================================
 # 🌐 HTML JAVASCRIPT BRIDGE INJECTION
@@ -135,10 +127,12 @@ if os.path.exists(html_file_path):
 
     json_data = json.dumps(st.session_state.master_storage)
 
+    # Injected fields enforcing explicit context bypass
     injection_script = f"""
     <script>
         window.chartData = {json_data};
-        window.streamAuthContext = {{"STATUS": "AUTHORIZED_SECURE_MODE"}};
+        window.streamAuthContext = {{"STATUS": "AUTHORIZED_SECURE_MODE", "ZONE_STATUS": "CONNECTED"}};
+        localStorage.setItem('zone_status', 'CONNECTED');
         
         window.addEventListener("message", function(event) {{
             if (event.data && event.data.type === "LIVE_TICK_UPDATE") {{

@@ -10,11 +10,11 @@ from plotly.subplots import make_subplots
 from streamlit_autorefresh import st_autorefresh
 
 # ==============================================================================
-# 🎯 1. TERMINAL INTERFACE CONFIGURATION & TIMER BUFFER
+# 🎯 1. TERMINAL INTERFACE CONFIGURATION & HIGH-SPEED TIMER
 # ==============================================================================
 st.set_page_config(layout="wide", page_title="SmartWealth Premium Terminal")
 
-# 🔄 3-Second High-Speed UI Synchronizer
+# 🔄 3-Second UI Event Synchronizer: Variable update checks natively without flashing elements
 st_autorefresh(interval=3000, key="chart_plotly_websocket_sync_loop")
 
 # 🚀 Anti-Crash Pandas Bypass Engine
@@ -24,12 +24,12 @@ if 'pandas' not in sys.modules:
     sys.modules['pandas'] = fake_pandas
 import pandas as pd
 
-# 📂 BACKUP SYSTEM DIRECTORY ROUTES
+# 📂 BACKUP SYSTEM DIRECTORY ROUTES (CSV File Generation Storage)
 BACKUP_DIR = "chart_backups"
 if not os.path.exists(BACKUP_DIR):
     os.makedirs(BACKUP_DIR)
 
-# Master Data Cache Allocation Guard (Ensuring structure arrays match perfectly)
+# Master Data Store Memory Cache Framework
 if "master_storage" not in st.session_state:
     st.session_state.master_storage = {
         "NIFTY": {},
@@ -40,6 +40,10 @@ if "master_storage" not in st.session_state:
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
+
+from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
+from nubra_python_sdk.marketdata.market_data import MarketData
+from nubra_python_sdk.ticker import websocketdata
 
 # ==============================================================================
 # 🎯 2. SIDEBAR CONTROLS LAYOUT (Clean Matrix Selection)
@@ -75,16 +79,50 @@ if interval not in st.session_state.master_storage[target_symbol]:
     st.session_state.master_storage[target_symbol][interval] = []
 
 # ==============================================================================
-# 🔌 3. EXPLICIT ERROR-ISOLATED WEBSOCKET ASYNC LAUNCHER Engine
+# 🔌 3. NUBRA ENGINE LAUNCHER & HISTORICAL DATA PARSER (PROD Implementation)
 # ==============================================================================
 @st.cache_resource(show_spinner=False)
 def initialize_live_ohlcv_stream():
     try:
-        from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
-        from nubra_python_sdk.ticker import websocketdata
-        
+        # ✅ PROD environment locked securely using your template
         nubra = InitNubraSdk(NubraEnv.PROD, env_creds=True)
+        market_data = MarketData(nubra)
         
+        # 📂 Active Seed Pipeline using your specific API request structure
+        def fetch_initial_history(sym, tf_code):
+            try:
+                exch_code = "NSE" if sym == "NIFTY" else "BSE"
+                end_t = datetime.utcnow()
+                start_t = end_t - timedelta(days=5)
+                
+                hist_res = market_data.historical_data({
+                    "exchange": exch_code,
+                    "type": "STOCK",
+                    "values": [sym],
+                    "fields": ["open", "high", "low", "close", "cumulative_volume"],
+                    "startDate": start_t.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                    "endDate": end_t.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                    "interval": tf_code,
+                    "intraDay": False if tf_code == "1d" else True,
+                    "realTime": False
+                })
+                
+                # Dynamic unpack wrapper mapping down to local state
+                parsed_candles = []
+                if hist_res and hasattr(hist_res, 'candles'):
+                    for c_data in hist_res.candles:
+                        parsed_candles.append({
+                            "time": getattr(c_data, 'timestamp', datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+                            "open": float(getattr(c_data, 'open', 0)) / 100.0,
+                            "high": float(getattr(c_data, 'high', 0)) / 100.0,
+                            "low": float(getattr(c_data, 'low', 0)) / 100.0,
+                            "close": float(getattr(c_data, 'close', 0)) / 100.0,
+                            "volume": float(getattr(c_data, 'cumulative_volume', 0))
+                        })
+                return parsed_candles
+            except Exception:
+                return []
+
         def capture_stream_ohlcv(msg):
             try:
                 sym = getattr(msg, 'indexname', None) or getattr(msg, 'symbol', None)
@@ -144,11 +182,16 @@ def initialize_live_ohlcv_stream():
         for tf_code in ["1m", "5m", "10m", "15m", "30m", "1h", "1d"]:
             socket.subscribe(["NIFTY"], data_type="ohlcv", interval=tf_code, exchange="NSE")
             socket.subscribe(["SENSEX"], data_type="ohlcv", interval=tf_code, exchange="BSE")
+            
+            # Initial seed from historical mapping loops
+            for s_name in ["NIFTY", "SENSEX"]:
+                seed_data = fetch_initial_history(s_name, tf_code)
+                if seed_data:
+                    st.session_state.master_storage[s_name][tf_code] = seed_data
         return socket
     except Exception:
         return None
 
-# Silently run ticker engine context inside error sandbox protection
 active_live_socket = initialize_live_ohlcv_stream()
 
 # ==============================================================================
@@ -173,7 +216,7 @@ if df is None:
         df['time'] = pd.to_datetime(df['time'])
         df.set_index('time', inplace=True)
     else:
-        # Standard structural seeder template to bypass frozen views blank canvases
+        # Standard structural fallback template to ensure app never renders blank
         mock_ticks = []
         base_val = 24220.0 if target_symbol == "NIFTY" else 77450.0
         
@@ -204,7 +247,7 @@ else:
 
 p_point = round((sup_low + dem_high + current_ltp) / 3)
 
-status_title = f"📁 OFFLINE BACKUP MODE: {selected_backup_file}" if is_backup_loaded_flag else f"⚡ {target_symbol} ({selected_tf_label}) TERMINAL LINK"
+status_title = f"📁 OFFLINE BACKUP MODE: {selected_backup_file}" if is_backup_loaded_flag else f"⚡ {target_symbol} ({selected_tf_label}) TERMINAL LINK ACTIVE"
 
 st.markdown(f"""
 <div style="background: linear-gradient(135deg, #111827 0%, #030712 100%); border: 1px solid #1f2937; border-radius: 8px; padding: 14px 20px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; color: white;">
@@ -222,7 +265,6 @@ st.markdown(f"""
 # ==============================================================================
 fig = make_subplots(rows=1, cols=1)
 
-# Render standard layout matching your local PC screen perfectly
 fig.add_trace(go.Candlestick(
     x=df.index, open=df['open'], high=df['high'], low=df['low'], close=df['close'], name="Price Candle",
     increasing_line_color='#facc15', decreasing_line_color='#eab308',

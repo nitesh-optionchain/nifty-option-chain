@@ -1,364 +1,104 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta charset="UTF-8">
-    <title>Pro Live Candlestick Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TradingView Streamlit Terminal</title>
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     <style>
-        body { margin: 0; background-color: #1c2030; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #d1d4dc; padding: 15px; }
-        .header { background: #131722; padding: 14px 20px; display: flex; gap: 30px; border-radius: 6px; margin-bottom: 12px; border: 1px solid #2b2e3a; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
-        .header-item { font-size: 14px; letter-spacing: 0.5px; }
-        .header-val { font-weight: bold; margin-left: 5px; }
-        .control-bar { margin-bottom: 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-        .indicator-btn { background: #2b2e3a; color: #d1d4dc; border: 1px solid #434651; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 12px; transition: all 0.2s; }
-        
-        .chart-wrapper { 
-            display: flex; 
-            width: 100%; 
-            position: relative; 
-            height: calc(100vh - 140px); 
-            min-height: 500px;
-        }
-        
-        .drawing-toolbar { 
-            width: 45px; 
-            background: #131722; 
-            border: 1px solid #2b2e3a; 
-            border-right: none; 
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            padding-top: 10px; 
-            gap: 8px; 
-            z-index: 10;
-        }
-        
-        #chart-container { 
-            flex: 1; 
-            background: #131722; 
-            border: 1px solid #2b2e3a; 
-            position: relative;
-        }
-
-        .tool-btn { 
-            width: 32px; height: 32px; background: #2b2e3a; color: #d1d4dc; 
-            border: 1px solid #434651; border-radius: 4px; cursor: pointer; 
-            font-size: 14px; display: flex; align-items: center; justify-content: center; 
-            transition: all 0.2s; 
-        }
-        .tool-btn.active { background: #2a2e39; border-color: #ff9800; color: #ff9800; }
-        .tool-btn:hover { border-color: #787b86; }
-        .color-picker-input { width: 32px; height: 32px; padding: 0; border: none; cursor: pointer; background: transparent; }
-
-        #pureCanvas {
-            width: 100%;
-            height: 100%;
-            display: block;
-        }
-
-        @media (max-width: 768px) {
-            .chart-wrapper { 
-                flex-direction: column-reverse; 
-                height: 60vh; 
-            }
-            .drawing-toolbar { 
-                width: 100%; 
-                height: 45px; 
-                flex-direction: row; 
-                justify-content: center; 
-                padding-top: 0;
-                padding-left: 10px;
-                border-right: 1px solid #2b2e3a;
-                border-top: none;
-            }
-            .color-picker-input, .tool-btn {
-                width: 35px;
-                height: 35px;
-            }
-        }
+        body { margin: 0; background-color: #131722; font-family: sans-serif; color: #d1d4dc; padding: 10px; }
+        .header { background: #1c2030; padding: 12px; display: flex; gap: 25px; border-radius: 4px; margin-bottom: 10px; border: 1px solid #2b2e3a; }
+        .header-val { font-weight: bold; margin-left: 5px; color: #26a69a; }
+        #chart-container { width: 100%; height: 680px; position: relative; }
     </style>
 </head>
 <body>
 
     <div class="header">
-        <div class="header-item">Asset: <span id="asset-display" class="header-val" style="color: #26a69a;">NIFTY LIVE</span></div>
-        <div class="header-item">Zone Status: <span id="zone-status" class="header-val" style="color:#26a69a;">CONNECTED</span></div>
-        <div class="header-item">Last Price: <span id="live-price" class="header-val" style="color:#26a69a;">Awaiting Ticks...</span></div>
+        <div>Asset: <span id="asset-display" class="header-val">NIFTY LIVE</span></div>
+        <div>Zone Status: <span id="zone-status" class="header-val" style="color: #26a69a;">CONNECTED</span></div>
+        <div>Last Price: <span id="live-price" class="header-val">Awaiting Tick...</span></div>
     </div>
 
-    <div class="control-bar">
-        <select id="asset-select" onchange="changeAsset()" style="background: #2b2e3a; color: #d1d4dc; border: 1px solid #434651; padding: 5px 12px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 12px; outline: none; border-color: #26a69a;">
-            <option value="NIFTY">NIFTY 50</option>
-            <option value="SENSEX">SENSEX</option>
-        </select>
-
-        <select id="timeframe-select" onchange="changeTimeframe()" style="background: #2b2e3a; color: #d1d4dc; border: 1px solid #434651; padding: 5px 12px; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 12px; outline: none; margin-left: 5px;">
-            <option value="1">1 Tick (Test)</option>
-            <option value="5" selected>5 Ticks Matrix</option>
-            <option value="15">15 Ticks</option>
-            <option value="30">30 Ticks</option>
-        </select>
-
-        <select id="date-history-select" style="background: #2b2e3a; color: #d1d4dc; border: 1px solid #434651; padding: 5px 12px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 12px; outline: none; border-color: #ff9800; margin-left: 5px;">
-            <option value="LIVE">🔄 LIVE MARKET</option>
-        </select>
-
-        <button id="btn-ema9" class="indicator-btn" onclick="toggleIndicator('ema9')" style="margin-left: 5px;">+ EMA 9</button>
-        <button id="btn-ema20" class="indicator-btn" onclick="toggleIndicator('ema20')" style="margin-left: 5px;">+ EMA 20</button>
-        <button id="btn-ema50" class="indicator-btn" onclick="toggleIndicator('ema50')" style="margin-left: 5px;">+ EMA 50</button>
-        <button id="btn-pivot" class="indicator-btn" onclick="toggleIndicator('pivot')">+ Pivot Points</button>
-        <button id="btn-vwap" class="indicator-btn" onclick="toggleIndicator('vwap')" style="margin-left: 5px;">+ VWAP</button>
-        <button id="btn-supertrend" class="indicator-btn" onclick="toggleIndicator('supertrend')" style="margin-left: 5px;">+ Supertrend</button>
-    </div>
-
-    <div class="chart-wrapper">
-        <div class="drawing-toolbar">
-            <button id="tool-cursor" class="tool-btn active" onclick="setTool('cursor')">🏹</button>
-            <button id="tool-line" class="tool-btn" onclick="setTool('line')">╱</button>
-            <button id="tool-rect" class="tool-btn" onclick="setTool('rect')">█</button>
-            <input type="color" id="tool-color" class="color-picker-input" value="#ff9800" title="Custom Draw Color">
-            <button id="tool-lock" class="tool-btn" onclick="toggleGlobalLock()" title="Lock/Unlock All Shapes" style="margin-top: 15px;">🔓</button>
-            <button class="tool-btn" onclick="clearDrawings()" title="Clear All" style="margin-top: 5px; color: #ef5350;">🗑️</button>            
-        </div>
-        <div id="chart-container">
-            <canvas id="pureCanvas"></canvas>
-        </div>
-    </div>
+    <div id="chart-container"></div>
 
     <script>
-        const canvas = document.getElementById('pureCanvas');
-        const ctx = canvas.getContext('2d');
+        const container = document.getElementById('chart-container');
         
-        let activeIndicators = { ema9: false, ema20: false, ema50: false, vwap: false, supertrend: false, pivot: false };
-        let current_timeframe = 5; 
-        let current_asset = "NIFTY"; 
-        let latestServerData = null;
+        // 📈 Initialize Dynamic TradingView Canvas Grid Configuration
+        const chart = LightweightCharts.createChart(container, {
+            width: container.clientWidth,
+            height: 680,
+            layout: { backgroundColor: '#131722', textColor: '#d1d4dc' },
+            grid: { vertLines: { color: '#232634' }, horzLines: { color: '#232634' } },
+            crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+            priceScale: { borderColor: '#2b2e3a', mode: LightweightCharts.PriceScaleMode.Normal, autoScale: true },
+            timeScale: { borderColor: '#2b2e3a', timeVisible: true, secondsVisible: false }
+        });
 
-        let currentTool = 'cursor'; 
-        let drawings = []; 
-        let isDrawing = false;
-        let isDrawingLocked = false;
+        // Strict Red & Green Candle Configurations
+        const candlestickSeries = chart.addCandlestickSeries({
+            upColor: '#26a69a', downColor: '#ef5350',
+            borderUpColor: '#26a69a', borderDownColor: '#ef5350',
+            wickUpColor: '#26a69a', wickDownColor: '#ef5350'
+        });
 
-        function setTool(toolName) {
-            currentTool = toolName;
-            document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
-            const activeBtn = document.getElementById(`tool-${toolName}`);
-            if(activeBtn) activeBtn.classList.add('active');
-        }
+        let currentAsset = "NIFTY";
 
-        function clearDrawings() { drawings = []; drawChart(); }
-
-        function toggleGlobalLock() {
-            isDrawingLocked = !isDrawingLocked;
-            const lockBtn = document.getElementById('tool-lock');
-            if (isDrawingLocked) {
-                lockBtn.innerText = "🔒"; lockBtn.style.borderColor = "#ef5350"; lockBtn.style.color = "#ef5350";
-                setTool('cursor');
-            } else {
-                lockBtn.innerText = "🔓"; lockBtn.style.borderColor = "#434651"; lockBtn.style.color = "#d1d4dc";
-            }
-        }
-
-        function toggleIndicator(name) {
-            activeIndicators[name] = !activeIndicators[name];
-            const btn = document.getElementById(`btn-${name}`);
-            let indicatorColors = { ema9: '#ff9800', ema20: '#2196f3', ema50: '#e91e63', vwap: '#00bcd4', supertrend: '#9c27b0', pivot: '#ffeb3b' };
-            
-            if (activeIndicators[name]) {
-                btn.style.background = '#2a2e39'; btn.style.borderColor = indicatorColors[name]; btn.style.color = indicatorColors[name];
-            } else {
-                btn.style.background = '#2b2e3a'; btn.style.borderColor = '#434651'; btn.style.color = '#d1d4dc';
-            }
-            drawChart();
-        }
-
-        function changeTimeframe() {
-            current_timeframe = parseInt(document.getElementById('timeframe-select').value);
-            drawChart();
-        }
-
-        function changeAsset() {
-            current_asset = document.getElementById('asset-select').value;
-            document.getElementById('asset-display').innerText = current_asset + " LIVE";
-            fetchUpdates(); 
-        }
-
-        // 🧠 CORE DATA CONNECTOR: Sync variables perfectly
-        function fetchUpdates() {
-            if (window.chartData && window.chartData[current_asset]) {
-                latestServerData = window.chartData[current_asset];
+        function syncTradingViewData() {
+            if (window.chartData && window.chartData[currentAsset]) {
+                const targetNode = window.chartData[currentAsset];
                 
-                // Update Dynamic Header Values
-                let currentPriceRaw = latestServerData.price;
-                if(currentPriceRaw > 0) {
-                    document.getElementById('live-price').innerText = (currentPriceRaw / 100).toLocaleString('en-IN', {minimumFractionDigits: 2});
+                // Header Metrics Sync Execution
+                if(targetNode.price > 0) {
+                    document.getElementById('live-price').innerText = (targetNode.price / 100).toFixed(2);
                 }
-                document.getElementById('zone-status').innerText = "CONNECTED";
-                document.getElementById('zone-status').style.color = "#26a69a";
-                
-                drawChart();
-            }
-        }
+                document.getElementById('asset-display').innerText = currentAsset + " LIVE";
 
-        function resize() {
-            canvas.width = canvas.parentElement.clientWidth;
-            canvas.height = canvas.parentElement.clientHeight || 650;
-            drawChart();
-        }
+                // Map local data elements to strict TradingView matrix format
+                if (targetNode.master_history && targetNode.master_history.length > 0) {
+                    const formattedBars = targetNode.master_history.map(bar => {
+                        // Creating strict timestamp structures
+                        let standardTime = Math.floor(new Date(bar.time).getTime() / 1000);
+                        if (isNaN(standardTime)) {
+                            standardTime = Math.floor(Date.now() / 1000);
+                        }
+                        return {
+                            time: standardTime,
+                            open: parseFloat(bar.open),
+                            high: parseFloat(bar.high),
+                            low: parseFloat(bar.low),
+                            close: parseFloat(bar.close)
+                        };
+                    });
 
-        function drawChart() {
-            ctx.fillStyle = '#131722';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            const rightSidebarWidth = 85; 
-            const chartWidth = canvas.width - rightSidebarWidth;
-            const chartHeight = canvas.height - 60;
-
-            // Grid Layout lines
-            ctx.strokeStyle = '#232634'; ctx.lineWidth = 1;
-            for(let i = 40; i < chartWidth; i += 70) {
-                ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, chartHeight); ctx.stroke();
-            }
-            for(let j = 40; j < chartHeight; j += 45) {
-                ctx.beginPath(); ctx.moveTo(0, j); ctx.lineTo(chartWidth, j); ctx.stroke();
-            }
-
-            ctx.fillStyle = '#1c2030';
-            ctx.fillRect(chartWidth, 0, rightSidebarWidth, chartHeight);
-            ctx.strokeStyle = '#2b2e3a'; ctx.lineWidth = 1;
-            ctx.beginPath(); ctx.moveTo(chartWidth, 0); ctx.lineTo(chartWidth, chartHeight); ctx.stroke();
-
-            if (!latestServerData || !latestServerData.master_history || latestServerData.master_history.length === 0) {
-                ctx.fillStyle = '#787b86'; ctx.font = '14px sans-serif';
-                ctx.fillText("Waiting for historical base bars layout...", 50, chartHeight / 2);
-                return;
-            }
-
-            let compiledCandles = [];
-            let master = latestServerData.master_history;
-            
-            for (let i = 0; i < master.length; i += current_timeframe) {
-                let chunk = master.slice(i, i + current_timeframe);
-                if (chunk.length === 0) continue;
-                let highPrices = chunk.map(c => c.high);
-                let lowPrices = chunk.map(c => c.low);
-                compiledCandles.push({
-                    open: chunk[0].open,
-                    high: Math.max(...highPrices),
-                    low: Math.min(...lowPrices),
-                    close: chunk[chunk.length - 1].close
-                });
-            }
-
-            let displayCandles = compiledCandles.slice(-45);
-            if(displayCandles.length === 0) return;
-
-            let maxPrice = Math.max(...displayCandles.map(c => c.high));
-            let minPrice = Math.min(...displayCandles.map(c => c.low));
-            let priceRange = maxPrice - minPrice;
-            if(priceRange === 0) priceRange = 10;
-            
-            maxPrice += priceRange * 0.05;
-            minPrice -= priceRange * 0.05;
-            priceRange = maxPrice - minPrice;
-
-            function getPixelY(price) {
-                return chartHeight - 40 - ((price - minPrice) / priceRange) * (chartHeight - 80);
-            }
-
-            ctx.fillStyle = '#787b86'; ctx.font = '11px sans-serif'; ctx.textBaseline = 'middle';
-            let gridLabelsCount = 8;
-            for(let k = 0; k <= gridLabelsCount; k++) {
-                let labelPrice = minPrice + (priceRange * (k / gridLabelsCount));
-                let labelY = getPixelY(labelPrice);
-                if(labelY >= 0 && labelY <= chartHeight) {
-                    ctx.fillText(labelPrice.toFixed(1), chartWidth + 8, labelY);
-                }
-            }
-
-            let candleWidth = 14; 
-            let candleGap = 24;   
-            let startX = 30; 
-            
-            let totalNeededWidth = displayCandles.length * candleGap;
-            const maxAllowedWidth = chartWidth - 40; 
-            if (totalNeededWidth > maxAllowedWidth) startX = maxAllowedWidth - totalNeededWidth;
-
-            for(let i = 0; i < displayCandles.length; i++) {
-                let candle = displayCandles[i];
-                let x = startX + (i * candleGap);
-                if (x + candleWidth < 0) continue;
-
-                let yOpen = getPixelY(candle.open);
-                let yClose = getPixelY(candle.close);
-                let yHigh = getPixelY(candle.high);
-                let yLow = getPixelY(candle.low);
-                let isBullish = candle.close >= candle.open;
-
-                let candleRange = candle.high - candle.low;
-                let bodySize = Math.abs(candle.close - candle.open);
-                let isBoring = (candleRange > 0 && (bodySize / candleRange) < 0.3);
-
-                let themeColor = isBullish ? '#26a69a' : '#ef5350';
-                if (isBoring) themeColor = '#ffeb3b'; 
-
-                ctx.strokeStyle = themeColor; ctx.fillStyle = themeColor;
-                ctx.beginPath(); ctx.moveTo(x + candleWidth / 2, yHigh); ctx.lineTo(x + candleWidth / 2, yLow); ctx.stroke();
-
-                let bodyHeight = Math.abs(yClose - yOpen);
-                if(bodyHeight < 2) bodyHeight = 2;
-                ctx.fillRect(x, Math.min(yOpen, yClose), candleWidth, bodyHeight);
-
-                if(i === displayCandles.length - 1) {
-                    ctx.fillStyle = themeColor;
-                    ctx.fillRect(chartWidth + 1, Math.min(yOpen, yClose) - 8, rightSidebarWidth - 2, 16);
-                    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 10px sans-serif';
-                    ctx.fillText(candle.close.toFixed(2), chartWidth + 6, Math.min(yOpen, yClose));
-                    
-                    ctx.strokeStyle = 'rgba(255,255,255,0.15)'; ctx.setLineDash([2, 2]);
-                    ctx.beginPath(); ctx.moveTo(x + candleWidth, yClose); ctx.lineTo(chartWidth, yClose); ctx.stroke();
-                    ctx.setLineDash([]);
-                }
-            }
-
-            // Pivot Points rendering logic inside bounds
-            if (activeIndicators.pivot && displayCandles.length > 0) {
-                let H = Math.max(...displayCandles.map(c => c.high));
-                let L = Math.min(...displayCandles.map(c => c.low));
-                let C = displayCandles[displayCandles.length - 1].close; 
-
-                let PP = (H + L + C) / 3;
-                let R1 = (2 * PP) - L; let S1 = (2 * PP) - H;
-                let R2 = PP + (H - L); let S2 = PP - (H - L);
-
-                let pivotLevels = [
-                    { val: R2, label: "R2", color: '#ef5350' },
-                    { val: R1, label: "R1", color: '#ff7675' },
-                    { val: PP, label: "PP", color: '#ffeb3b' },
-                    { val: S1, label: "S1", color: '#55efc4' },
-                    { val: S2, label: "S2", color: '#26a69a' }
-                ];
-
-                pivotLevels.forEach(lvl => {
-                    let fixedY = getPixelY(lvl.val);
-                    if(fixedY >= 0 && fixedY <= chartHeight) {
-                        ctx.strokeStyle = lvl.color; ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
-                        ctx.beginPath(); ctx.moveTo(0, fixedY); ctx.lineTo(chartWidth, fixedY); ctx.stroke();
-                        ctx.setLineDash([]);
-                        ctx.fillStyle = lvl.color; ctx.font = 'bold 9px sans-serif';
-                        ctx.fillText(`${lvl.label}`, chartWidth + 5, fixedY - 5);
+                    // Remove unexpected duplicate timestamps array entries
+                    const uniqueBars = [];
+                    const seenTimes = new Set();
+                    for (const bar of formattedBars) {
+                        if (!seenTimes.has(bar.time)) {
+                            seenTimes.add(bar.time);
+                            uniqueBars.push(bar.time);
+                        }
                     }
-                });
+                    
+                    // Sort items chronologically
+                    formattedBars.sort((a, b) => a.time - b.time);
+                    candlestickSeries.setData(formattedBars);
+                }
             }
         }
 
-        window.addEventListener('resize', resize);
-        
-        // 🔄 Continuously check if Streamlit updated window.chartData
-        setInterval(fetchUpdates, 1000);
-        
-        // Initial setup trigger
-        setTimeout(() => { resize(); fetchUpdates(); }, 500);
+        // Catch explicit Streamlit updates instantly
+        window.addEventListener("message", function(e) {
+            if (e.data && e.data.type === "LIVE_TICK_UPDATE") {
+                window.chartData = e.data.payload;
+                syncTradingViewData();
+            }
+        });
+
+        setInterval(syncTradingViewData, 1000);
+        window.addEventListener('resize', () => { chart.resize(container.clientWidth, 680); });
     </script>
 </body>
 </html>

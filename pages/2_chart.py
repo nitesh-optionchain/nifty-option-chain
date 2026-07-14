@@ -1,141 +1,192 @@
 import sys
+from types import ModuleType
 import os
 import time
-from datetime import datetime, timedelta
+import json
+import sqlite3
+from datetime import datetime
 import streamlit as st
-import plotly.graph_objects as go
-from streamlit_autorefresh import st_autorefresh
+import streamlit.components.v1 as components
 
 # 📊 Wide mode configuration
-st.set_page_config(layout="wide", page_title="SmartWealth Live Chart Terminal")
+st.set_page_config(layout="wide")
 
-# Anti-Crash Module
-import pandas as pd
+# 🚀 Anti-Crash Pandas Bypass Engine
+if 'pandas' not in sys.modules:
+    fake_pandas = ModuleType('pandas')
+    fake_pandas.DataFrame = lambda *args, **kwargs: None
+    sys.modules['pandas'] = fake_pandas
 
-# 🔄 2-SECOND REALTIME PIPELINE SYNCHRONIZER
-st_autorefresh(interval=2000, key="clean_direct_stream_bridge")
+# 📂 Paths Setup
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+html_file_path = os.path.join(BASE_DIR, 'index.html')
+DB_PATH = os.path.join(BASE_DIR, "user_management.db")
 
-# ==============================================================================
-# 🔌 NUBRA SDK BROKER CONNECTION
-# ==============================================================================
-from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
-from nubra_python_sdk.marketdata.market_data import MarketData
-
-@st.cache_resource(show_spinner=False)
-def connect_broker_pipeline():
-    try:
-        client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
-        return MarketData(client)
-    except Exception:
-        return None
-
-market_engine = connect_broker_pipeline()
+if BASE_DIR not in sys.path:
+    sys.path.append(BASE_DIR)
 
 # ==============================================================================
-# 🎛️ SIDEBAR SELECTIONS (Bina Kisi Login Gateway Ke)
+# 🗄️ 1. SECURE SQLITE USER DATABASE INITIALIZATION
 # ==============================================================================
-st.sidebar.markdown("### 📊 Chart Configuration")
-selected_index_target = st.sidebar.selectbox("Select Target Index", ["NIFTY", "SENSEX"], index=0)
-selected_tf = st.sidebar.selectbox("Timeframe Matrix", ["5m", "10m", "15m", "30m", "1d"], index=0)
+def init_db():
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            user_id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+    """)
+    cursor.execute("INSERT OR IGNORE INTO users (user_id, name, created_at) VALUES ('admin', 'Admin Chief', ?)", (str(datetime.now()),))
+    conn.commit()
+    conn.close()
 
-times, opens, highs, lows, closes = [], [], [], [], []
-live_price = 0.0
-live_change = 0.0
-is_market_open = False
+init_db()
 
-if market_engine:
-    try:
-        symbol_name = "Nifty 50" if selected_index_target == "NIFTY" else "SENSEX"
-        exch_name = "NSE" if selected_index_target == "NIFTY" else "BSE"
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+if "current_user" not in st.session_state:
+    st.session_state.current_user = None
+
+# ==============================================================================
+# 🔒 SECURITY GATEWAY INTERFACE (ADMIN CHIEF LAYER)
+# ==============================================================================
+if not st.session_state.authenticated:
+    st.subheader("🔒 Terminal Access Controller")
+    st.markdown("---")
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.info("🔐 Access Required: Enterprise dashboard layout locked behind SQLite security enforcer.")
+        login_id = st.text_input("User ID Key", type="password", placeholder="Enter your access credentials...")
         
-        # Pull Historical Data for baseline candles grid
-        end_dt = datetime.utcnow()
-        start_dt = end_dt - timedelta(days=3)
-        
-        hist_response = market_engine.historical_data({
-            "exchange": exch_name,
-            "type": "INDEX",
-            "values": [symbol_name],
-            "fields": ["open", "high", "low", "close"],
-            "startDate": start_dt.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-            "endDate": end_dt.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-            "interval": selected_tf,
-            "intraDay": True,
-            "realTime": False
-        })
-        
-        if hist_response and hasattr(hist_response, 'candles') and hist_response.candles:
-            for candle in hist_response.candles:
-                times.append(getattr(candle, 'timestamp', ''))
-                opens.append(float(getattr(candle, 'open', 0)) / 100)
-                highs.append(float(getattr(candle, 'high', 0)) / 100)
-                lows.append(float(getattr(candle, 'low', 0)) / 100)
-                closes.append(float(getattr(candle, 'close', 0)) / 100)
-
-        # Map WebSocket live response variables
-        snap = market_engine.current_price(selected_index_target, exchange=exch_name)
-        if snap:
-            raw_val = getattr(snap, 'index_value', getattr(snap, 'price', None))
-            raw_chg = getattr(snap, 'changepercent', getattr(snap, 'change', 0.0))
+        if st.button("Verify Authentication", use_container_width=True):
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM users WHERE user_id = ?", (login_id,))
+            user_row = cursor.fetchone()
+            conn.close()
             
-            if raw_val:
-                live_price = float(raw_val) / 100
-                live_change = float(raw_chg)
-                is_market_open = True
-                
-                if len(closes) > 0:
-                    closes[-1] = live_price
-                    if live_price > highs[-1]: highs[-1] = live_price
-                    if live_price < lows[-1]: lows[-1] = live_price
-                    
-    except Exception as e:
-        st.sidebar.error(f"Data Fetch Notice: {str(e)}")
-
-# If market is closed or API response lags, use fallback from last available candles
-if not closes:
-    st.error("⚠️ Data link offline. Connecting to broker repository...")
+            if user_row:
+                st.session_state.authenticated = True
+                st.session_state.current_user = user_row[0]
+                st.success(f"🔓 Access Granted. Welcome {user_row[0]}!")
+                time.sleep(1)
+                st.rerun()
+            else:
+                st.error("❌ Invalid User Access Key Pattern. Connection refused.")
     st.stop()
 
-if not is_market_open:
-    live_price = closes[-1]
-    if len(closes) > 1:
-        live_change = ((closes[-1] - closes[-2]) / closes[-2]) * 100
-
 # ==============================================================================
-# 📈 PHASE 2: LIVE UP/DOWN INDEX HEADER INTERFACE
+# 📊 MAIN SECURE DASHBOARD (AUTHENTICATED MODE)
 # ==============================================================================
-h_col1, h_col2 = st.columns([4, 4])
-with h_col1:
-    delta_str = f"{live_change:+.2f}%"
-    label_status = "REALTIME SPOT" if is_market_open else "LAST CLOSED PRICE"
-    st.metric(
-        label=f"📈 {selected_index_target} {label_status}", 
-        value=f"{live_price:,.2f}", 
-        delta=delta_str, 
-        delta_color="normal" if live_change >= 0 else "inverse"
-    )
-with h_col2:
-    status_tag = "🟢 Market Open" if is_market_open else "🔴 Market Closed"
-    st.markdown(f"<div style='text-align:right;padding-top:15px;'><b>Engine Status:</b> {status_tag} | <b>Interval:</b> {selected_tf}</div>", unsafe_allow_html=True)
+# Header UI with Active Logout Control
+h_left, h_right = st.columns([6, 2])
+with h_left:
+    st.subheader("📊 Live Multi-Asset Analytical Chart Terminal")
+with h_right:
+    st.write(f"👤 **User:** {st.session_state.current_user}")
+    if st.button("🔒 Secure Logout", use_container_width=True):
+        st.session_state.authenticated = False
+        st.session_state.current_user = None
+        st.rerun()
 
 st.markdown("---")
 
-# ==============================================================================
-# 🖥️ PHASE 3: STRICT RED & GREEN CANDLESTICK GRAPH
-# ==============================================================================
-fig = go.Figure(data=[go.Candlestick(
-    x=times, open=opens, high=highs, low=lows, close=closes,
-    increasing_line_color='#22c55e', decreasing_line_color='#ef4444', 
-    increasing_fillcolor='#22c55e', decreasing_fillcolor='#ef4444', 
-    name=selected_index_target
-)])
+# 🔌 BROKER INTERFACES CONNECTIONS
+from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
+from nubra_python_sdk.marketdata.market_data import MarketData
 
-fig.update_layout(
-    height=620, xaxis_rangeslider_visible=False, template="plotly_dark",
-    paper_bgcolor='#030712', plot_bgcolor='#030712',
-    margin=dict(l=15, r=70, t=10, b=30),
-    xaxis=dict(showgrid=True, gridcolor="#1e293b"),
-    yaxis=dict(side="right", showgrid=True, gridcolor="#1e293b")
-)
+# 🔐 SECURE OS INJECTION ENGINE
+PHONE_NO = st.secrets.get("PHONE_NO") or os.environ.get("PHONE_NO")
+MPIN = st.secrets.get("MPIN") or os.environ.get("MPIN")
 
-st.plotly_chart(fig, use_container_width=True)
+if PHONE_NO and MPIN:
+    os.environ["PHONE_NO"] = str(PHONE_NO)
+    os.environ["MPIN"] = str(MPIN)
+
+# 🔄 System SDK Login Trigger
+market_engine = None
+try:
+    client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
+    market_engine = MarketData(client)
+except Exception as e:
+    st.sidebar.error(f"SDK Engine Error: {str(e)}")
+
+if "master_storage" not in st.session_state:
+    st.session_state.master_storage = {
+        "NIFTY": {"price": 0, "status": "LIVE", "master_history": []},
+        "SENSEX": {"price": 0, "status": "LIVE", "master_history": []}
+    }
+
+if not market_engine:
+    st.error("🔒 Auth Fail: Broker connection structure ready nahi ho paya. Please verify your system tokens.")
+    st.stop()
+
+# 🌐 HTML JavaScript Frame Injector WITH DYNAMIC LIVE DATA PUSHER LOOP
+if os.path.exists(html_file_path):
+    with open(html_file_path, "r", encoding="utf-8") as f:
+        html_content = f.read()
+
+    # Dynamic ticks fetch from market engine
+    try:
+        # 1. Fetch NIFTY
+        nifty_snap = market_engine.current_price("NIFTY", exchange="NSE")
+        if nifty_snap and nifty_snap.price:
+            real_nifty = float(nifty_snap.price) / 100
+            st.session_state.master_storage["NIFTY"]["price"] = int(nifty_snap.price)
+            st.session_state.master_storage["NIFTY"]["status"] = "LIVE"
+            st.session_state.master_storage["NIFTY"]["master_history"].append({
+                "open": real_nifty, "high": real_nifty, "low": real_nifty, "close": real_nifty
+            })
+
+        # 2. Fetch SENSEX
+        sensex_snap = market_engine.current_price("SENSEX", exchange="BSE")
+        if sensex_snap and sensex_snap.price:
+            real_sensex = float(sensex_snap.price) / 100
+            st.session_state.master_storage["SENSEX"]["price"] = int(sensex_snap.price)
+            st.session_state.master_storage["SENSEX"]["status"] = "LIVE"
+            st.session_state.master_storage["SENSEX"]["master_history"].append({
+                "open": real_sensex, "high": real_sensex, "low": real_sensex, "close": real_sensex
+            })
+            
+        # Limits maintain array size
+        if len(st.session_state.master_storage["NIFTY"]["master_history"]) > 300:
+            st.session_state.master_storage["NIFTY"]["master_history"].pop(0)
+        if len(st.session_state.master_storage["SENSEX"]["master_history"]) > 300:
+            st.session_state.master_storage["SENSEX"]["master_history"].pop(0)
+            
+    except Exception as data_err:
+        st.sidebar.warning(f"Tick collect alert: {data_err}")
+
+    # JSON dynamic generation
+    json_data = json.dumps(st.session_state.master_storage)
+
+    # 🎯 POSTMESSAGE CONTROLLER BRIDGE
+    injection_script = f"""
+    <script>
+        window.chartData = {json_data};
+        window.streamAuthContext = {{"STATUS": "AUTHORIZED_SECURE_MODE"}};
+        
+        window.addEventListener("message", function(event) {{
+            if (event.data && event.data.type === "LIVE_TICK_UPDATE") {{
+                window.chartData = event.data.payload;
+                if(typeof fetchUpdates === "function") {{
+                    fetchUpdates();
+                }}
+            }}
+        }});
+    </script>
+    """
+    
+    html_content = html_content.replace("<head>", f"<head>{injection_script}")
+    
+    # Render component canvas frame
+    components.html(html_content, height=850, scrolling=True)
+    
+    # ⏳ Background dynamic synchronizer loop
+    time.sleep(1)
+    st.rerun()
+else:
+    st.error("❌ 'index.html' file root folder me nahi mili!")

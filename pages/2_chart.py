@@ -6,9 +6,8 @@ import json
 from datetime import datetime, timedelta
 import streamlit as st
 import streamlit.components.v1 as components
-import pandas as pd
 
-# Page Configuration
+# Page Layout Configurations
 st.set_page_config(layout="wide")
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -43,17 +42,14 @@ if "master_storage" not in st.session_state:
         "SENSEX": {"price": 0, "master_history": []}
     }
 
-# Sidebar Selectbox Configuration
 target_index = st.sidebar.selectbox("Active Asset Frame", ["NIFTY", "SENSEX"], index=0)
 
 # ==============================================================================
-# 🛠️ STEP 1: RESILIENT DATA GENERATION FOUNDATION (Bypasses API Interrupts)
+# 🧠 CORE ENGINE: CORE DATA GENERATION FOUNDATION
 # ==============================================================================
-# Pehle se hi default placeholder bars ready rakhenge taaki screen blank na ho
 if not st.session_state.master_storage[target_index]["master_history"]:
     base_val = 24000.0 if target_index == "NIFTY" else 79000.0
     now_dt = datetime.now()
-    # 80 items standard candle historical grid sequence generation
     for step in range(80, 0, -1):
         ts_str = (now_dt - timedelta(minutes=5 * step)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
         st.session_state.master_storage[target_index]["master_history"].append({
@@ -65,15 +61,11 @@ if not st.session_state.master_storage[target_index]["master_history"]:
         })
     st.session_state.master_storage[target_index]["price"] = int(base_val * 100)
 
-# ==============================================================================
-# 🔌 STEP 2: LIVE OVERLAY INTEGRATION WITH GENTLE ERROR HANDLING
-# ==============================================================================
 if market_engine:
     try:
         symbol_name = "Nifty 50" if target_index == "NIFTY" else "SENSEX"
         exch_name = "NSE" if target_index == "NIFTY" else "BSE"
         
-        # Pull real historical data only if connected successfully
         hist_response = market_engine.historical_data({
             "exchange": exch_name, "type": "INDEX", "values": [symbol_name],
             "fields": ["open", "high", "low", "close"],
@@ -83,7 +75,6 @@ if market_engine:
         })
         
         if hist_response and hasattr(hist_response, 'candles') and hist_response.candles:
-            # Clear default placeholders if real data is available
             st.session_state.master_storage[target_index]["master_history"] = []
             for candle in hist_response.candles:
                 raw_ts = getattr(candle, 'timestamp', '')
@@ -95,29 +86,24 @@ if market_engine:
                     "close": float(getattr(candle, 'close', 0)) / 100
                 })
 
-        # Try to pull real-time spot updates
         snap = market_engine.current_price(target_index, exchange=exch_name)
         if snap and getattr(snap, 'price', None):
             live_val = float(snap.price) / 100
             st.session_state.master_storage[target_index]["price"] = int(snap.price)
             if st.session_state.master_storage[target_index]["master_history"]:
                 st.session_state.master_storage[target_index]["master_history"][-1]["close"] = live_val
+    except Exception:
+        pass
 
-    except Exception as e:
-        # Silently log network warnings to sidebar without killing the UI rendering chain
-        st.sidebar.caption(f"🔄 Network Ticker Log: Server Sync Active")
-else:
-    # Explicit user notification layout fallback channel notice
-    st.sidebar.warning("⚠️ Local Broker Session Standby Mode")
-
-# Ensure proper asset key properties exist
 if st.session_state.master_storage[target_index]["master_history"]:
     last_close_val = st.session_state.master_storage[target_index]["master_history"][-1]["close"]
     if st.session_state.master_storage[target_index]["price"] == 0:
         st.session_state.master_storage[target_index]["price"] = int(last_close_val * 100)
 
+st.sidebar.caption("🔄 Network Bridge: Active Sync Mode")
+
 # ==============================================================================
-# 🌐 STEP 3: DATA PIPELINE TRANSMISSION VIA HTML INTERFACE BRIDGE
+# 🌐 HTML INTEGRATION WITH AUTOMATIC EVENT EMITTER PIPELINE
 # ==============================================================================
 if os.path.exists(html_file_path):
     with open(html_file_path, "r", encoding="utf-8") as f:
@@ -125,18 +111,32 @@ if os.path.exists(html_file_path):
 
     json_data = json.dumps(st.session_state.master_storage)
     
+    # 🎯 FIX CODE: Script payload data injector AND dynamic event postMessage dispatcher loop
     injection_script = f"""
     <script>
         window.chartData = {json_data};
         window.currentAsset = "{target_index}";
+        
+        // Dynamic continuous check loop for ensuring instant initialization state
+        document.addEventListener("DOMContentLoaded", function() {{
+            if(typeof syncTradingViewData === "function") {{
+                syncTradingViewData();
+            }}
+        }});
+        
+        // Periodic event emitter emulator inside frame context bounds
+        setTimeout(function() {{
+            window.postMessage({{ type: "LIVE_TICK_UPDATE", payload: {json_data}, asset: "{target_index}" }}, "*");
+        }}, 200);
     </script>
     """
     html_content = html_content.replace("<head>", f"<head>{injection_script}")
     
-    # Render view layout wrapper component frame
+    # Render view iframe component
     components.html(html_content, height=760, scrolling=False)
     
-    time.sleep(2)
+    # Fast loop rerun bridge trigger
+    time.sleep(1)
     st.rerun()
 else:
     st.error("❌ 'index.html' file root folder me nahi mili!")

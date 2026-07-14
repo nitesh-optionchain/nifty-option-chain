@@ -9,11 +9,11 @@ import streamlit.components.v1 as components
 from streamlit_autorefresh import st_autorefresh
 
 # ==============================================================================
-# 🎯 1. LIVE PREMIUM TERMINAL CONFIGURATION
+# 🎯 1. LIVE PREMIUM TERMINAL CONFIGURATION & AUTO-REFRESH
 # ==============================================================================
 st.set_page_config(layout="wide")
 
-# 🔄 3-Second High-Speed Event Synchronizer to push background state changes into HTML frame
+# 🔄 3-Second UI Event Synchronizer: Variable update checks purely without tearing elements
 st_autorefresh(interval=3000, key="smartwealth_live_sync_loop")
 
 # 🚀 Anti-Crash Pandas Bypass Engine
@@ -23,14 +23,24 @@ if 'pandas' not in sys.modules:
     sys.modules['pandas'] = fake_pandas
 import pandas as pd
 
-# 📂 BACKUP SYSTEM DIRECTORY ROUTES (CSV File Logging Framework)
+# 📂 BACKUP SYSTEM DIRECTORY ROUTES
 BACKUP_DIR = "chart_backups"
 if not os.path.exists(BACKUP_DIR):
     os.makedirs(BACKUP_DIR)
 
-# 📂 Paths Framework Layout Routing
+# 📂 Smart Path Detector Framework
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-html_file_path = os.path.join(BASE_DIR, 'index.html')
+possible_paths = [
+    os.path.join(BASE_DIR, 'index.html'),
+    os.path.join(os.getcwd(), 'index.html'),
+    'index.html'
+]
+
+html_file_path = None
+for p in possible_paths:
+    if os.path.exists(p):
+        html_file_path = p
+        break
 
 if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
@@ -38,11 +48,11 @@ if BASE_DIR not in sys.path:
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.ticker import websocketdata
 
-# Master Storage Session State Allocation (Purely NIFTY & SENSEX)
+# Master Data Store Memory Framework Allocation (Pure NIFTY & SENSEX logs matching keys)
 if "master_storage" not in st.session_state:
     st.session_state.master_storage = {
-        "NIFTY": {"price": 24150.00, "status": "LIVE", "master_history": {}},
-        "SENSEX": {"price": 77300.00, "status": "LIVE", "master_history": {}}
+        "NIFTY": {"price": 24220.00, "status": "LIVE", "master_history": {}},
+        "SENSEX": {"price": 77450.00, "status": "LIVE", "master_history": {}}
     }
 
 # ==============================================================================
@@ -62,7 +72,7 @@ if load_from_backup:
 st.sidebar.header("⚙️ Assets & Interval Matrix")
 target_symbol = st.sidebar.selectbox("🔤 Select Asset", ["NIFTY", "SENSEX"], index=0)
 
-# Exact String Mapping Rules
+# Verified Active String Mapping Rules
 timeframe_mapping = {
     "1 Minute": "1m",
     "5 Minutes": "5m",
@@ -75,25 +85,24 @@ timeframe_mapping = {
 selected_tf_label = st.sidebar.selectbox("⏱️ Select Active Timeframe", list(timeframe_mapping.keys()), index=2)
 interval = timeframe_mapping[selected_tf_label]
 
-# Safe inner timeframe array allocation initialization
 if interval not in st.session_state.master_storage[target_symbol]["master_history"]:
     st.session_state.master_storage[target_symbol]["master_history"][interval] = []
 
 # ==============================================================================
-# 🔌 3. NUBRA REAL WEBSOCKET RUNNING ENGINE CORE
+# 🔌 3. NUBRA REAL WEBSOCKET RUNNING ENGINE CORE (Your exact raw operational data loop)
 # ==============================================================================
 @st.cache_resource(show_spinner=False)
 def initialize_live_ohlcv_stream():
     try:
         nubra = InitNubraSdk(NubraEnv.PROD, env_creds=True)
         
-        # ✅ Raw data parser aligned strictly for NIFTY & SENSEX arrays
         def capture_stream_ohlcv(msg):
             try:
                 sym = getattr(msg, 'indexname', None) or getattr(msg, 'symbol', None)
                 msg_tf = getattr(msg, 'interval', '10m')
                 
                 if sym in ["NIFTY", "SENSEX"]:
+                    # Converting native integers into decimal float scales matching your terminal logs
                     o = float(getattr(msg, 'open', 0)) / 100.0
                     h = float(getattr(msg, 'high', 0)) / 100.0
                     l = float(getattr(msg, 'low', 0)) / 100.0
@@ -101,7 +110,6 @@ def initialize_live_ohlcv_stream():
                     v = float(getattr(msg, 'bucket_volume', 0))
                     
                     if c > 0:
-                        # String mapping alignment to prevent lightweight canvas breakage
                         if msg_tf == "1d":
                             time_str = datetime.now().strftime("%Y-%m-%d")
                         else:
@@ -122,7 +130,7 @@ def initialize_live_ohlcv_stream():
                         else:
                             new_row_df.to_csv(full_csv_path, mode='a', header=False, index=False)
                         
-                        # Packets delivery bridge directly inside master session buffers
+                        # Store updates inside the matching symbol session buffers
                         storage = st.session_state.master_storage[sym]
                         storage["price"] = c
                         storage["status"] = "LIVE"
@@ -203,7 +211,7 @@ if len(buf_slice) == 0:
     cell["master_history"][interval] = mock_history
 
 # ==============================================================================
-# 🌐 5. PURE HTML CANVAS BRIDGE (Strict Injection Logic)
+# 🌐 5. PURE HTML CANVAS BRIDGE & JAVASCRIPT CORRELATION
 # ==============================================================================
 active_chart_data = {
     target_symbol: {
@@ -215,7 +223,6 @@ active_chart_data = {
 json_payload = json.dumps(active_chart_data)
 current_asset_ltp = cell["price"]
 
-# HTML Break-even levels framework
 if target_symbol == "NIFTY":
     base_upper = float(((current_asset_ltp + 25) // 50) * 50 + 50)
     sup_low, sup_high = base_upper, float(base_upper + 30)
@@ -240,10 +247,11 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-if os.path.exists(html_file_path):
+if html_file_path:
     with open(html_file_path, "r", encoding="utf-8") as file_reader:
         html_blueprint = file_reader.read()
 
+    # ✅ INJECTION SCRIPT CORRELATION BIND: Bridges structural window data object to the parent series engine context securely
     javascript_context_bridge = f"""
     <script>
         window.chartData = {json_payload};
@@ -255,9 +263,16 @@ if os.path.exists(html_file_path):
             "DS_LOW": {dem_low}, "DS_HIGH": {dem_high},
             "PIVOT": {p_point}
         }};
+        
+        // Broadcast dynamic event bridge data update downward directly to series handlers
+        document.addEventListener("DOMContentLoaded", function() {{
+            if(window.parent) {{
+                window.parent.postMessage({{ type: "LIVE_TICK_UPDATE", payload: window.chartData }}, "*");
+            }}
+        }});
     </script>
     """
     html_blueprint = html_blueprint.replace("<head>", f"<head>{javascript_context_bridge}")
     components.html(html_blueprint, height=760, scrolling=True)
 else:
-    st.error("❌ System core configuration exception: 'index.html' module view target was not found.")
+    st.error("❌ System core configuration exception: 'index.html' target was not found inside application workspace directory root.")

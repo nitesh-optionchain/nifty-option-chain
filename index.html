@@ -15,9 +15,9 @@
 <body>
 
     <div class="header">
-        <div>Asset: <span id="asset-display" class="header-val">Awaiting...</span></div>
+        <div>Asset: <span id="asset-display" class="header-val">NIFTY LIVE</span></div>
         <div>Zone Status: <span id="zone-status" class="header-val" style="color: #26a69a;">CONNECTED</span></div>
-        <div>Last Price: <span id="live-price" class="header-val">Awaiting Tick...</span></div>
+        <div>Last Price: <span id="live-price" class="header-val">Loading...</span></div>
     </div>
 
     <div id="chart-container"></div>
@@ -41,60 +41,59 @@
             wickUpColor: '#26a69a', wickDownColor: '#ef5350'
         });
 
-        function syncTradingViewData() {
-            let currentAsset = window.currentAsset || "NIFTY";
-            
-            if (window.chartData && window.chartData[currentAsset]) {
-                const targetNode = window.chartData[currentAsset];
+        function renderStaticBars() {
+            // Direct script fallback handler block
+            if (window.chartData && window.currentAsset) {
+                const targetNode = window.chartData[window.currentAsset];
                 
-                if (targetNode.price > 0) {
-                    document.getElementById('live-price').innerText = (targetNode.price / 100).toFixed(2);
-                }
-                
-                document.getElementById('asset-display').innerText = currentAsset + " LIVE";
-
-                if (targetNode.master_history && targetNode.master_history.length > 0) {
-                    const formattedBars = [];
-                    const seenTimes = new Set();
-
-                    for (let bar of targetNode.master_history) {
-                        // Direct integer unix mapping engine to fix empty visual render bugs
-                        let cleanTime = typeof bar.time === 'number' ? bar.time : Math.floor(new Date(bar.time).getTime() / 1000);
-                        
-                        if (isNaN(cleanTime)) {
-                            cleanTime = Math.floor(Date.now() / 1000);
-                        }
-
-                        if (!seenTimes.has(cleanTime)) {
-                            seenTimes.add(cleanTime);
-                            formattedBars.push({
-                                time: cleanTime,
-                                open: parseFloat(bar.open),
-                                high: parseFloat(bar.high),
-                                low: parseFloat(bar.low),
-                                close: parseFloat(bar.close)
-                            });
-                        }
+                if (targetNode) {
+                    document.getElementById('asset-display').innerText = window.currentAsset + " LIVE";
+                    if (targetNode.price > 0) {
+                        document.getElementById('live-price').innerText = (targetNode.price / 100).toFixed(2);
                     }
-                    
-                    if (formattedBars.length > 0) {
-                        formattedBars.sort((a, b) => a.time - b.time);
-                        candlestickSeries.setData(formattedBars);
+
+                    if (targetNode.master_history && targetNode.master_history.length > 0) {
+                        const formattedBars = targetNode.master_history.map(bar => ({
+                            time: typeof bar.time === 'number' ? bar.time : Math.floor(new Date(bar.time).getTime() / 1000),
+                            open: parseFloat(bar.open),
+                            high: parseFloat(bar.high),
+                            low: parseFloat(bar.low),
+                            close: parseFloat(bar.close)
+                        })).filter(bar => !isNaN(bar.time));
+
+                        // Deduplicate logic channel parameters
+                        const uniqueBars = [];
+                        const seenTimes = new Set();
+                        for (const bar of formattedBars) {
+                            if (!seenTimes.has(bar.time)) {
+                                seenTimes.add(bar.time);
+                                uniqueBars.push(bar);
+                            }
+                        }
+                        
+                        uniqueBars.sort((a, b) => a.time - b.time);
+                        if (uniqueBars.length > 0) {
+                            candlestickSeries.setData(uniqueBars);
+                        }
                     }
                 }
             }
         }
 
+        // Parent capture layer hook
         window.addEventListener("message", function(e) {
             if (e.data && e.data.type === "LIVE_TICK_UPDATE") {
                 window.chartData = e.data.payload;
-                if(e.data.asset) window.currentAsset = e.data.asset;
-                syncTradingViewData();
+                window.currentAsset = e.data.asset;
+                renderStaticBars();
             }
         });
 
-        setTimeout(syncTradingViewData, 200);
-        setInterval(syncTradingViewData, 1000);
+        // Fast sequential boot scan block
+        setTimeout(renderStaticBars, 50);
+        setTimeout(renderStaticBars, 300);
+        setInterval(renderStaticBars, 1000);
+        
         window.addEventListener('resize', () => { chart.resize(container.clientWidth, container.clientHeight); });
     </script>
 </body>

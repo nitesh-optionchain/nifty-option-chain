@@ -3,7 +3,7 @@ from types import ModuleType
 import os
 import time
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -45,56 +45,98 @@ try:
 except Exception as e:
     print(f"SDK Engine Error: {str(e)}")
 
+if not market_engine:
+    st.error("🔒 Auth Fail: Broker connection structure ready nahi ho paya.")
+    st.stop()
+
+# Master Storage Structure Initialization
 if "master_storage" not in st.session_state:
     st.session_state.master_storage = {
         "NIFTY": {"price": 0, "status": "LIVE", "master_history": []},
         "SENSEX": {"price": 0, "status": "LIVE", "master_history": []}
     }
 
-if not market_engine:
-    st.error("🔒 Auth Fail: Broker connection structure ready nahi ho paya.")
-    st.stop()
+# ==============================================================================
+# 🧠 CORE ENGINE: PULL 3-DAYS HISTORICAL DATA ON FIRST LOAD
+# ==============================================================================
+indices_to_fetch = [("NIFTY", "Nifty 50", "NSE"), ("SENSEX", "SENSEX", "BSE")]
 
-# 🌐 HTML JavaScript Frame Injector WITH DYNAMIC LIVE DATA PUSHER LOOP
+for target_id, symbol_name, exch_name in indices_to_fetch:
+    # Agar history abhi khali hai, toh pehle 3 din ka proper OHLC records fetch karo
+    if not st.session_state.master_storage[target_id]["master_history"]:
+        try:
+            end_dt = datetime.utcnow()
+            start_dt = end_dt - timedelta(days=3)
+            
+            hist_response = market_engine.historical_data({
+                "exchange": exch_name,
+                "type": "INDEX",
+                "values": [symbol_name],
+                "fields": ["open", "high", "low", "close"],
+                "startDate": start_dt.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                "endDate": end_dt.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                "interval": "5m",
+                "intraDay": True,
+                "realTime": False
+            })
+            
+            if hist_response and hasattr(hist_response, 'candles') and hist_response.candles:
+                for candle in hist_response.candles:
+                    st.session_state.master_storage[target_id]["master_history"].append({
+                        "time": getattr(candle, 'timestamp', ''),
+                        "open": float(getattr(candle, 'open', 0)) / 100,
+                        "high": float(getattr(candle, 'high', 0)) / 100,
+                        "low": float(getattr(candle, 'low', 0)) / 100,
+                        "close": float(getattr(candle, 'close', 0)) / 100
+                    })
+        except Exception as e:
+            print(f"Error fetching historical foundation for {target_id}: {e}")
+
+# ==============================================================================
+# ⚡ LIVE STREAM COUPLING LAYER
+# ==============================================================================
+try:
+    # 1. Update NIFTY Live Node
+    nifty_snap = market_engine.current_price("NIFTY", exchange="NSE")
+    if nifty_snap and getattr(nifty_snap, 'price', None):
+        real_nifty = float(nifty_snap.price) / 100
+        st.session_state.master_storage["NIFTY"]["price"] = int(nifty_snap.price)
+        st.session_state.master_storage["NIFTY"]["status"] = "LIVE"
+        
+        # Chal rahi aakhiri candle ko stream price se real-time update karo
+        if st.session_state.master_storage["NIFTY"]["master_history"]:
+            st.session_state.master_storage["NIFTY"]["master_history"][-1]["close"] = real_nifty
+            if real_nifty > st.session_state.master_storage["NIFTY"]["master_history"][-1]["high"]:
+                st.session_state.master_storage["NIFTY"]["master_history"][-1]["high"] = real_nifty
+            if real_nifty < st.session_state.master_storage["NIFTY"]["master_history"][-1]["low"]:
+                st.session_state.master_storage["NIFTY"]["master_history"][-1]["low"] = real_nifty
+
+    # 2. Update SENSEX Live Node
+    sensex_snap = market_engine.current_price("SENSEX", exchange="BSE")
+    if sensex_snap and getattr(sensex_snap, 'price', None):
+        real_sensex = float(sensex_snap.price) / 100
+        st.session_state.master_storage["SENSEX"]["price"] = int(sensex_snap.price)
+        st.session_state.master_storage["SENSEX"]["status"] = "LIVE"
+        
+        if st.session_state.master_storage["SENSEX"]["master_history"]:
+            st.session_state.master_storage["SENSEX"]["master_history"][-1]["close"] = real_sensex
+            if real_sensex > st.session_state.master_storage["SENSEX"]["master_history"][-1]["high"]:
+                st.session_state.master_storage["SENSEX"]["master_history"][-1]["high"] = real_sensex
+            if real_sensex < st.session_state.master_storage["SENSEX"]["master_history"][-1]["low"]:
+                st.session_state.master_storage["SENSEX"]["master_history"][-1]["low"] = real_sensex
+                
+except Exception as data_err:
+    print(f"Tick collect alert: {data_err}")
+
+# ==============================================================================
+# 🌐 HTML JAVASCRIPT BRIDGE INJECTION
+# ==============================================================================
 if os.path.exists(html_file_path):
     with open(html_file_path, "r", encoding="utf-8") as f:
         html_content = f.read()
 
-    # Dynamic ticks fetch from market engine
-    try:
-        # 1. Fetch NIFTY
-        nifty_snap = market_engine.current_price("NIFTY", exchange="NSE")
-        if nifty_snap and nifty_snap.price:
-            real_nifty = float(nifty_snap.price) / 100
-            st.session_state.master_storage["NIFTY"]["price"] = int(nifty_snap.price)
-            st.session_state.master_storage["NIFTY"]["status"] = "LIVE"
-            st.session_state.master_storage["NIFTY"]["master_history"].append({
-                "open": real_nifty, "high": real_nifty, "low": real_nifty, "close": real_nifty
-            })
-
-        # 2. Fetch SENSEX
-        sensex_snap = market_engine.current_price("SENSEX", exchange="BSE")
-        if sensex_snap and sensex_snap.price:
-            real_sensex = float(sensex_snap.price) / 100
-            st.session_state.master_storage["SENSEX"]["price"] = int(sensex_snap.price)
-            st.session_state.master_storage["SENSEX"]["status"] = "LIVE"
-            st.session_state.master_storage["SENSEX"]["master_history"].append({
-                "open": real_sensex, "high": real_sensex, "low": real_sensex, "close": real_sensex
-            })
-            
-        # Limits maintain array size
-        if len(st.session_state.master_storage["NIFTY"]["master_history"]) > 300:
-            st.session_state.master_storage["NIFTY"]["master_history"].pop(0)
-        if len(st.session_state.master_storage["SENSEX"]["master_history"]) > 300:
-            st.session_state.master_storage["SENSEX"]["master_history"].pop(0)
-            
-    except Exception as data_err:
-        print(f"Tick collect alert: {data_err}")
-
-    # JSON dynamic generation
     json_data = json.dumps(st.session_state.master_storage)
 
-    # 🎯 POSTMESSAGE CONTROLLER BRIDGE
     injection_script = f"""
     <script>
         window.chartData = {json_data};
@@ -112,11 +154,8 @@ if os.path.exists(html_file_path):
     """
     
     html_content = html_content.replace("<head>", f"<head>{injection_script}")
-    
-    # Render component canvas frame direct without password gate
     components.html(html_content, height=850, scrolling=True)
     
-    # ⏳ Background dynamic synchronizer loop
     time.sleep(1)
     st.rerun()
 else:

@@ -8,9 +8,8 @@ import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
 
+# Clean dynamic page configuration without any visible headers
 st.set_page_config(layout="wide")
-st.subheader("📈 TradingView Inbuilt Index Framework")
-st.markdown("---")
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 html_file_path = os.path.join(BASE_DIR, 'index.html')
@@ -76,7 +75,6 @@ if market_engine:
                         "close": float(getattr(candle, 'close', 0)) / 100
                     })
 
-        # Fetch Live Price Overlay Ticks
         snap = market_engine.current_price(target_index, exchange=exch_name)
         if snap and getattr(snap, 'price', None):
             live_val = float(snap.price) / 100
@@ -87,15 +85,18 @@ if market_engine:
     except Exception as e:
         st.sidebar.error(f"SDK Alert: {e}")
 
-# If SDK fails to return anything, generate placeholder bars to prevent layout freeze
+# If SDK fails, generate placeholder bars to prevent layout freeze
 if not st.session_state.master_storage[target_index]["master_history"]:
-    st.warning("🔄 Fetching historical data pipeline matrix...")
     base_val = 24000.0 if target_index == "NIFTY" else 79000.0
     now_dt = datetime.now()
     for step in range(80, 0, -1):
         ts_str = (now_dt - timedelta(minutes=5 * step)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
         st.session_state.master_storage[target_index]["master_history"].append({
-            "time": ts_str, "open": base_val, "high": base_val + 10, "low": base_val - 10, "close": base_val + 2
+            "time": ts_str, 
+            "open": base_val + (step % 4), 
+            "high": base_val + (step % 4) + 12, 
+            "low": base_val + (step % 4) - 8, 
+            "close": base_val + (step % 4) + 4
         })
 
 # Bridge Data Delivery Execution
@@ -112,7 +113,9 @@ if os.path.exists(html_file_path):
     </script>
     """
     html_content = html_content.replace("<head>", f"<head>{injection_script}")
-    components.html(html_content, height=740, scrolling=False)
+    
+    # Render component directly matching absolute frame viewport
+    components.html(html_content, height=760, scrolling=False)
     
     time.sleep(2)
     st.rerun()

@@ -15,7 +15,7 @@
 <body>
 
     <div class="header">
-        <div>Asset: <span id="asset-display" class="header-val">NIFTY LIVE</span></div>
+        <div>Asset: <span id="asset-display" class="header-val">Loading...</span></div>
         <div>Zone Status: <span id="zone-status" class="header-val" style="color: #26a69a;">CONNECTED</span></div>
         <div>Last Price: <span id="live-price" class="header-val">Loading...</span></div>
     </div>
@@ -42,7 +42,6 @@
         });
 
         function renderStaticBars() {
-            // Direct script fallback handler block
             if (window.chartData && window.currentAsset) {
                 const targetNode = window.chartData[window.currentAsset];
                 
@@ -53,34 +52,39 @@
                     }
 
                     if (targetNode.master_history && targetNode.master_history.length > 0) {
-                        const formattedBars = targetNode.master_history.map(bar => ({
-                            time: typeof bar.time === 'number' ? bar.time : Math.floor(new Date(bar.time).getTime() / 1000),
-                            open: parseFloat(bar.open),
-                            high: parseFloat(bar.high),
-                            low: parseFloat(bar.low),
-                            close: parseFloat(bar.close)
-                        })).filter(bar => !isNaN(bar.time));
+                        let formattedBars = [];
+                        let seenTimes = new Set();
 
-                        // Deduplicate logic channel parameters
-                        const uniqueBars = [];
-                        const seenTimes = new Set();
-                        for (const bar of formattedBars) {
-                            if (!seenTimes.has(bar.time)) {
-                                seenTimes.add(bar.time);
-                                uniqueBars.push(bar);
+                        for (let bar of targetNode.master_history) {
+                            let cleanTime = typeof bar.time === 'number' ? bar.time : Math.floor(new Date(bar.time).getTime() / 1000);
+                            
+                            if (!isNaN(cleanTime) && !seenTimes.has(cleanTime)) {
+                                seenTimes.add(cleanTime);
+                                formattedBars.push({
+                                    time: cleanTime,
+                                    open: parseFloat(bar.open),
+                                    high: parseFloat(bar.high),
+                                    low: parseFloat(bar.low),
+                                    close: parseFloat(bar.close)
+                                });
                             }
                         }
                         
-                        uniqueBars.sort((a, b) => a.time - b.time);
-                        if (uniqueBars.length > 0) {
-                            candlestickSeries.setData(uniqueBars);
+                        // Strict chronological sorting sequence required by TV lightweight engine
+                        formattedBars.sort((a, b) => a.time - b.time);
+                        
+                        if (formattedBars.length > 0) {
+                            try {
+                                candlestickSeries.setData(formattedBars);
+                            } catch(err) {
+                                console.log("Chart render error mapping: ", err);
+                            }
                         }
                     }
                 }
             }
         }
 
-        // Parent capture layer hook
         window.addEventListener("message", function(e) {
             if (e.data && e.data.type === "LIVE_TICK_UPDATE") {
                 window.chartData = e.data.payload;
@@ -89,9 +93,8 @@
             }
         });
 
-        // Fast sequential boot scan block
-        setTimeout(renderStaticBars, 50);
-        setTimeout(renderStaticBars, 300);
+        setTimeout(renderStaticBars, 100);
+        setTimeout(renderStaticBars, 500);
         setInterval(renderStaticBars, 1000);
         
         window.addEventListener('resize', () => { chart.resize(container.clientWidth, container.clientHeight); });

@@ -126,6 +126,9 @@
         renderChart();
     }, { passive: false });
 
+    // ==============================================================================
+    // 🎨 CORRECTED LEFT-TO-RIGHT COMPACT CHRONOLOGICAL RENDERING ENGINE
+    // ==============================================================================
     function renderChart() {
         const w = container.clientWidth;
         const h = container.clientHeight;
@@ -133,7 +136,7 @@
         ctx.clearRect(0, 0, w, h);
         if (!chartData || chartData.length === 0) return;
 
-        const paddingLeft = 15;
+        const paddingLeft = 20;
         const paddingRight = 75;
         const paddingTop = 30;
         const paddingBottom = 25;
@@ -145,6 +148,7 @@
         const baseBarsCount = isMobile ? 35 : 70;
         const maxBarsVisible = Math.max(12, Math.round(baseBarsCount / zoomLevel));
         
+        // Take chronological data slice
         const activeBars = chartData.slice(-maxBarsVisible);
         const totalActive = activeBars.length;
 
@@ -162,6 +166,7 @@
         minPrice -= verticalBuffer;
         const finalRange = maxPrice - minPrice;
 
+        // Draw structural background grid horizontal lines
         ctx.strokeStyle = '#2a2e39';
         ctx.lineWidth = 1;
         ctx.fillStyle = '#848e9c';
@@ -177,14 +182,15 @@
             ctx.fillText(p.toFixed(2), paddingLeft + chartWidth + 6, y + 4);
         }
 
-        // FIXED SPACING: Calibrate spacing dynamically to strictly avoid scattering (chhitrana)
-        const candleSpacing = chartWidth / Math.max(totalActive, maxBarsVisible);
-        const candleWidth = Math.max(candleSpacing * 0.72, 4.5); // Boosted body size thickness
+        const candleSpacing = chartWidth / maxBarsVisible;
+        const candleWidth = Math.max(candleSpacing * 0.72, 5.0); // Perfect dense thickness blocks
 
+        // FIXED LINEAR DIRECTION: Map array loops left-to-right (0 to totalActive-1)
         activeBars.forEach((bar, index) => {
-            // Right-aligned linear timeline mapping layout
+            // Newest dynamic candles lock to the right margin border, older streams leftward
             const x = (paddingLeft + chartWidth) - ((totalActive - 1 - index) * candleSpacing) - (candleSpacing / 2) + panOffset;
             
+            // Tight viewport boundary guard: Bypasses extra scattered wicks on left corner margins
             if (x < paddingLeft || x > (paddingLeft + chartWidth)) return;
 
             const yOpen = paddingTop + chartHeight * (1 - (bar.open - minPrice) / finalRange);
@@ -197,7 +203,7 @@
 
             ctx.strokeStyle = color;
             ctx.fillStyle = color;
-            ctx.lineWidth = 1.8; // Stronger wick resolution lines
+            ctx.lineWidth = 1.8;
 
             ctx.beginPath();
             ctx.moveTo(x, yHigh);

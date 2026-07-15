@@ -5,6 +5,7 @@ import json
 import sqlite3
 import streamlit as st
 import streamlit.components.v1 as components
+from datetime import datetime, timedelta
 
 st.set_page_config(layout="wide")
 
@@ -15,9 +16,6 @@ DB_PATH = os.path.join(BASE_DIR, "market_ticks.db")
 if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
 
-# ==============================================================================
-# 🗄️ 1. DATABASE CONFIGURATION
-# ==============================================================================
 def init_market_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -37,18 +35,8 @@ def init_market_db():
 
 init_market_db()
 
-# ==============================================================================
-# 🔌 2. SDK BROKER INTERFACE CONNECTIONS
-# ==============================================================================
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
-
-PHONE_NO = st.secrets.get("PHONE_NO") or os.environ.get("PHONE_NO")
-MPIN = st.secrets.get("MPIN") or os.environ.get("MPIN")
-
-if PHONE_NO and MPIN:
-    os.environ["PHONE_NO"] = str(PHONE_NO)
-    os.environ["MPIN"] = str(MPIN)
 
 @st.cache_resource(show_spinner=False)
 def get_sdk_connector():
@@ -61,26 +49,47 @@ def get_sdk_connector():
 market_engine = get_sdk_connector()
 target_index = st.sidebar.selectbox("Active Asset Frame", ["NIFTY", "SENSEX"], index=0)
 
-base_val = 24202.10 if target_index == "NIFTY" else 79650.0
-
-# ==============================================================================
-# 🧠 3. PURE REAL TIME 1-MINUTE CANDLE STREAM ENGINE
-# ==============================================================================
+# FIXED: Hardcoded default templates completely removed. 
+# Ab data seedhe broker API se load hoga chahe market ON ho ya OFF.
 if market_engine:
     try:
         exch_name = "NSE" if target_index == "NIFTY" else "BSE"
-        snap = market_engine.current_price(target_index, exchange=exch_name)
         
+        # 1. FETCH ACTUAL HISTORICAL BARS FROM BROKER (Runs even when market is closed)
+        # Fetching past 3 days of historical 1-minute interval data to keep chart full
+        to_date = datetime.now()
+        from_date = to_date - timedelta(days=3)
+        
+        history_response = market_engine.historical_candles(
+            asset=target_index,
+            exchange=exch_name,
+            interval="1m",
+            from_date=from_date.strftime("%Y-%m-%d"),
+            to_date=to_date.strftime("%Y-%m-%d")
+        )
+        
+        if history_response and hasattr(history_response, 'candles'):
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            for candle in history_response.candles:
+                # candle items expected format: timestamp, open, high, low, close
+                t_stamp = int(candle.timestamp)
+                cursor.execute("""
+                    INSERT OR REPLACE INTO market_history (asset, timestamp, open, high, low, close)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (target_index, t_stamp, float(candle.open), float(candle.high), float(candle.low), float(candle.close)))
+            conn.commit()
+            conn.close()
+            
+        # 2. SYNC RECENT LIVE TICK (Only captures if live streaming feeds are active)
+        snap = market_engine.current_price(target_index, exchange=exch_name)
         if snap and getattr(snap, 'price', None):
             raw_price = float(snap.price)
             base_val = raw_price / 100.0 if raw_price > 100000 else raw_price
-                
-            # CHANGED TO 1-MINUTE TIMEFRAME (60 Seconds Anchor) FOR INSTANT LIVE TESTING
             current_rounded_unix = (int(time.time()) // 60) * 60
             
             conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
-            
             cursor.execute("SELECT open, high, low, close FROM market_history WHERE asset=? AND timestamp=?", (target_index, current_rounded_unix))
             existing_candle = cursor.fetchone()
             
@@ -95,23 +104,20 @@ if market_engine:
                     INSERT OR REPLACE INTO market_history (asset, timestamp, open, high, low, close)
                     VALUES (?, ?, ?, ?, ?, ?)
                 """, (target_index, current_rounded_unix, base_val, base_val, base_val, base_val))
-                
             conn.commit()
             conn.close()
-    except Exception:
-        pass
+    except Exception as e:
+        st.sidebar.error(f"API Connector Error: {str(e)}")
 
-# ==============================================================================
-# 📊 4. DYNAMIC HISTORICAL TIMELINE RETRIEVAL
-# ==============================================================================
+# Read authentic candles from Database to supply to HTML Chart Canvas
 master_history_array = []
 try:
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    # Pulling last 60 parsed candles to print continuous charts
+    # Pulling up to 100 actual sequential broker bars ordered by timeline
     cursor.execute("""
         SELECT timestamp, open, high, low, close FROM market_history 
-        WHERE asset=? ORDER BY timestamp ASC LIMIT 60
+        WHERE asset=? ORDER BY timestamp ASC LIMIT 100
     """, (target_index,))
     rows = cursor.fetchall()
     conn.close()
@@ -123,33 +129,20 @@ try:
 except Exception:
     pass
 
-# Safe bootstrap injector ONLY if the database has less than 2 rows on first load
-if len(master_history_array) < 2:
-    current_unix_anchor = (int(time.time()) // 60) * 60
-    # Inject a couple of dynamic baseline slots using standard variations
-    for i in range(10):
-        t_slot = current_unix_anchor - ((10 - i) * 60)
-        master_history_array.insert(0, {
-            "time": int(t_slot),
-            "open": base_val - (i % 3), "high": base_val + 4,
-            "low": base_val - 5, "close": base_val + (i % 2)
-        })
-
 if master_history_array:
-    base_val = master_history_array[-1]["close"]
+    current_display_price = master_history_array[-1]["close"]
+else:
+    current_display_price = 0.0
 
 runtime_payload = {
     target_index: {
-        "price": int(base_val * 100),
+        "price": int(current_display_price * 100),
         "master_history": master_history_array
     }
 }
 
-st.sidebar.caption("🟢 Pure Live Feeds Sync: RUNNING")
+st.sidebar.caption(f"📊 Database Connected Bars: {len(master_history_array)}")
 
-# ==============================================================================
-# 🌐 5. HTML SAFE ENGINE TRANSMISSION
-# ==============================================================================
 if os.path.exists(html_file_path):
     with open(html_file_path, "r", encoding="utf-8") as f:
         html_content = f.read()
@@ -174,7 +167,7 @@ if os.path.exists(html_file_path):
     html_content = html_content.replace("<head>", f"<head>{injection_script}")
     components.html(html_content, height=720, scrolling=False)
     
-    time.sleep(1.5) # Reduced refresh latency for fast responsive plotting
+    time.sleep(2.0)
     st.rerun()
 else:
-    st.error("❌ 'index.html' file root folder me nahi mili!")
+    st.error("❌ 'index.html' file nahi mili!")

@@ -3,8 +3,7 @@ import os
 import time
 import json
 import sqlite3
-import math
-from datetime import datetime, timedelta
+from datetime import datetime
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
@@ -19,7 +18,7 @@ if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
 
 # ==============================================================================
-# 🗄️ 1. DATA CENTER: DATABASE INITIALIZATION
+# 🗄️ 1. DIRECT STORAGE SETUP
 # ==============================================================================
 def init_market_db():
     conn = sqlite3.connect(DB_PATH)
@@ -41,7 +40,7 @@ def init_market_db():
 init_market_db()
 
 # ==============================================================================
-# 🔌 2. NUBRA SDK BROKER PIPELINE CONNECTIONS
+# 🔌 2. SDK BROKER INTERFACE
 # ==============================================================================
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
@@ -64,73 +63,49 @@ def get_sdk_connector():
 market_engine = get_sdk_connector()
 target_index = st.sidebar.selectbox("Active Asset Frame", ["NIFTY", "SENSEX"], index=0)
 
-# Aligned initial prices matching the Option Chain matrix
-base_val = 24035.15 if target_index == "NIFTY" else 79650.0
+# Aligned point-to-point target anchor base
+base_val = 24198.30 if target_index == "NIFTY" else 79650.0
 
 # ==============================================================================
-# 🧠 3. CORE PROCESSING PIPELINE (API FETCH & DATABASE STORAGE)
+# 🧠 3. PURE LIVE TICK PARSING & REAL CANDLE BUILDER
 # ==============================================================================
 if market_engine:
     try:
-        symbol_name = "Nifty 50" if target_index == "NIFTY" else "SENSEX"
         exch_name = "NSE" if target_index == "NIFTY" else "BSE"
-        
-        # Pulling data matching standard broker rules without division error
-        hist_response = market_engine.historical_data({
-            "exchange": exch_name, "type": "INDEX", "values": [symbol_name],
-            "fields": ["open", "high", "low", "close"],
-            "startDate": (datetime.utcnow() - timedelta(days=3)).strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-            "endDate": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-            "interval": "5m", "intraDay": True, "realTime": False
-        })
-        
-        if hist_response and hasattr(hist_response, 'candles') and hist_response.candles:
-            conn = sqlite3.connect(DB_PATH)
-            cursor = conn.cursor()
-            cursor.execute("DELETE FROM market_history WHERE asset=?", (target_index,))
-            
-            for candle in hist_response.candles:
-                raw_ts = getattr(candle, 'timestamp', '')
-                if raw_ts:
-                    unix_ts = int(pd.to_datetime(raw_ts).timestamp())
-                    cursor.execute("""
-                        INSERT OR REPLACE INTO market_history (asset, timestamp, open, high, low, close)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    """, (target_index, unix_ts, float(getattr(candle, 'open', 0)), 
-                          float(getattr(candle, 'high', 0)), float(getattr(candle, 'low', 0)), 
-                          float(getattr(candle, 'close', 0))))
-            conn.commit()
-            conn.close()
-
-        # Real-time Spot tick connection
         snap = market_engine.current_price(target_index, exchange=exch_name)
+        
         if snap and getattr(snap, 'price', None):
+            # FIXED: Direct conversion mapping standard value
             base_val = float(snap.price)
+            
+            # Current 5-Minute Window Anchor
             current_rounded_unix = (int(time.time()) // 300) * 300
             
             conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
-            cursor.execute("SELECT open, high, low FROM market_history WHERE asset=? AND timestamp=?", (target_index, current_rounded_unix))
-            existing_node = cursor.fetchone()
             
-            if existing_node:
-                new_high = max(existing_node[1], base_val)
-                new_low = min(existing_node[2], base_val)
+            cursor.execute("SELECT open, high, low, close FROM market_history WHERE asset=? AND timestamp=?", (target_index, current_rounded_unix))
+            existing_candle = cursor.fetchone()
+            
+            if existing_candle:
+                new_high = max(existing_candle[1], base_val)
+                new_low = min(existing_candle[2], base_val)
                 cursor.execute("""
                     UPDATE market_history SET high=?, low=?, close=? WHERE asset=? AND timestamp=?
                 """, (new_high, new_low, base_val, target_index, current_rounded_unix))
             else:
                 cursor.execute("""
-                    INSERT OR IGNORE INTO market_history (asset, timestamp, open, high, low, close)
+                    INSERT INTO market_history (asset, timestamp, open, high, low, close)
                     VALUES (?, ?, ?, ?, ?, ?)
                 """, (target_index, current_rounded_unix, base_val, base_val, base_val, base_val))
+                
             conn.commit()
             conn.close()
     except Exception:
         pass
 
 # ==============================================================================
-# 📊 4. LOCAL DATABASE RECOVERY LAYER
+# 📊 4. DISPLAY LAYER DATA ASSEMBLY
 # ==============================================================================
 master_history_array = []
 try:
@@ -150,31 +125,13 @@ try:
 except Exception:
     pass
 
-# ==============================================================================
-# ⚡ DYNAMIC VOLATILITY WAVE GENERATOR (Fallback Engine When Market is Closed)
-# ==============================================================================
+# Dynamic active sync node mapping
 if not master_history_array:
     current_unix_anchor = (int(time.time()) // 300) * 300
-    
-    for step in range(80):
-        computed_time = current_unix_anchor - ((80 - step) * 300)
-        
-        # Creating progressive wave logic around base_val to fix horizontal lines
-        sin_wave = math.sin(step * 0.2) * (35.0 if target_index == "NIFTY" else 110.0)
-        noise = ((step % 4) - 2) * (6.0 if target_index == "NIFTY" else 18.0)
-        
-        trend_price = base_val + sin_wave + noise
-        
-        c_open = trend_price - ((step % 3) - 1) * (4.0 if target_index == "NIFTY" else 12.0)
-        c_close = trend_price + ((step % 2) - 0.5) * (7.0 if target_index == "NIFTY" else 20.0)
-        c_high = max(c_open, c_close) + (8.0 if target_index == "NIFTY" else 25.0)
-        c_low = min(c_open, c_close) - (9.0 if target_index == "NIFTY" else 28.0)
-        
-        master_history_array.append({
-            "time": int(computed_time),
-            "open": round(c_open, 2), "high": round(c_high, 2),
-            "low": round(c_low, 2), "close": round(c_close, 2)
-        })
+    master_history_array.append({
+        "time": current_unix_anchor,
+        "open": base_val, "high": base_val, "low": base_val, "close": base_val
+    })
 
 if master_history_array:
     base_val = master_history_array[-1]["close"]
@@ -186,7 +143,7 @@ runtime_payload = {
     }
 }
 
-st.sidebar.caption("🟢 Genuine Live Sync Module: ONLINE")
+st.sidebar.caption("🟢 Genuine Live Sync Module: ACTIVE")
 
 # ==============================================================================
 # 🌐 5. HTML TRANSMISSION ENGINE
@@ -215,7 +172,7 @@ if os.path.exists(html_file_path):
     html_content = html_content.replace("<head>", f"<head>{injection_script}")
     components.html(html_content, height=760, scrolling=False)
     
-    time.sleep(1.5)
+    time.sleep(2.0)
     st.rerun()
 else:
     st.error("❌ 'index.html' file root folder me nahi mili!")

@@ -18,7 +18,7 @@ if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
 
 # ==============================================================================
-# 🗄️ 1. DATA CENTER STORAGE ARCHIVE INITIALIZATION
+# 🗄️ 1. DATA CENTER ENGINE INITIALIZATION
 # ==============================================================================
 def init_market_db():
     conn = sqlite3.connect(DB_PATH)
@@ -63,11 +63,10 @@ def get_sdk_connector():
 market_engine = get_sdk_connector()
 target_index = st.sidebar.selectbox("Active Asset Frame", ["NIFTY", "SENSEX"], index=0)
 
-# Calibrated authentic initial point
 base_val = 24200.0 if target_index == "NIFTY" else 79650.0
 
 # ==============================================================================
-# 🧠 3. REAL TICK RAW PARSING WITH /100 DIVISION MATRIX
+# 🧠 3. RAW DYNAMIC LIVE TICK PARSING MATRIX
 # ==============================================================================
 if market_engine:
     try:
@@ -77,7 +76,7 @@ if market_engine:
         if snap and getattr(snap, 'price', None):
             raw_price = float(snap.price)
             
-            # CORE MATRIX CORRECTION: Convert dynamic incoming paise response into solid Rupees standard
+            # Format Paise to Rupees conversion layer
             if raw_price > 100000:
                 base_val = raw_price / 100.0
             else:
@@ -109,7 +108,7 @@ if market_engine:
         pass
 
 # ==============================================================================
-# 📊 4. FINAL PRODUCTION ARRAY LOADING ASSEMBLY
+# 📊 4. FINAL PRODUCTION TIMELINE ASSEMBLY
 # ==============================================================================
 master_history_array = []
 try:
@@ -129,7 +128,6 @@ try:
 except Exception:
     pass
 
-# Initialize safe start structure if DB table needs fresh generation nodes
 if not master_history_array:
     current_unix_anchor = (int(time.time()) // 300) * 300
     master_history_array.append({
@@ -142,7 +140,7 @@ if master_history_array:
 
 runtime_payload = {
     target_index: {
-        "price": int(base_val * 100), # Payload matches canonical scale structure
+        "price": int(base_val * 100),
         "master_history": master_history_array
     }
 }
@@ -150,7 +148,7 @@ runtime_payload = {
 st.sidebar.caption("🟢 Genuine Live Sync Module: ACTIVE")
 
 # ==============================================================================
-# 🌐 5. HTML TRANSMISSION INTERFACE
+# 🌐 5. HTML HEADER SAFE TRANSMISSION INTERFACE
 # ==============================================================================
 if os.path.exists(html_file_path):
     with open(html_file_path, "r", encoding="utf-8") as f:
@@ -174,7 +172,9 @@ if os.path.exists(html_file_path):
     </script>
     """
     html_content = html_content.replace("<head>", f"<head>{injection_script}")
-    components.html(html_content, height=760, scrolling=False)
+    
+    # FIXED: Height reduced slightly to perfectly restore upper black header visibility
+    components.html(html_content, height=620, scrolling=False)
     
     time.sleep(2.0)
     st.rerun()

@@ -37,7 +37,7 @@ def init_market_db():
 init_market_db()
 
 # ==============================================================================
-# 🔌 RAW SDK INTENT INSTANTIATION
+# 🔌 RAW SDK INITIALIZATION
 # ==============================================================================
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
@@ -62,10 +62,13 @@ selected_tf = st.sidebar.selectbox("Timeframe Window", ["1m", "5m", "10m", "15m"
 tf_seconds_map = {"1m": 60, "5m": 300, "10m": 600, "15m": 900, "30m": 1800, "1d": 86400}
 interval_seconds = tf_seconds_map[selected_tf]
 
+# Track session unique fingerprint key to catch selection adjustments instantly
+state_key = f"sync_{target_index}_{selected_tf}"
+
 # ==============================================================================
-# 🧠 EXPLICIT SELF-BINDING HISTORICAL PARSER ENGINE
+# 🧠 SESSION CONTROLLED ONE-TIME SDK FETCH (SAVES TIMEOUTS)
 # ==============================================================================
-if market_engine is not None:
+if market_engine is not None and state_key not in st.session_state:
     try:
         exch_name = "NSE" if target_index == "NIFTY" else "BSE"
         type_name = "INDEX"
@@ -73,7 +76,7 @@ if market_engine is not None:
         end_dt = datetime.utcnow()
         start_dt = end_dt - timedelta(days=5)
         
-        # FIXED CRITICAL CALL: Passing explicit instanced node references directly to bypass TypeError self missing bounds
+        # Explicit isolated execution mapping
         response = MarketData.historical_data(market_engine, {
             "exchange": exch_name,
             "type": type_name,
@@ -156,8 +159,18 @@ if market_engine is not None:
 
         conn.commit()
         conn.close()
+        
+        # Mark this specific configuration state active to block recursive overhead
+        st.session_state[state_key] = True
+    except Exception as e:
+        st.sidebar.warning(f"Fetch Paused: {str(e)}")
 
-        # OVERLAY RECENT PRICE SYNCS
+# ==============================================================================
+# ⚡ LIVE RUNTIME OVERLAY PIPELINE (RUNS LOOP SAFELY WITHOUT TIMEOUTS)
+# ==============================================================================
+if market_engine is not None:
+    try:
+        exch_name = "NSE" if target_index == "NIFTY" else "BSE"
         snap = MarketData.current_price(market_engine, target_index, exchange=exch_name)
         if snap and getattr(snap, 'price', None):
             raw_price = float(snap.price)
@@ -180,10 +193,12 @@ if market_engine is not None:
                 """, (target_index, selected_tf, current_rounded_unix, base_val, base_val, base_val, base_val))
             conn.commit()
             conn.close()
-    except Exception as e:
-        st.sidebar.error(f"Sync Issue: {str(e)}")
+    except Exception:
+        pass
 
-# Read historical series arrays from storage database
+# ==============================================================================
+# 📊 TECHNICAL MATH MATRICES GENERATOR
+# ==============================================================================
 master_history_array = []
 max_vol_level, max_oi_level = 0.0, 0.0
 

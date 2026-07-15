@@ -37,27 +37,27 @@ def init_market_db():
 init_market_db()
 
 # ==============================================================================
-# 🔐 SAFE RE-AUTHENTICATION CONNECTION GATEWAY
+# 🔐 CRITICAL FIX: SINGLETON AUTH GATEWAY (PREVENTS AUTH TOKEN EXPIRES)
 # ==============================================================================
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
 
-PHONE_NO = st.secrets.get("PHONE_NO") or os.environ.get("PHONE_NO")
-MPIN = st.secrets.get("MPIN") or os.environ.get("MPIN")
+if "nubra_engine_instance" not in st.session_state:
+    PHONE_NO = st.secrets.get("PHONE_NO") or os.environ.get("PHONE_NO")
+    MPIN = st.secrets.get("MPIN") or os.environ.get("MPIN")
 
-if PHONE_NO and MPIN:
-    os.environ["PHONE_NO"] = str(PHONE_NO)
-    os.environ["MPIN"] = str(MPIN)
-
-# Establish live runtime client explicitly on every state shift to avoid token leaks
-def get_fresh_authenticated_engine():
+    if PHONE_NO and MPIN:
+        os.environ["PHONE_NO"] = str(PHONE_NO)
+        os.environ["MPIN"] = str(MPIN)
+    
     try:
         sdk_client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
-        return MarketData(sdk_client)
-    except Exception:
-        return None
+        st.session_state["nubra_engine_instance"] = MarketData(sdk_client)
+    except Exception as e:
+        st.session_state["nubra_engine_instance"] = None
+        st.sidebar.error(f"Auth Initialization Failed: {str(e)}")
 
-market_engine = get_fresh_authenticated_engine()
+market_engine = st.session_state["nubra_engine_instance"]
 
 target_index = st.sidebar.selectbox("Active Asset Frame", ["NIFTY", "SENSEX"], index=0)
 selected_tf = st.sidebar.selectbox("Timeframe Window", ["1m", "5m", "10m", "15m", "30m", "1d"], index=1)
@@ -68,33 +68,30 @@ interval_seconds = tf_seconds_map[selected_tf]
 state_key = f"fetch_done_{target_index}_{selected_tf}"
 
 # ==============================================================================
-# 🧠 DYNAMIC EXTRACTOR ENGINE
+# 🧠 DYNAMIC EXTRACTOR LAYER (ONE-TIME POOL EXECUTION)
 # ==============================================================================
-def execute_safe_sdk_fetch(engine, asset, timeframe):
-    if engine is None:
-        return False
+if market_engine is not None and not st.session_state.get(state_key):
     try:
-        exch = "NSE" if asset == "NIFTY" else "BSE"
+        exch = "NSE" if target_index == "NIFTY" else "BSE"
         end_d = datetime.utcnow()
         start_d = end_d - timedelta(days=4)
         
         req_payload = {
             "exchange": exch,
             "type": "INDEX",
-            "values": [asset],
+            "values": [target_index],
             "fields": ["open", "high", "low", "close", "cumulative_volume", "cumulative_oi"],
             "startDate": start_d.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
             "endDate": end_d.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-            "interval": timeframe,
+            "interval": selected_tf,
             "intraDay": False,
             "realTime": False
         }
         
-        # Explicit context-safe wrapper calling strategy
         try:
-            response = engine.historical_data(req_payload)
+            response = market_engine.historical_data(req_payload)
         except Exception:
-            response = MarketData.historical_data(engine, req_payload)
+            response = MarketData.historical_data(market_engine, req_payload)
             
         chart_data_list = []
         if response:
@@ -103,84 +100,76 @@ def execute_safe_sdk_fetch(engine, asset, timeframe):
             elif isinstance(response, dict) and 'result' in response:
                 chart_data_list = response['result']
 
-        if not chart_data_list:
-            return False
-
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        
-        max_vol_price, max_oi_price = 0.0, 0.0
-        highest_vol, highest_oi = -1, -1
-
-        for chart_data in chart_data_list:
-            vals_layer = getattr(chart_data, 'values', None) or (chart_data.get('values') if isinstance(chart_data, dict) else None)
-            if not vals_layer: continue
+        if chart_data_list:
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
             
-            elements = vals_layer if isinstance(vals_layer, list) else [vals_layer]
-            for element in elements:
-                stock_chart = element.get(asset) if isinstance(element, dict) else getattr(element, asset, None)
-                if stock_chart:
-                    opens = getattr(stock_chart, 'open', None) or []
-                    highs = getattr(stock_chart, 'high', None) or []
-                    lows = getattr(stock_chart, 'low', None) or []
-                    closes = getattr(stock_chart, 'close', None) or []
-                    vols = getattr(stock_chart, 'cumulative_volume', None) or []
-                    ois = getattr(stock_chart, 'cumulative_oi', None) or []
-                    
-                    for i in range(len(opens)):
-                        try:
-                            raw_ts = opens[i].timestamp
-                            sec_ts = int(raw_ts // 1000000000) if raw_ts > 9999999999 else int(raw_ts)
-                            
-                            val_o = float(opens[i].value)
-                            val_h = float(highs[i].value) if i < len(highs) else val_o
-                            val_l = float(lows[i].value) if i < len(lows) else val_o
-                            val_c = float(closes[i].value) if i < len(closes) else val_o
+            max_vol_price, max_oi_price = 0.0, 0.0
+            highest_vol, highest_oi = -1, -1
 
-                            o_f = val_o / 100.0 if val_o > 100000 else val_o
-                            h_f = val_h / 100.0 if val_h > 100000 else val_h
-                            l_f = val_l / 100.0 if val_l > 100000 else val_l
-                            c_f = val_c / 100.0 if val_c > 100000 else val_c
+            for chart_data in chart_data_list:
+                vals_layer = getattr(chart_data, 'values', None) or (chart_data.get('values') if isinstance(chart_data, dict) else None)
+                if not vals_layer: continue
+                
+                elements = vals_layer if isinstance(vals_layer, list) else [vals_layer]
+                for element in elements:
+                    stock_chart = element.get(target_index) if isinstance(element, dict) else getattr(element, target_index, None)
+                    if stock_chart:
+                        opens = getattr(stock_chart, 'open', None) or []
+                        highs = getattr(stock_chart, 'high', None) or []
+                        lows = getattr(stock_chart, 'low', None) or []
+                        closes = getattr(stock_chart, 'close', None) or []
+                        vols = getattr(stock_chart, 'cumulative_volume', None) or []
+                        ois = getattr(stock_chart, 'cumulative_oi', None) or []
+                        
+                        for i in range(len(opens)):
+                            try:
+                                raw_ts = opens[i].timestamp
+                                sec_ts = int(raw_ts // 1000000000) if raw_ts > 9999999999 else int(raw_ts)
+                                
+                                val_o = float(opens[i].value)
+                                val_h = float(highs[i].value) if i < len(highs) else val_o
+                                val_l = float(lows[i].value) if i < len(lows) else val_o
+                                val_c = float(closes[i].value) if i < len(closes) else val_o
 
-                            cursor.execute("""
-                                INSERT OR REPLACE INTO market_history (asset, timeframe, timestamp, open, high, low, close)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                            """, (asset, timeframe, sec_ts, o_f, h_f, l_f, c_f))
+                                o_f = val_o / 100.0 if val_o > 100000 else val_o
+                                h_f = val_h / 100.0 if val_h > 100000 else val_h
+                                l_f = val_l / 100.0 if val_l > 100000 else val_l
+                                c_f = val_c / 100.0 if val_c > 100000 else val_c
 
-                            if i < len(vols) and float(vols[i].value) > highest_vol:
-                                highest_vol = float(vols[i].value)
-                                max_vol_price = c_f
-                            if i < len(ois) and float(ois[i].value) > highest_oi:
-                                highest_oi = float(ois[i].value)
-                                max_oi_price = c_f
-                        except Exception:
-                            continue
+                                cursor.execute("""
+                                    INSERT OR REPLACE INTO market_history (asset, timeframe, timestamp, open, high, low, close)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                """, (target_index, selected_tf, sec_ts, o_f, h_f, l_f, c_f))
 
-        now_ts = int(time.time())
-        current_dt = datetime.now()
-        cursor.execute("SELECT price_level FROM institutional_zones WHERE asset=? AND zone_type='MAX_VOL'", (asset,))
-        has_zone = cursor.fetchone()
-        
-        if not (current_dt.hour == 9 and current_dt.minute > 20 and has_zone):
-            if max_vol_price > 0:
-                cursor.execute("INSERT OR REPLACE INTO institutional_zones VALUES (?, 'MAX_VOL', ?, 1, ?)", (asset, max_vol_price, now_ts))
-            if max_oi_price > 0:
-                cursor.execute("INSERT OR REPLACE INTO institutional_zones VALUES (?, 'MAX_OI', ?, 1, ?)", (asset, max_oi_price, now_ts))
+                                if i < len(vols) and float(vols[i].value) > highest_vol:
+                                    highest_vol = float(vols[i].value)
+                                    max_vol_price = c_f
+                                if i < len(ois) and float(ois[i].value) > highest_oi:
+                                    highest_oi = float(ois[i].value)
+                                    max_oi_price = c_f
+                            except Exception:
+                                continue
 
-        conn.commit()
-        conn.close()
-        return True
+            now_ts = int(time.time())
+            current_dt = datetime.now()
+            cursor.execute("SELECT price_level FROM institutional_zones WHERE asset=? AND zone_type='MAX_VOL'", (target_index,))
+            has_zone = cursor.fetchone()
+            
+            if not (current_dt.hour == 9 and current_dt.minute > 20 and has_zone):
+                if max_vol_price > 0:
+                    cursor.execute("INSERT OR REPLACE INTO institutional_zones VALUES (?, 'MAX_VOL', ?, 1, ?)", (target_index, max_vol_price, now_ts))
+                if max_oi_price > 0:
+                    cursor.execute("INSERT OR REPLACE INTO institutional_zones VALUES (?, 'MAX_OI', ?, 1, ?)", (target_index, max_oi_price, now_ts))
+
+            conn.commit()
+            conn.close()
+            st.session_state[state_key] = True
     except Exception:
-        return False
-
-# Safe Single Execution Matrix Guard
-if market_engine is not None and not st.session_state.get(state_key):
-    success = execute_safe_sdk_fetch(market_engine, target_index, selected_tf)
-    if success:
-        st.session_state[state_key] = True
+        pass
 
 # ==============================================================================
-# ⚡ LIVE QUOTES TICK INJECTOR
+# ⚡ LIVE SNAPSHOT OVERLAY INTERCEPTOR
 # ==============================================================================
 if market_engine is not None:
     try:
@@ -215,7 +204,7 @@ if market_engine is not None:
         pass
 
 # ==============================================================================
-# 📊 TECHNICAL MATH MATRICES GENERATOR
+# 📊 MATHEMATICAL INDICATORS STRUCTURAL SUITE
 # ==============================================================================
 master_history_array = []
 max_vol_level, max_oi_level = 0.0, 0.0

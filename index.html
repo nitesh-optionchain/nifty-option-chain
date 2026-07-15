@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Advanced Live Chart Terminal</title>
+    <title>Advanced Multi-Indicator Terminal</title>
     <style>
         body, html {
             margin: 0; padding: 0; width: 100%; height: 100%;
             background-color: #131722; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            overflow: hidden; color: #ffffff; user-select: none; -webkit-user-select: none;
+            overflow: hidden; color: #ffffff; user-select: none;
         }
         #top-header-bar {
             height: 45px; background-color: #1c2030; display: flex; align-items: center;
@@ -18,10 +18,7 @@
         .matrix-lbl { color: #848e9c; margin-right: 4px; }
         .matrix-val.green { color: #089981; }
         .matrix-val.orange { color: #ff9800; }
-        #chart-container {
-            position: relative; width: 100%; height: calc(100vh - 45px);
-            touch-action: none;
-        }
+        #chart-container { position: relative; width: 100%; height: calc(100vh - 45px); touch-action: none; }
         canvas { display: block; position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
     </style>
 </head>
@@ -40,160 +37,79 @@
 <script>
     const canvas = document.getElementById('chartCanvas');
     const ctx = canvas.getContext('2d');
-    
     let chartData = [];
+    let maxVolZone = 0;
+    let maxOiZone = 0;
     let currentAsset = "NIFTY";
 
-    // Zoom & Pan System Matrix State
-    let zoomLevel = 1.0; 
-    let panOffset = 0;   
-    let isDragging = false;
-    let startX = 0;
-    let lastTouchDistance = 0;
-
-    function resizeCanvas() {
-        const container = document.getElementById('chart-container');
-        const dpr = window.devicePixelRatio || 1;
-        canvas.width = container.clientWidth * dpr;
-        canvas.height = container.clientHeight * dpr;
-        ctx.scale(dpr, dpr);
-        renderChart();
-    }
-
-    window.addEventListener('resize', resizeCanvas);
+    let zoomLevel = 1.0; let panOffset = 0; let isDragging = false; let startX = 0;
 
     window.addEventListener('message', function(e) {
         const data = e.data;
         if (data.type === "LIVE_TICK_UPDATE" && data.payload && data.asset) {
             currentAsset = data.asset;
             document.getElementById('lbl-asset').innerText = currentAsset + " LIVE";
-            
             if (data.payload[currentAsset]) {
-                const rawPrice = data.payload[currentAsset].price / 100;
-                document.getElementById('lbl-price').innerText = rawPrice.toFixed(2);
-                
-                // Keep standard chronological array flow intact
+                document.getElementById('lbl-price').innerText = (data.payload[currentAsset].price / 100).toFixed(2);
                 chartData = data.payload[currentAsset].master_history || [];
+                maxVolZone = data.payload[currentAsset].max_vol_zone || 0;
+                maxOiZone = data.payload[currentAsset].max_oi_zone || 0;
                 renderChart();
             }
         }
     });
 
-    // ==============================================================================
-    // 🖐️ INTERACTIVE SWIPE / PINCH GESTURES SYSTEM
-    // ==============================================================================
-    const container = document.getElementById('chart-container');
-
-    container.addEventListener('touchstart', function(e) {
-        if (e.touches.length === 1) {
-            isDragging = true;
-            startX = e.touches[0].clientX - panOffset;
-        } else if (e.touches.length === 2) {
-            isDragging = false;
-            lastTouchDistance = Math.hypot(
-                e.touches[0].clientX - e.touches[1].clientX,
-                e.touches[0].clientY - e.touches[1].clientY
-            );
-        }
-    }, { passive: false });
-
-    container.addEventListener('touchmove', function(e) {
-        e.preventDefault();
-        if (isDragging && e.touches.length === 1) {
-            panOffset = e.touches[0].clientX - startX;
-            renderChart();
-        } else if (e.touches.length === 2) {
-            const currentDistance = Math.hypot(
-                e.touches[0].clientX - e.touches[1].clientX,
-                e.touches[0].clientY - e.touches[1].clientY
-            );
-            if (lastTouchDistance > 0) {
-                const delta = currentDistance / lastTouchDistance;
-                zoomLevel = Math.max(0.3, Math.min(zoomLevel * delta, 4.0));
-                renderChart();
-            }
-            lastTouchDistance = currentDistance;
-        }
-    }, { passive: false });
-
-    container.addEventListener('touchend', function() {
-        isDragging = false;
-        lastTouchDistance = 0;
-    });
-
-    container.addEventListener('wheel', function(e) {
-        e.preventDefault();
-        const factor = e.deltaY < 0 ? 1.08 : 0.92;
-        zoomLevel = Math.max(0.3, Math.min(zoomLevel * factor, 4.0));
-        renderChart();
-    }, { passive: false });
-
-    // ==============================================================================
-    // 🎨 PURE TRADINGVIEW FLOW RENDERING ENGINE (LEFT-TO-RIGHT TIME FLOW)
-    // ==============================================================================
     function renderChart() {
-        const container = document.getElementById('chart-container');
-        const w = container.clientWidth;
-        const h = container.clientHeight;
+        const w = canvas.parentElement.clientWidth;
+        const h = canvas.parentElement.clientHeight;
+        canvas.width = w * (window.devicePixelRatio || 1);
+        canvas.height = h * (window.devicePixelRatio || 1);
+        ctx.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
         
         ctx.clearRect(0, 0, w, h);
-        if (!chartData || chartData.length === 0) return;
+        if (chartData.length === 0) return;
 
-        const paddingLeft = 15;
-        const paddingRight = 75;
-        const paddingTop = 30;
-        const paddingBottom = 25;
+        const paddingLeft = 15; const paddingRight = 75; const paddingTop = 30; const paddingBottom = 120;
+        const chartWidth = w - paddingLeft - paddingRight; const chartHeight = h - paddingTop - paddingBottom;
 
-        const chartWidth = w - paddingLeft - paddingRight;
-        const chartHeight = h - paddingTop - paddingBottom;
-
-        // Viewport boundaries calibration based on active zoom configuration
-        const isMobile = w < 600;
-        const baseBarsCount = isMobile ? 30 : 60;
-        const maxBarsVisible = Math.max(10, Math.round(baseBarsCount / zoomLevel));
-        
-        // Take the latest timeline slices
+        const maxBarsVisible = Math.max(15, Math.round(50 / zoomLevel));
         const activeBars = chartData.slice(-maxBarsVisible);
 
-        let maxPrice = -Infinity;
-        let minPrice = Infinity;
-
+        let maxPrice = -Infinity; let minPrice = Infinity;
         activeBars.forEach(d => {
-            if (d.high > maxPrice) maxPrice = d.high;
-            if (d.low < minPrice) minPrice = d.low;
+            maxPrice = Math.max(maxPrice, d.high, d.vwap, d.ma50);
+            minPrice = Math.min(minPrice, d.low, d.vwap, d.ma50);
         });
 
-        const priceRange = maxPrice - minPrice;
-        const verticalBuffer = priceRange === 0 ? 10.0 : priceRange * 0.15;
-        maxPrice += verticalBuffer;
-        minPrice -= verticalBuffer;
-        const finalRange = maxPrice - minPrice;
+        // Lock institutional boundaries bounds into vertical scaling matrix
+        if(maxVolZone > 0) { maxPrice = Math.max(maxPrice, maxVolZone); minPrice = Math.min(minPrice, maxVolZone); }
+        if(maxOiZone > 0) { maxPrice = Math.max(maxPrice, maxOiZone); minPrice = Math.min(minPrice, maxOiZone); }
 
-        // Draw structural background grid horizontal lines
-        ctx.strokeStyle = '#2a2e39';
-        ctx.lineWidth = 1;
-        ctx.fillStyle = '#848e9c';
-        ctx.font = '11px sans-serif';
+        const finalRange = (maxPrice - minPrice) * 1.15;
+        minPrice -= finalRange * 0.05;
 
-        for (let i = 0; i <= 4; i++) {
-            const y = paddingTop + (chartHeight * (i / 4));
-            const p = maxPrice - (finalRange * (i / 4));
-            ctx.beginPath();
-            ctx.moveTo(paddingLeft, y);
-            ctx.lineTo(paddingLeft + chartWidth, y);
-            ctx.stroke();
-            ctx.fillText(p.toFixed(2), paddingLeft + chartWidth + 6, y + 4);
+        // 1. DRAW INSTITUTIONAL HIGH VOL & OI FROZEN ZONES (Horizontal Rays)
+        if (maxVolZone > 0) {
+            const yVol = paddingTop + chartHeight * (1 - (maxVolZone - minPrice) / finalRange);
+            ctx.strokeStyle = 'rgba(255, 152, 0, 0.7)'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]);
+            ctx.beginPath(); ctx.moveTo(paddingLeft, yVol); ctx.lineTo(paddingLeft + chartWidth, yVol); ctx.stroke();
+            ctx.fillStyle = '#ff9800'; ctx.font = 'bold 10px sans-serif';
+            ctx.fillText("📌 MAX VOL ZONE (" + maxVolZone.toFixed(2) + ")", paddingLeft + 10, yVol - 4);
         }
+        if (maxOiZone > 0) {
+            const yOi = paddingTop + chartHeight * (1 - (maxOiZone - minPrice) / finalRange);
+            ctx.strokeStyle = 'rgba(0, 188, 212, 0.7)'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]);
+            ctx.beginPath(); ctx.moveTo(paddingLeft, yOi); ctx.lineTo(paddingLeft + chartWidth, yOi); ctx.stroke();
+            ctx.fillStyle = '#00bcd4'; ctx.fillText("📊 MAX OI ZONE (" + maxOiZone.toFixed(2) + ")", paddingLeft + 10, yOi - 4);
+        }
+        ctx.setLineDash([]); // Reset structure
 
         const candleSpacing = chartWidth / maxBarsVisible;
-        const candleWidth = Math.max(candleSpacing * 0.65, 2.5);
+        const candleWidth = Math.max(candleSpacing * 0.62, 2.5);
 
-        // FIXED DIRECT MATRIX: Index flows 0 to N left-to-right linearly.
-        // The newest dynamic ticking item anchors to the right border edge, older items stream left.
+        // 2. RENDER THE OHLC CANDLES AND TECHNICAL INDICATORS
         activeBars.forEach((bar, index) => {
-            // Absolute linear horizontal axis step translation formula
             const x = paddingLeft + (index * candleSpacing) + (candleSpacing / 2) + panOffset;
-            
             if (x < paddingLeft || x > (paddingLeft + chartWidth)) return;
 
             const yOpen = paddingTop + chartHeight * (1 - (bar.open - minPrice) / finalRange);
@@ -201,29 +117,50 @@
             const yHigh = paddingTop + chartHeight * (1 - (bar.high - minPrice) / finalRange);
             const yLow = paddingTop + chartHeight * (1 - (bar.low - minPrice) / finalRange);
 
-            const isGreen = bar.close >= bar.open;
-            const color = isGreen ? '#089981' : '#f23645';
+            // Draw Shadows and Bodies
+            ctx.strokeStyle = bar.close >= bar.open ? '#089981' : '#f23645';
+            ctx.fillStyle = ctx.strokeStyle; ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.moveTo(x, yHigh); ctx.lineTo(x, yLow); ctx.stroke();
+            ctx.fillRect(x - (candleWidth / 2), Math.min(yOpen, yClose), candleWidth, Math.max(2, Math.abs(yClose - yOpen)));
 
-            ctx.strokeStyle = color;
-            ctx.fillStyle = color;
-            ctx.lineWidth = 1.5;
+            // Overlay VWAP (Yellow) & Moving Averages lines
+            if (index > 0) {
+                const prevX = x - candleSpacing;
+                const prevBar = activeBars[index-1];
+                
+                const drawLine = (pVal, cVal, color) => {
+                    ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+                    ctx.beginPath();
+                    ctx.moveTo(prevX, paddingTop + chartHeight * (1 - (pVal - minPrice) / finalRange));
+                    ctx.lineTo(x, paddingTop + chartHeight * (1 - (cVal - minPrice) / finalRange));
+                    ctx.stroke();
+                };
+                drawLine(prevBar.vwap, bar.vwap, '#ffeb3b');  // VWAP Yellow
+                drawLine(prevBar.ma20, bar.ma20, '#2196f3');  // MA20 Blue
+                drawLine(prevBar.supertrend, bar.supertrend, '#e91e63'); // Supertrend Pink
+            }
+        });
 
-            ctx.beginPath();
-            ctx.moveTo(x, yHigh);
-            ctx.lineTo(x, yLow);
-            ctx.stroke();
+        // 3. SEPARATE SUB-PANEL: LOWER MACD CHARTING SECTION
+        const subTop = h - 95; const subHeight = 80;
+        ctx.strokeStyle = '#2a2e39'; ctx.strokeRect(paddingLeft, subTop, chartWidth, subHeight);
+        ctx.fillStyle = '#848e9c'; ctx.font = '10px sans-serif'; ctx.fillText("MACD (12, 26, 9)", paddingLeft + 5, subTop - 4);
 
-            const top = Math.min(yOpen, yClose);
-            const bottom = Math.max(yOpen, yClose);
-            let height = bottom - top;
-            if (height < 2) height = 2;
+        activeBars.forEach((bar, index) => {
+            const x = paddingLeft + (index * candleSpacing) + (candleSpacing / 2) + panOffset;
+            const yMacd = subTop + (subHeight / 2) - (bar.macd * 3);
+            const ySig = subTop + (subHeight / 2) - (bar.signal * 3);
 
-            ctx.fillRect(x - (candleWidth / 2), top, candleWidth, height);
+            ctx.fillStyle = bar.macd >= 0 ? '#089981' : '#f23645';
+            ctx.fillRect(x - 1, subTop + (subHeight / 2), 2, -(bar.macd * 2.5));
+
+            if (index > 0) {
+                ctx.strokeStyle = '#ff9800'; ctx.beginPath();
+                ctx.moveTo(x - candleSpacing, subTop + (subHeight / 2) - (activeBars[index-1].signal * 3));
+                ctx.lineTo(x, ySig); ctx.stroke();
+            }
         });
     }
-
-    setTimeout(resizeCanvas, 150);
 </script>
-
 </body>
 </html>

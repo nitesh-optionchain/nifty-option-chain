@@ -20,11 +20,12 @@
         .matrix-val.orange { color: #ff9800; }
         .matrix-val.green { color: #089981; }
         
-        /* Legend indicators identity tags */
+        /* Legend indicators badges */
         .ind-badge { padding: 2px 5px; border-radius: 3px; font-size: 10px; margin-left: 4px; display: inline-flex; align-items: center; }
         .ind-vwap { background: rgba(255, 235, 59, 0.15); color: #ffeb3b; }
         .ind-ma20 { background: rgba(33, 150, 243, 0.15); color: #2196f3; }
         .ind-ma50 { background: rgba(156, 39, 176, 0.15); color: #9c27b0; }
+        .ind-macd { background: rgba(255, 152, 0, 0.15); color: #ff9800; }
         .ind-st { background: rgba(8, 153, 129, 0.15); color: #089981; }
         
         #chart-container {
@@ -42,6 +43,7 @@
     <div class="matrix-item"><span class="ind-badge ind-vwap">🟡 VWAP</span></div>
     <div class="matrix-item"><span class="ind-badge ind-ma20">🔵 MA(20)</span></div>
     <div class="matrix-item"><span class="ind-badge ind-ma50">🟣 MA(50)</span></div>
+    <div class="matrix-item"><span class="ind-badge ind-macd">🟠 MACD Sig(9)</span></div>
     <div class="matrix-item"><span class="ind-badge ind-st">🟢🔴 Supertrend Dots</span></div>
 </div>
 
@@ -100,7 +102,7 @@
         }
     });
 
-    // Touch Support Mobile Handlers Matrix
+    // Touch Support Controls
     container.addEventListener('touchstart', function(e) {
         if (e.touches.length === 1) { isDragging = true; startX = e.touches[0].clientX - panOffset; }
         else if (e.touches.length === 2) {
@@ -130,9 +132,6 @@
         renderChart();
     });
 
-    // ==============================================================================
-    // 🎨 CHRONOLOGICAL LEFT-TO-RIGHT GRAPHICS CORE ENGINE
-    // ==============================================================================
     function renderChart() {
         const w = container.clientWidth;
         const h = container.clientHeight;
@@ -166,7 +165,7 @@
         minPrice -= verticalBuffer;
         const finalRange = maxPrice - minPrice;
 
-        // Draw Standard Coordinate Scale Lines
+        // Grid lines coordinate markers
         ctx.strokeStyle = '#2a2e39'; ctx.lineWidth = 1; ctx.fillStyle = '#848e9c'; ctx.font = '10px sans-serif';
         for (let i = 0; i <= 4; i++) {
             const y = paddingTop + (chartHeight * (i / 4));
@@ -177,7 +176,7 @@
         const candleSpacing = chartWidth / maxBarsVisible;
         const candleWidth = Math.max(candleSpacing * 0.70, 3.5);
 
-        // First Loop: Process candles and continuous indicator lines (VWAP, MA20, MA50)
+        // Loop 1: Draw clean chronological candles & continuous indicator overlays
         activeBars.forEach((bar, index) => {
             const x = paddingLeft + (index * candleSpacing) + (candleSpacing / 2) + panOffset;
             if (x < paddingLeft || x > (paddingLeft + chartWidth)) return;
@@ -192,12 +191,9 @@
             ctx.fillStyle = ctx.strokeStyle;
             ctx.lineWidth = 1.5;
 
-            // Draw Shadows
             ctx.beginPath(); ctx.moveTo(x, yHigh); ctx.lineTo(x, yLow); ctx.stroke();
-            // Draw Body blocks
             ctx.fillRect(x - (candleWidth / 2), Math.min(yOpen, yClose), candleWidth, Math.max(1.5, Math.abs(yClose - yOpen)));
 
-            // CONNECT CONTINUOUS CONTINUUM INDICATOR STRIPS SMOOTHLY
             if (index > 0) {
                 const prevX = x - candleSpacing;
                 const prevBar = activeBars[index - 1];
@@ -219,27 +215,29 @@
                 drawOverlayLine(prevBar.vwap, bar.vwap, '#ffeb3b'); // Yellow VWAP Line
                 drawOverlayLine(prevBar.ma20, bar.ma20, '#2196f3'); // Blue MA20 Line
                 drawOverlayLine(prevBar.ma50, bar.ma50, '#9c27b0'); // Purple MA50 Line
+                
+                // FIXED MACD OVERLAY SYNC: Signal 9 line directly map onto candle chart price window scale
+                if (prevBar.signal && bar.signal) {
+                    // Rescale the MACD Signal line metrics around the active close baseline grid
+                    let basePrevSig = prevBar.close + (prevBar.signal * 2);
+                    let baseCurrSig = bar.close + (bar.signal * 2);
+                    drawOverlayLine(basePrevSig, baseCurrSig, '#ff9800'); // Orange MACD Line
+                }
             }
         });
 
-        // Second Loop: Draw the isolated discrete dots array for Supertrend to avoid clutter
+        // Loop 2: Isolated Supertrend dots generator
         activeBars.forEach((bar, index) => {
             const x = paddingLeft + (index * candleSpacing) + (candleSpacing / 2) + panOffset;
             if (x < paddingLeft || x > (paddingLeft + chartWidth)) return;
 
-            // FIXED: Plot custom discrete dots for Supertrend that float cleanly with candle prices
             if (bar.supertrend) {
                 let stRaw = bar.supertrend > maxPrice * 1.5 ? bar.supertrend / 100 : bar.supertrend;
-                
                 if (stRaw >= minPrice && stRaw <= maxPrice) {
                     const ySt = paddingTop + chartHeight * (1 - (stRaw - minPrice) / finalRange);
-                    
-                    // Dynamic coloring matrix condition: Green if trend is below close, Red if above close
-                    const isTrendBullish = bar.close >= stRaw;
-                    ctx.fillStyle = isTrendBullish ? '#089981' : '#f23645';
-                    
+                    ctx.fillStyle = bar.close >= stRaw ? '#089981' : '#f23645';
                     ctx.beginPath();
-                    ctx.arc(x, ySt, isSmallScreen ? 2 : 2.8, 0, 2 * Math.PI); // Compact responsive dots circles
+                    ctx.arc(x, ySt, w < 600 ? 2 : 2.8, 0, 2 * Math.PI);
                     ctx.fill();
                 }
             }

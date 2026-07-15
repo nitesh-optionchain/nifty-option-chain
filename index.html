@@ -61,7 +61,6 @@
 
     window.addEventListener('resize', resizeCanvas);
 
-    // RESTORED HANDLER: Reads direct message events natively without breaking structure
     window.addEventListener('message', function(e) {
         const data = e.data;
         if (data && data.data) {
@@ -143,10 +142,11 @@
         const chartHeight = h - paddingTop - paddingBottom;
 
         const isMobile = w < 600;
-        const baseBarsCount = isMobile ? 30 : 60;
-        const maxBarsVisible = Math.max(10, Math.round(baseBarsCount / zoomLevel));
+        const baseBarsCount = isMobile ? 35 : 70;
+        const maxBarsVisible = Math.max(12, Math.round(baseBarsCount / zoomLevel));
         
         const activeBars = chartData.slice(-maxBarsVisible);
+        const totalActive = activeBars.length;
 
         let maxPrice = -Infinity;
         let minPrice = Infinity;
@@ -177,11 +177,13 @@
             ctx.fillText(p.toFixed(2), paddingLeft + chartWidth + 6, y + 4);
         }
 
-        const candleSpacing = chartWidth / maxBarsVisible;
-        const candleWidth = Math.max(candleSpacing * 0.65, 2.5);
+        // FIXED SPACING: Calibrate spacing dynamically to strictly avoid scattering (chhitrana)
+        const candleSpacing = chartWidth / Math.max(totalActive, maxBarsVisible);
+        const candleWidth = Math.max(candleSpacing * 0.72, 4.5); // Boosted body size thickness
 
         activeBars.forEach((bar, index) => {
-            const x = paddingLeft + (index * candleSpacing) + (candleSpacing / 2) + panOffset;
+            // Right-aligned linear timeline mapping layout
+            const x = (paddingLeft + chartWidth) - ((totalActive - 1 - index) * candleSpacing) - (candleSpacing / 2) + panOffset;
             
             if (x < paddingLeft || x > (paddingLeft + chartWidth)) return;
 
@@ -195,7 +197,7 @@
 
             ctx.strokeStyle = color;
             ctx.fillStyle = color;
-            ctx.lineWidth = 1.5;
+            ctx.lineWidth = 1.8; // Stronger wick resolution lines
 
             ctx.beginPath();
             ctx.moveTo(x, yHigh);

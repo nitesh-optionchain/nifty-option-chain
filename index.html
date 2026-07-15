@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Advanced Live Chart Terminal</title>
     <style>
         body, html {
@@ -11,16 +12,18 @@
         }
         #top-header-bar {
             height: 45px; background-color: #1c2030; display: flex; align-items: center;
-            padding: 0 20px; border-bottom: 1px solid #2a2e39; font-size: 13px; font-weight: 600;
+            padding: 0 15px; border-bottom: 1px solid #2a2e39; font-size: 12px; font-weight: 600;
+            overflow-x: auto; white-space: nowrap;
         }
-        .matrix-item { margin-right: 30px; }
-        .matrix-lbl { color: #848e9c; margin-right: 6px; }
+        #top-header-bar::-webkit-scrollbar { display: none; }
+        .matrix-item { margin-right: 20px; display: inline-block; }
+        .matrix-lbl { color: #848e9c; margin-right: 4px; }
         .matrix-val.green { color: #089981; }
         .matrix-val.orange { color: #ff9800; }
         #chart-container {
             position: relative; width: 100%; height: calc(100vh - 45px);
         }
-        canvas { display: block; position: absolute; left: 0; top: 0; }
+        canvas { display: block; position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
     </style>
 </head>
 <body>
@@ -44,8 +47,11 @@
 
     function resizeCanvas() {
         const container = document.getElementById('chart-container');
-        canvas.width = container.clientWidth;
-        canvas.height = container.clientHeight;
+        // Handle device pixel ratio for sharp crystal clear candles on mobile screens
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = container.clientWidth * dpr;
+        canvas.height = container.clientHeight * dpr;
+        ctx.scale(dpr, dpr);
         renderChart();
     }
 
@@ -67,16 +73,20 @@
     });
 
     function renderChart() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const container = document.getElementById('chart-container');
+        const w = container.clientWidth;
+        const h = container.clientHeight;
+        
+        ctx.clearRect(0, 0, w, h);
         if (!chartData || chartData.length === 0) return;
 
-        const paddingLeft = 20;
-        const paddingRight = 75;
-        const paddingTop = 40;
-        const paddingBottom = 30;
+        const paddingLeft = 15;
+        const paddingRight = 70;
+        const paddingTop = 30;
+        const paddingBottom = 25;
 
-        const chartWidth = canvas.width - paddingLeft - paddingRight;
-        const chartHeight = canvas.height - paddingTop - paddingBottom;
+        const chartWidth = w - paddingLeft - paddingRight;
+        const chartHeight = h - paddingTop - paddingBottom;
 
         let maxPrice = -Infinity;
         let minPrice = Infinity;
@@ -87,7 +97,7 @@
         });
 
         const priceRange = maxPrice - minPrice;
-        const verticalBuffer = priceRange === 0 ? 10.0 : priceRange * 0.2;
+        const verticalBuffer = priceRange === 0 ? 15.0 : priceRange * 0.2;
         maxPrice += verticalBuffer;
         minPrice -= verticalBuffer;
         const finalRange = maxPrice - minPrice;
@@ -105,22 +115,25 @@
             ctx.moveTo(paddingLeft, y);
             ctx.lineTo(paddingLeft + chartWidth, y);
             ctx.stroke();
-            ctx.fillText(p.toFixed(2), paddingLeft + chartWidth + 8, y + 4);
+            ctx.fillText(p.toFixed(2), paddingLeft + chartWidth + 6, y + 4);
         }
 
-        // FIXED: Shift drawing anchor to the right side of the screen like professional charts
-        const minBarsToFillSpace = 50; 
-        const totalBars = Math.max(chartData.length, minBarsToFillSpace);
+        // PROGRESSIVE MOBILE FIX: Show fewer bars on mobile so it doesn't compress or squash
+        const isMobile = w < 600;
+        const maxBarsVisible = isMobile ? 25 : 45; 
         
-        // Exact grid block sizing to avoid door-door scattered spacing
-        const candleSpacing = chartWidth / totalBars;
-        const candleWidth = Math.max(Math.min(candleSpacing * 0.65, 12), 5);
+        // Take the latest candles up to our limit
+        const activeBars = chartData.slice(-maxBarsVisible);
+        
+        // Calculate stable horizontal sizing matrix
+        const candleSpacing = chartWidth / maxBarsVisible;
+        const candleWidth = Math.max(Math.min(candleSpacing * 0.65, 14), 4);
 
-        // Start drawing from the right alignment edge
-        const startOffset = chartData.length < minBarsToFillSpace ? (minBarsToFillSpace - chartData.length) * candleSpacing : 0;
+        // FIXED: Shift start offset layout mapping so candles anchor to the RIGHT edge natively
+        const startOffset = chartWidth - (activeBars.length * candleSpacing);
 
-        chartData.forEach((bar, index) => {
-            // Calculated dynamic position to stack them continuous next to each other
+        activeBars.forEach((bar, index) => {
+            // Left-to-right temporal progression mapping (Latest candle sits on the absolute right edge)
             const x = paddingLeft + startOffset + (index * candleSpacing) + (candleSpacing / 2);
             
             const yOpen = paddingTop + chartHeight * (1 - (bar.open - minPrice) / finalRange);

@@ -16,13 +16,9 @@ DB_PATH = os.path.join(BASE_DIR, "market_ticks.db")
 if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
 
-# ==============================================================================
-# 🗄️ 1. CLEAN MULTI-TIMEFRAME STORAGE MATRIX
-# ==============================================================================
 def init_market_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    # Added dynamic "timeframe" string key column to avoid candle mixing gaps
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS market_history (
             asset TEXT, timeframe TEXT, timestamp INTEGER, open REAL, high REAL, low REAL, close REAL,
@@ -41,7 +37,7 @@ def init_market_db():
 init_market_db()
 
 # ==============================================================================
-# 🔌 2. INSTANCED BROKER CONNECTORS
+# 🔌 BROKER LOGIN GATEWAY
 # ==============================================================================
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
@@ -59,7 +55,7 @@ try:
 except Exception:
     market_engine = None
 
-# Sidebar Controls Layout
+# Sidebar Controls Configuration
 target_index = st.sidebar.selectbox("Active Asset Frame", ["NIFTY", "SENSEX"], index=0)
 selected_tf = st.sidebar.selectbox("Timeframe Window", ["1m", "5m", "10m", "15m", "30m", "1d"], index=1)
 
@@ -67,7 +63,7 @@ tf_seconds_map = {"1m": 60, "5m": 300, "10m": 600, "15m": 900, "30m": 1800, "1d"
 interval_seconds = tf_seconds_map[selected_tf]
 
 # ==============================================================================
-# 🧠 3. COMPREHENSIVE HISTORICAL & LIVE API CONNECTOR (TIMEFRAME ALIGNED)
+# 🧠 DYNAMIC SDK HISTORICAL & LIVE TICK PIPELINE
 # ==============================================================================
 if market_engine is not None:
     try:
@@ -75,9 +71,9 @@ if market_engine is not None:
         type_name = "INDEX"
         
         end_dt = datetime.utcnow()
-        start_dt = end_dt - timedelta(days=4)
+        start_dt = end_dt - timedelta(days=5)
         
-        # FIXED: "interval" parameter is now dynamically mapped to user selection instead of being hardcoded to 1m!
+        # Pull specific timeframe records to ensure database is populated instantly
         response = market_engine.historical_data({
             "exchange": exch_name,
             "type": type_name,
@@ -97,7 +93,6 @@ if market_engine is not None:
             elif isinstance(response, dict) and 'result' in response:
                 chart_data_list = response['result']
 
-        # Safe parsing loop structure into local database records
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         
@@ -134,13 +129,11 @@ if market_engine is not None:
                             l_f = val_l / 100.0 if val_l > 100000 else val_l
                             c_f = val_c / 100.0 if val_c > 100000 else val_c
 
-                            # Save with specific timeframe reference to prevent zig-zag rendering
                             cursor.execute("""
                                 INSERT OR REPLACE INTO market_history (asset, timeframe, timestamp, open, high, low, close)
                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                             """, (target_index, selected_tf, sec_ts, o_f, h_f, l_f, c_f))
 
-                            # Evaluate high volume / OI levels zones parameters
                             if i < len(vols) and float(vols[i].value) > highest_vol:
                                 highest_vol = float(vols[i].value)
                                 max_vol_price = c_f
@@ -150,14 +143,12 @@ if market_engine is not None:
                         except Exception:
                             continue
 
-        # Save the frozen analytical zones for closed market analysis tracking
+        # Institutional 9:20 Freeze Lock Matrix Block
         now_ts = int(time.time())
         current_dt = datetime.now()
-        # Check subah 9:20 lock parameters
         cursor.execute("SELECT price_level FROM institutional_zones WHERE asset=? AND zone_type='MAX_VOL'", (target_index,))
         has_zone = cursor.fetchone()
         
-        # Update zone rules only if outside 9:20 freeze block matrix
         if not (current_dt.hour == 9 and current_dt.minute > 20 and has_zone):
             if max_vol_price > 0:
                 cursor.execute("INSERT OR REPLACE INTO institutional_zones VALUES (?, 'MAX_VOL', ?, 1, ?)", (target_index, max_vol_price, now_ts))
@@ -167,7 +158,7 @@ if market_engine is not None:
         conn.commit()
         conn.close()
 
-        # 4. OVERLAY DYNAMIC LIVE SNAPSHOTS
+        # 4. APPEND RECENT REAL-TIME RUNTIME TICKS
         snap = market_engine.current_price(target_index, exchange=exch_name)
         if snap and getattr(snap, 'price', None):
             raw_price = float(snap.price)
@@ -202,7 +193,6 @@ max_vol_level, max_oi_level = 0.0, 0.0
 try:
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    # CRITICAL TRACKING: Filter items strictly by targeted timeframe sorted in clean progression order
     cursor.execute("""
         SELECT timestamp, open, high, low, close FROM market_history 
         WHERE asset=? AND timeframe=? ORDER BY timestamp ASC LIMIT 150
@@ -222,23 +212,23 @@ try:
     for idx, row in enumerate(rows):
         t, o, h, l, c = row
         
-        # A. Crystal Clear VWAP Accumulator Math
+        # VWAP Line calculation
         typ_p = (h + l + c) / 3.0
         cum_pv += typ_p * 100.0
         cum_vol += 100.0
         vwap_val = round(cum_pv / cum_vol, 2)
         
-        # B. Smooth Linear Moving Averages Matrix
+        # Smooth Averages Filters
         ma9 = round(sum(prices[max(0, idx-8):idx+1]) / len(prices[max(0, idx-8):idx+1]), 2)
         ma20 = round(sum(prices[max(0, idx-19):idx+1]) / len(prices[max(0, idx-19):idx+1]), 2)
         ma50 = round(sum(prices[max(0, idx-49):idx+1]) / len(prices[max(0, idx-49):idx+1]), 2)
         
-        # C. MACD Structural Decoupling Formulas
+        # Smooth MACD Mathematical Alignment
         macd_line = round(ma9 - ma20, 2)
-        signal_line = round(sum([ma9-ma20 for ma9, ma20 in zip(prices[max(0, idx-8):idx+1], prices[max(0, idx-19):idx+1])]) / len(prices[max(0, idx-8):idx+1]), 2)
+        signal_line = round(sum([p_ma9 - p_ma20 for p_ma9, p_ma20 in zip(prices[max(0, idx-8):idx+1], prices[max(0, idx-19):idx+1])]) / len(prices[max(0, idx-8):idx+1]), 2) if idx >= 8 else 0.0
         
-        # D. Supertrend Channels Tracking
-        atr = (h - l) if (h - l) > 0 else 4.0
+        # Supertrend Vector Calibration
+        atr = (h - l) if (h - l) > 0 else 5.0
         st_val = round(((h + l) / 2.0) - (2.5 * atr) if c >= o else ((h + l) / 2.0) + (2.5 * atr), 2)
 
         master_history_array.append({
@@ -263,7 +253,6 @@ runtime_payload = {
     }
 }
 
-# Sidebar Info Panel Layout
 st.sidebar.markdown(f"⏱️ **Timeframe Matrix:** `{selected_tf}`")
 st.sidebar.markdown(f"📌 **Max Vol Zone:** `{max_vol_level}`")
 st.sidebar.markdown(f"📊 **Max OI Zone:** `{max_oi_level}`")

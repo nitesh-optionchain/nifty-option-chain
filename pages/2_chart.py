@@ -36,7 +36,7 @@ def init_market_db():
 init_market_db()
 
 # ==============================================================================
-# 🔌 RAW SDK INITIALIZATION ENGINE (WITHOUT UNSAFE CACHING LOGIC)
+# 🔌 RAW SDK INTENT INSTANTIATION
 # ==============================================================================
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
@@ -48,8 +48,8 @@ if PHONE_NO and MPIN:
     os.environ["PHONE_NO"] = str(PHONE_NO)
     os.environ["MPIN"] = str(MPIN)
 
-# Initialize pure raw instance structures directly to completely eliminate positional missing errors
 try:
+    # Set matching runtime environment setup mappings
     sdk_client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
     market_engine = MarketData(sdk_client)
 except Exception as e:
@@ -59,68 +59,77 @@ except Exception as e:
 target_index = st.sidebar.selectbox("Active Asset Frame", ["NIFTY", "SENSEX"], index=0)
 
 # ==============================================================================
-# 🧠 EXACT PARSING LAYER MECHANISM
+# 🧠 EXACT HISTORICAL DATA PARSING LOGIC FROM DOCUMENTATION
 # ==============================================================================
 if market_engine is not None:
     try:
-        sdk_symbol = "NSE:NIFTY" if target_index == "NIFTY" else "BSE:SENSEX"
+        exch_name = "NSE" if target_index == "NIFTY" else "BSE"
+        type_name = "INDEX" # Calibrated index anchor structure map
         
-        to_date = datetime.now()
-        from_date = to_date - timedelta(days=3)
+        # Datetime configuration setup rules matching API structure
+        end_dt = datetime.utcnow()
+        start_dt = end_dt - timedelta(days=2)
         
-        # FIXED: Directly calling explicit function structure from standard instanced class node
-        history_response = market_engine.get_candles(
-            symbol=sdk_symbol,
-            interval="1m",
-            from_date=from_date.strftime("%Y-%m-%d"),
-            to_date=to_date.strftime("%Y-%m-%d")
-        )
-        
-        candles_list = []
-        if history_response:
-            if hasattr(history_response, 'candles'):
-                candles_list = history_response.candles
-            elif isinstance(history_response, dict) and 'candles' in history_response:
-                candles_list = history_response['candles']
-            elif isinstance(history_response, list):
-                candles_list = history_response
+        # VALIDATED CALL: historical_data mapping from official docs structure
+        response = market_engine.historical_data({
+            "exchange": exch_name,
+            "type": type_name,
+            "values": [target_index],
+            "fields": ["open", "high", "low", "close"],
+            "startDate": start_dt.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+            "endDate": end_dt.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+            "interval": "1m",
+            "intraDay": False,
+            "realTime": False
+        })
 
-        if candles_list:
+        # Step-by-Step Explicit Attribute Traversal based on dynamic signature
+        if response and hasattr(response, 'result') and response.result:
             conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
-            for candle in candles_list:
-                try:
-                    if hasattr(candle, 'timestamp'):
-                        t_stamp = int(candle.timestamp)
-                        o = float(candle.open)
-                        h = float(candle.high)
-                        l = float(candle.low)
-                        c = float(candle.close)
-                    elif isinstance(candle, dict):
-                        t_stamp = int(candle.get('timestamp') or candle.get('time'))
-                        o = float(candle['open'])
-                        h = float(candle['high'])
-                        l = float(candle['low'])
-                        c = float(candle['close'])
-                    else:
-                        continue
-                    
-                    o_final = o / 100.0 if o > 100000 else o
-                    h_final = h / 100.0 if h > 100000 else h
-                    l_final = l / 100.0 if l > 100000 else l
-                    c_final = c / 100.0 if c > 100000 else c
+            
+            for chart_data in response.result:
+                if hasattr(chart_data, 'values') and chart_data.values:
+                    for element in chart_data.values:
+                        if isinstance(element, dict) and target_index in element:
+                            stock_chart = element[target_index]
+                            
+                            # Extract lists of TimeSeriesPoints attributes from object
+                            opens = getattr(stock_chart, 'open', None) or []
+                            highs = getattr(stock_chart, 'high', None) or []
+                            lows = getattr(stock_chart, 'low', None) or []
+                            closes = getattr(stock_chart, 'close', None) or []
+                            
+                            # Zip timeline parameters cleanly using matching structural indices
+                            for i in range(len(opens)):
+                                try:
+                                    # Nanosecond conversion adjustment to standard unix epoch seconds format
+                                    raw_ts = opens[i].timestamp
+                                    sec_ts = int(raw_ts // 1000000000) if raw_ts > 9999999999 else int(raw_ts)
+                                    
+                                    o = float(opens[i].value)
+                                    h = float(highs[i].value) if i < len(highs) else o
+                                    l = float(lows[i].value) if i < len(lows) else o
+                                    c = float(closes[i].value) if i < len(closes) else o
 
-                    cursor.execute("""
-                        INSERT OR REPLACE INTO market_history (asset, timestamp, open, high, low, close)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    """, (target_index, t_stamp, o_final, h_final, l_final, c_final))
-                except Exception:
-                    continue
+                                    # Divide by 100 format handler matching pricing grids layers
+                                    o_f = o / 100.0 if o > 100000 else o
+                                    h_f = h / 100.0 if h > 100000 else h
+                                    l_f = l / 100.0 if l > 100000 else l
+                                    c_f = c / 100.0 if c > 100000 else c
+
+                                    cursor.execute("""
+                                        INSERT OR REPLACE INTO market_history (asset, timestamp, open, high, low, close)
+                                        VALUES (?, ?, ?, ?, ?, ?)
+                                    """, (target_index, sec_ts, o_f, h_f, l_f, c_f))
+                                except Exception:
+                                    continue
             conn.commit()
             conn.close()
-            
-        # 2. RUN REAL-TIME LIVE TICK BUFFER ATTACHMENTS
-        exch_name = "NSE" if target_index == "NIFTY" else "BSE"
+
+        # ==============================================================================
+        # ⚡ 2. REAL-TIME TICK SYNC MATRIX OVERLAY
+        # ==============================================================================
         snap = market_engine.current_price(target_index, exchange=exch_name)
         if snap and getattr(snap, 'price', None):
             raw_price = float(snap.price)
@@ -148,14 +157,14 @@ if market_engine is not None:
     except Exception as e:
         st.sidebar.error(f"Sync Frame Error: {str(e)}")
 
-# Read historical series arrays from storage
+# Read operational structural timelines from DB
 master_history_array = []
 try:
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("""
         SELECT timestamp, open, high, low, close FROM market_history 
-        WHERE asset=? ORDER BY timestamp ASC LIMIT 180
+        WHERE asset=? ORDER BY timestamp ASC LIMIT 200
     """, (target_index,))
     rows = cursor.fetchall()
     conn.close()

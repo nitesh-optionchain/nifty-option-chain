@@ -1,4 +1,4 @@
-Mm mm<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -20,7 +20,7 @@ Mm mm<!DOCTYPE html>
         .matrix-val.orange { color: #ff9800; }
         #chart-container {
             position: relative; width: 100%; height: calc(100vh - 45px);
-            touch-action: none; /* Prevents default browser scrolling during pinch/drag gestures */
+            touch-action: none;
         }
         canvas { display: block; position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
     </style>
@@ -44,7 +44,7 @@ Mm mm<!DOCTYPE html>
     let chartData = [];
     let currentAsset = "NIFTY";
 
-    // Zoom and Drag Matrix State
+    // Zoom and Pan State
     let zoomLevel = 1.0; 
     let panOffset = 0;   
     let isDragging = false;
@@ -72,31 +72,24 @@ Mm mm<!DOCTYPE html>
                 const rawPrice = data.payload[currentAsset].price / 100;
                 document.getElementById('lbl-price').innerText = rawPrice.toFixed(2);
                 
-                // CRITICAL FIX: Ensure true left-to-right chronological orientation
-                let rawHistory = data.payload[currentAsset].master_history || [];
-                if (rawHistory.length > 1 && rawHistory[0].time > rawHistory[rawHistory.length - 1].time) {
-                    chartData = rawHistory.reverse();
-                } else {
-                    chartData = rawHistory;
-                }
+                // Keep the original chronological array intact
+                chartData = data.payload[currentAsset].master_history || [];
                 renderChart();
             }
         }
     });
 
     // ==============================================================================
-    // 🖐️ MOBILE TOUCH & GESTURE FRAMEWORK (ZOOM / PAN ENGINE)
+    // INTERACTIVE GESTURE HANDLERS
     // ==============================================================================
     const container = document.getElementById('chart-container');
 
-    // 1. Touch Start Interceptor
     container.addEventListener('touchstart', function(e) {
         if (e.touches.length === 1) {
             isDragging = true;
             startX = e.touches[0].clientX - panOffset;
         } else if (e.touches.length === 2) {
             isDragging = false;
-            // Calculate starting pinch delta
             lastTouchDistance = Math.hypot(
                 e.touches[0].clientX - e.touches[1].clientX,
                 e.touches[0].clientY - e.touches[1].clientY
@@ -104,24 +97,18 @@ Mm mm<!DOCTYPE html>
         }
     }, { passive: false });
 
-    // 2. Touch Move Renderer
     container.addEventListener('touchmove', function(e) {
-        e.preventDefault(); // Mute bounce effect
-        
+        e.preventDefault();
         if (isDragging && e.touches.length === 1) {
-            // Drag navigation logic
             panOffset = e.touches[0].clientX - startX;
             renderChart();
         } else if (e.touches.length === 2) {
-            // Pinch Zoom execution rules
             const currentDistance = Math.hypot(
                 e.touches[0].clientX - e.touches[1].clientX,
                 e.touches[0].clientY - e.touches[1].clientY
             );
-            
             if (lastTouchDistance > 0) {
                 const delta = currentDistance / lastTouchDistance;
-                // Boundaries optimization limit
                 zoomLevel = Math.max(0.4, Math.min(zoomLevel * delta, 3.5));
                 renderChart();
             }
@@ -129,13 +116,11 @@ Mm mm<!DOCTYPE html>
         }
     }, { passive: false });
 
-    // 3. Touch End Terminal
-    container.addEventListener('touchend', function(e) {
+    container.addEventListener('touchend', function() {
         isDragging = false;
         lastTouchDistance = 0;
     });
 
-    // Laptop Mouse Wheel Fallback Matrix
     container.addEventListener('wheel', function(e) {
         e.preventDefault();
         const factor = e.deltaY < 0 ? 1.08 : 0.92;
@@ -144,7 +129,7 @@ Mm mm<!DOCTYPE html>
     }, { passive: false });
 
     // ==============================================================================
-    // 🎨 GRAPHICS RENDERING PIPELINE
+    // CORE GRAPHICS FLOW CONVERTER ENGINE
     // ==============================================================================
     function renderChart() {
         const container = document.getElementById('chart-container');
@@ -162,7 +147,6 @@ Mm mm<!DOCTYPE html>
         const chartWidth = w - paddingLeft - paddingRight;
         const chartHeight = h - paddingTop - paddingBottom;
 
-        // Find scale limits
         let maxPrice = -Infinity;
         let minPrice = Infinity;
 
@@ -177,7 +161,7 @@ Mm mm<!DOCTYPE html>
         minPrice -= verticalBuffer;
         const finalRange = maxPrice - minPrice;
 
-        // Draw coordinate horizontal scales
+        // Grid Scale Lines
         ctx.strokeStyle = '#2a2e39';
         ctx.lineWidth = 1;
         ctx.fillStyle = '#848e9c';
@@ -193,23 +177,25 @@ Mm mm<!DOCTYPE html>
             ctx.fillText(p.toFixed(2), paddingLeft + chartWidth + 6, y + 4);
         }
 
-        // Apply zoom factors to geometric structure mapping
         const isMobile = w < 600;
         const baseBarsCount = isMobile ? 22 : 48;
         const maxBarsVisible = Math.max(5, Math.round(baseBarsCount / zoomLevel));
         
+        // Take the latest parsed timeline items
         const activeBars = chartData.slice(-maxBarsVisible);
+        
+        // Calculate dynamic spacing constants
         const candleSpacing = chartWidth / maxBarsVisible;
         const candleWidth = Math.max(candleSpacing * 0.62, 3.0);
 
-        // FIXED: Anchored to the exact right border tracking left calculations
-        const startOffset = chartWidth - (activeBars.length * candleSpacing) + panOffset;
-
+        // FIXED DIRECT MATRIX: Chronological Left-To-Right rendering engine flow.
+        // Latest active ticking node always locks perfectly on the right-most axis coordinate.
         activeBars.forEach((bar, index) => {
-            // CRITICAL DIRECTION FIX: index flows left to right natively, latest candle rendering on the right edge
-            const x = paddingLeft + startOffset + (index * candleSpacing) + (candleSpacing / 2);
+            // Computed coordinate mapping: older ticks render on left, newest item anchors to the right border edge
+            const totalActive = activeBars.length;
+            const positionFromRight = totalActive - 1 - index;
+            const x = (paddingLeft + chartWidth) - (positionFromRight * candleSpacing) - (candleSpacing / 2) + panOffset;
             
-            // Clip outside bounds to avoid canvas grid leakages during horizontal dragging
             if (x < paddingLeft || x > (paddingLeft + chartWidth)) return;
 
             const yOpen = paddingTop + chartHeight * (1 - (bar.open - minPrice) / finalRange);

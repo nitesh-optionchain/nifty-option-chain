@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Advanced Live Chart Terminal</title>
+    <title>Advanced Multi-Indicator Terminal</title>
     <style>
         body, html {
             margin: 0; padding: 0; width: 100%; height: 100%;
@@ -18,10 +18,7 @@
         .matrix-lbl { color: #848e9c; margin-right: 4px; }
         .matrix-val.green { color: #089981; }
         .matrix-val.orange { color: #ff9800; }
-        #chart-container {
-            position: relative; width: 100%; height: calc(100vh - 45px);
-            touch-action: none;
-        }
+        #chart-container { position: relative; width: 100%; height: calc(100vh - 45px); touch-action: none; }
         canvas { display: block; position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
     </style>
 </head>
@@ -42,12 +39,15 @@
     const ctx = canvas.getContext('2d');
     
     let chartData = [];
+    let maxVolZone = 0;
+    let maxOiZone = 0;
     let currentAsset = "NIFTY";
 
+    // Zoom & Drag Pan Variables
     let zoomLevel = 1.0; 
     let panOffset = 0;   
-    let isDragging = false;
-    let startX = 0;
+    let isDragging = false; 
+    let startX = 0; 
     let lastTouchDistance = 0;
 
     function resizeCanvas() {
@@ -63,23 +63,25 @@
 
     window.addEventListener('message', function(e) {
         const data = e.data;
-        if (data && data.data) {
-            const payload = data.data;
-            currentAsset = payload.current_asset || "NIFTY";
+        if (data.type === "LIVE_TICK_UPDATE" && data.payload && data.asset) {
+            currentAsset = data.asset;
             document.getElementById('lbl-asset').innerText = currentAsset + " LIVE";
-            document.getElementById('lbl-price').innerText = (payload.price / 100).toFixed(2);
-            chartData = payload.master_history || [];
-            renderChart();
-        } else if (data && data.type === "DYNAMIC_TERMINAL_RELOAD" && data.data) {
-            const payload = data.data;
-            currentAsset = payload.current_asset || "NIFTY";
-            document.getElementById('lbl-asset').innerText = currentAsset + " LIVE";
-            document.getElementById('lbl-price').innerText = (payload.price / 100).toFixed(2);
-            chartData = payload.master_history || [];
-            renderChart();
+            
+            if (data.payload[currentAsset]) {
+                const rawPrice = data.payload[currentAsset].price / 100;
+                document.getElementById('lbl-price').innerText = rawPrice.toFixed(2);
+                
+                chartData = data.payload[currentAsset].master_history || [];
+                maxVolZone = data.payload[currentAsset].max_vol_zone || 0;
+                maxOiZone = data.payload[currentAsset].max_oi_zone || 0;
+                renderChart();
+            }
         }
     });
 
+    // ==============================================================================
+    // 🖐️ MOBILE TOUCH & PAN INTERACTIVE IMPLEMENTATION
+    // ==============================================================================
     const container = document.getElementById('chart-container');
 
     container.addEventListener('touchstart', function(e) {
@@ -127,46 +129,51 @@
     }, { passive: false });
 
     // ==============================================================================
-    // 🎨 CORRECTED LEFT-TO-RIGHT COMPACT CHRONOLOGICAL RENDERING ENGINE
+    // 🎨 CORE TECHNICAL CHART GRAPHICS PLOTTER (CANDLES + INDICATORS + ZONES)
     // ==============================================================================
     function renderChart() {
+        const container = document.getElementById('chart-container');
         const w = container.clientWidth;
         const h = container.clientHeight;
         
         ctx.clearRect(0, 0, w, h);
         if (!chartData || chartData.length === 0) return;
 
-        const paddingLeft = 20;
+        const paddingLeft = 15;
         const paddingRight = 75;
         const paddingTop = 30;
-        const paddingBottom = 25;
+        const paddingBottom = 130; // Spacing for lower subpanel
 
         const chartWidth = w - paddingLeft - paddingRight;
         const chartHeight = h - paddingTop - paddingBottom;
 
         const isMobile = w < 600;
-        const baseBarsCount = isMobile ? 35 : 70;
-        const maxBarsVisible = Math.max(12, Math.round(baseBarsCount / zoomLevel));
+        const baseBarsCount = isMobile ? 25 : 55;
+        const maxBarsVisible = Math.max(8, Math.round(baseBarsCount / zoomLevel));
         
-        // Take chronological data slice
         const activeBars = chartData.slice(-maxBarsVisible);
-        const totalActive = activeBars.length;
 
+        // Compute extreme scaling limits safely
         let maxPrice = -Infinity;
         let minPrice = Infinity;
 
         activeBars.forEach(d => {
             if (d.high > maxPrice) maxPrice = d.high;
             if (d.low < minPrice) minPrice = d.low;
+            if (d.vwap && d.vwap > maxPrice) maxPrice = d.vwap;
+            if (d.vwap && d.vwap < minPrice) minPrice = d.vwap;
         });
 
+        if (maxVolZone > 0) { maxPrice = Math.max(maxPrice, maxVolZone); minPrice = Math.min(minPrice, maxVolZone); }
+        if (maxOiZone > 0) { maxPrice = Math.max(maxPrice, maxOiZone); minPrice = Math.min(minPrice, maxOiZone); }
+
         const priceRange = maxPrice - minPrice;
-        const verticalBuffer = priceRange === 0 ? 10.0 : priceRange * 0.15;
+        const verticalBuffer = priceRange === 0 ? 20.0 : priceRange * 0.15;
         maxPrice += verticalBuffer;
         minPrice -= verticalBuffer;
         const finalRange = maxPrice - minPrice;
 
-        // Draw structural background grid horizontal lines
+        // Draw Coordinate Grid Lines
         ctx.strokeStyle = '#2a2e39';
         ctx.lineWidth = 1;
         ctx.fillStyle = '#848e9c';
@@ -182,15 +189,29 @@
             ctx.fillText(p.toFixed(2), paddingLeft + chartWidth + 6, y + 4);
         }
 
-        const candleSpacing = chartWidth / maxBarsVisible;
-        const candleWidth = Math.max(candleSpacing * 0.72, 5.0); // Perfect dense thickness blocks
+        // 1. DRAW FROZEN INSTITUTIONAL VOL & OI ZONES (Subah 9:20 Breakout Anchors)
+        if (maxVolZone > 0) {
+            const yVol = paddingTop + chartHeight * (1 - (maxVolZone - minPrice) / finalRange);
+            ctx.strokeStyle = 'rgba(255, 152, 0, 0.75)'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]);
+            ctx.beginPath(); ctx.moveTo(paddingLeft, yVol); ctx.lineTo(paddingLeft + chartWidth, yVol); ctx.stroke();
+            ctx.fillStyle = '#ff9800'; ctx.font = 'bold 10px sans-serif';
+            ctx.fillText("📌 MAX VOL ZONE (" + maxVolZone.toFixed(2) + ")", paddingLeft + 10, yVol - 4);
+        }
+        if (maxOiZone > 0) {
+            const yOi = paddingTop + chartHeight * (1 - (maxOiZone - minPrice) / finalRange);
+            ctx.strokeStyle = 'rgba(0, 188, 212, 0.75)'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]);
+            ctx.beginPath(); ctx.moveTo(paddingLeft, yOi); ctx.lineTo(paddingLeft + chartWidth, yOi); ctx.stroke();
+            ctx.fillStyle = '#00bcd4'; ctx.font = 'bold 10px sans-serif';
+            ctx.fillText("📊 MAX OI ZONE (" + maxOiZone.toFixed(2) + ")", paddingLeft + 10, yOi - 4);
+        }
+        ctx.setLineDash([]); // Reset line pattern
 
-        // FIXED LINEAR DIRECTION: Map array loops left-to-right (0 to totalActive-1)
+        const candleSpacing = chartWidth / maxBarsVisible;
+        const candleWidth = Math.max(candleSpacing * 0.65, 2.5);
+
+        // 2. PLOT CANDLES & LINEAR INDICATORS (VWAP, MOVING AVERAGES)
         activeBars.forEach((bar, index) => {
-            // Newest dynamic candles lock to the right margin border, older streams leftward
-            const x = (paddingLeft + chartWidth) - ((totalActive - 1 - index) * candleSpacing) - (candleSpacing / 2) + panOffset;
-            
-            // Tight viewport boundary guard: Bypasses extra scattered wicks on left corner margins
+            const x = paddingLeft + (index * candleSpacing) + (candleSpacing / 2) + panOffset;
             if (x < paddingLeft || x > (paddingLeft + chartWidth)) return;
 
             const yOpen = paddingTop + chartHeight * (1 - (bar.open - minPrice) / finalRange);
@@ -203,7 +224,7 @@
 
             ctx.strokeStyle = color;
             ctx.fillStyle = color;
-            ctx.lineWidth = 1.8;
+            ctx.lineWidth = 1.5;
 
             ctx.beginPath();
             ctx.moveTo(x, yHigh);
@@ -216,6 +237,66 @@
             if (height < 2) height = 2;
 
             ctx.fillRect(x - (candleWidth / 2), top, candleWidth, height);
+
+            // Overlay Indicators Path Loops Safely with Fallback Guards
+            if (index > 0) {
+                const prevX = x - candleSpacing;
+                const prevBar = activeBars[index - 1];
+
+                const drawOverlayLine = (pVal, cVal, lineColor) => {
+                    if (pVal && cVal) {
+                        ctx.strokeStyle = lineColor; ctx.lineWidth = 1.5;
+                        ctx.beginPath();
+                        ctx.moveTo(prevX, paddingTop + chartHeight * (1 - (pVal - minPrice) / finalRange));
+                        ctx.lineTo(x, paddingTop + chartHeight * (1 - (cVal - minPrice) / finalRange));
+                        ctx.stroke();
+                    }
+                };
+
+                drawOverlayLine(prevBar.vwap, bar.vwap, '#ffeb3b');       // VWAP (Yellow)
+                drawOverlayLine(prevBar.ma20, bar.ma20, '#2196f3');       // MA20 (Blue)
+                drawOverlayLine(prevBar.supertrend, bar.supertrend, '#e91e63'); // Supertrend (Pink)
+            }
+        });
+
+        // 3. LOWER TECHNICAL SUB-PANEL DESIGN (MACD WINDOW GENERATOR)
+        const subTop = h - 100;
+        const subHeight = 85;
+        
+        ctx.strokeStyle = '#2a2e39';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(paddingLeft, subTop, chartWidth, subHeight);
+        
+        ctx.fillStyle = '#848e9c';
+        ctx.font = '10px sans-serif';
+        ctx.fillText("MACD (12, 26, 9)", paddingLeft + 6, subTop - 5);
+
+        activeBars.forEach((bar, index) => {
+            const x = paddingLeft + (index * candleSpacing) + (candleSpacing / 2) + panOffset;
+            if (x < paddingLeft || x > (paddingLeft + chartWidth)) return;
+
+            const macdVal = bar.macd || 0;
+            const sigVal = bar.signal || 0;
+
+            const yZero = subTop + (subHeight / 2);
+            const yMacdHeight = -(macdVal * 3);
+
+            // Draw Histograms Columns
+            ctx.fillStyle = macdVal >= 0 ? 'rgba(8, 153, 129, 0.6)' : 'rgba(242, 54, 69, 0.6)';
+            ctx.fillRect(x - 1, yZero, 2, yMacdHeight);
+
+            // Draw Signal Line
+            if (index > 0) {
+                const prevX = x - candleSpacing;
+                const prevSig = activeBars[index - 1].signal || 0;
+                
+                ctx.strokeStyle = '#ff9800'; // Signal Orange
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.moveTo(prevX, yZero - (prevSig * 3));
+                ctx.lineTo(x, yZero - (sigVal * 3));
+                ctx.stroke();
+            }
         });
     }
 

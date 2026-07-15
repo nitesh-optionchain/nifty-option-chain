@@ -45,38 +45,30 @@
 
     let zoomLevel = 1.0; let panOffset = 0; let isDragging = false; let startX = 0; let lastTouchDistance = 0;
 
-    function resizeCanvas() {
-        const container = document.getElementById('chart-container');
-        const dpr = window.devicePixelRatio || 1;
-        canvas.width = container.clientWidth * dpr;
-        canvas.height = container.clientHeight * dpr;
-        ctx.scale(dpr, dpr);
+    function processMessageData(payload) {
+        if (!payload) return;
+        currentAsset = payload.current_asset || "NIFTY";
+        document.getElementById('lbl-asset').innerText = currentAsset + " LIVE";
+        document.getElementById('lbl-price').innerText = (payload.price / 100).toFixed(2);
+        
+        chartData = payload.master_history || [];
+        maxVolZone = payload.max_vol_zone || 0;
+        maxOiZone = payload.max_oi_zone || 0;
         renderChart();
     }
 
-    window.addEventListener('resize', resizeCanvas);
+    // Safety fallback initialization handler layer
+    if (window.chartPayload) {
+        processMessageData(window.chartPayload);
+    }
 
     window.addEventListener('message', function(e) {
-        const data = e.data;
-        if (data.type === "LIVE_TICK_UPDATE" && data.payload && data.asset) {
-            currentAsset = data.asset;
-            document.getElementById('lbl-asset').innerText = currentAsset + " LIVE";
-            
-            if (data.payload[currentAsset]) {
-                const rawPrice = data.payload[currentAsset].price / 100;
-                document.getElementById('lbl-price').innerText = rawPrice.toFixed(2);
-                
-                chartData = data.payload[currentAsset].master_history || [];
-                maxVolZone = data.payload[currentAsset].max_vol_zone || 0;
-                maxOiZone = data.payload[currentAsset].max_oi_zone || 0;
-                renderChart();
-            }
+        if (e.data && (e.data.type === "LIVE_TICK_UPDATE" || e.data.type === "DYNAMIC_TERMINAL_RELOAD")) {
+            const payload = e.data.data || e.data.payload;
+            processMessageData(payload);
         }
     });
 
-    // ==============================================================================
-    // 🖐️ GESTURES ENGINE CONTROLS
-    // ==============================================================================
     const container = document.getElementById('chart-container');
     container.addEventListener('touchstart', function(e) {
         if (e.touches.length === 1) { isDragging = true; startX = e.touches[0].clientX - panOffset; }
@@ -94,13 +86,14 @@
     }, { passive: false });
 
     container.addEventListener('touchend', function() { isDragging = false; lastTouchDistance = 0; });
-    container.addEventListener('wheel', function(e) { e.preventDefault(); zoomLevel = Math.max(0.3, Math.min(zoomLevel * (e.deltaY < 0 ? 1.08 : 0.92), 4.0)); renderChart(); }, { passive: false });
+    container.addEventListener('wheel', function(e) { e.preventDefault(); zoomLevel = Math.max(0.3, Math.min(zoomLevel * (e.deltaY < 0 ? 1.05 : 0.95), 4.0)); renderChart(); }, { passive: false });
 
-    // ==============================================================================
-    // 🎨 RENDER WINDOW PIPELINE
-    // ==============================================================================
     function renderChart() {
-        const w = canvas.parentElement.clientWidth; const h = canvas.parentElement.clientHeight;
+        const w = container.clientWidth; const h = container.clientHeight;
+        canvas.width = w * (window.devicePixelRatio || 1);
+        canvas.height = h * (window.devicePixelRatio || 1);
+        ctx.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
+        
         ctx.clearRect(0, 0, w, h);
         if (!chartData || chartData.length === 0) return;
 
@@ -122,7 +115,7 @@
         const finalRange = (maxPrice - minPrice) * 1.15 || 20;
         minPrice -= finalRange * 0.05;
 
-        // Draw scale structural background grids
+        // Draw structural horizontal scale grids
         ctx.strokeStyle = '#2a2e39'; ctx.lineWidth = 1; ctx.fillStyle = '#848e9c'; ctx.font = '11px sans-serif';
         for (let i = 0; i <= 4; i++) {
             const y = paddingTop + (chartHeight * (i / 4));
@@ -130,7 +123,7 @@
             ctx.fillText((maxPrice - (finalRange * (i / 4))).toFixed(2), paddingLeft + chartWidth + 6, y + 4);
         }
 
-        // Draw Support/Resistance Frozen Zones Line Blocks
+        // Draw Support/Resistance Institutional Levels
         if (maxVolZone > 0) {
             const yV = paddingTop + chartHeight * (1 - (maxVolZone - minPrice) / finalRange);
             ctx.strokeStyle = '#ff9800'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]);
@@ -148,7 +141,7 @@
         const candleSpacing = chartWidth / maxBarsVisible;
         const candleWidth = Math.max(candleSpacing * 0.65, 2.5);
 
-        // Render Candles & Smooth Continuous Lines Overlay Loops
+        // Render clean structural continuous indicators paths loop
         activeBars.forEach((bar, index) => {
             const x = paddingLeft + (index * candleSpacing) + (candleSpacing / 2) + panOffset;
             if (x < paddingLeft || x > (paddingLeft + chartWidth)) return;
@@ -165,18 +158,18 @@
 
             if (index > 0) {
                 const pX = x - candleSpacing; const pB = activeBars[index - 1];
-                const drawLine = (pVal, cVal, clr) => {
+                const drawOverlayLine = (pVal, cVal, clr) => {
                     if (pVal && cVal) { ctx.strokeStyle = clr; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(pX, paddingTop + chartHeight * (1 - (pVal - minPrice) / finalRange)); ctx.lineTo(x, paddingTop + chartHeight * (1 - (cVal - minPrice) / finalRange)); ctx.stroke(); }
                 };
-                drawLine(pB.vwap, bar.vwap, '#ffeb3b');       // VWAP (Yellow)
-                drawLine(pB.ma20, bar.ma20, '#2196f3');       // MA20 (Blue)
-                drawLine(pB.supertrend, bar.supertrend, '#e91e63'); // Supertrend (Pink)
+                drawOverlayLine(pB.vwap, bar.vwap, '#ffeb3b');       // VWAP (Yellow)
+                drawOverlayLine(pB.ma20, bar.ma20, '#2196f3');       // MA20 (Blue)
+                drawOverlayLine(pB.supertrend, bar.supertrend, '#e91e63'); // Supertrend (Pink)
             }
         });
 
-        // Lower Sub-Panel Generator (MACD Alignment Display Grid)
+        // Lower Sub-Panel (MACD Indicator Display Matrix)
         const subTop = h - 100; const subHeight = 85;
-        ctx.strokeStyle = '#2a2e39'; ctx.strokeRect(paddingLeft, subTop, chartWidth, subHeight);
+        ctx.strokeStyle = '#2a2e39'; ctx.lineWidth = 1; ctx.strokeRect(paddingLeft, subTop, chartWidth, subHeight);
         ctx.fillStyle = '#848e9c'; ctx.font = '10px sans-serif'; ctx.fillText("MACD (12, 26, 9)", paddingLeft + 6, subTop - 5);
 
         activeBars.forEach((bar, index) => {
@@ -194,6 +187,7 @@
             }
         });
     }
+
     setTimeout(resizeCanvas, 150);
 </script>
 </body>

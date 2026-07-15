@@ -63,24 +63,38 @@
 
     window.addEventListener('message', function(e) {
         const data = e.data;
-        if (data.type === "LIVE_TICK_UPDATE" && data.payload && data.asset) {
-            currentAsset = data.asset;
+        
+        // Dynamic payload interception strategy mapping unified objects directly
+        let payload = null;
+        if (data.type === "LIVE_TICK_UPDATE" && data.payload) {
+            payload = data.payload;
+            currentAsset = data.asset || "NIFTY";
+        } else if (data.type === "DYNAMIC_TERMINAL_RELOAD" && data.data) {
+            payload = data.data;
+            currentAsset = payload.current_asset || "NIFTY";
+        } else if (data && data.master_history) {
+            payload = { [currentAsset]: data };
+        }
+
+        if (payload) {
             document.getElementById('lbl-asset').innerText = currentAsset + " LIVE";
             
-            if (data.payload[currentAsset]) {
-                const rawPrice = data.payload[currentAsset].price / 100;
-                document.getElementById('lbl-price').innerText = rawPrice.toFixed(2);
-                
-                chartData = data.payload[currentAsset].master_history || [];
-                maxVolZone = data.payload[currentAsset].max_vol_zone || 0;
-                maxOiZone = data.payload[currentAsset].max_oi_zone || 0;
+            // Extract baseline models from payload arrays structure
+            const assetData = payload[currentAsset] || payload;
+            if (assetData) {
+                if (assetData.price) {
+                    document.getElementById('lbl-price').innerText = (assetData.price / 100).toFixed(2);
+                }
+                chartData = assetData.master_history || [];
+                maxVolZone = assetData.max_vol_zone || 0;
+                maxOiZone = assetData.max_oi_zone || 0;
                 renderChart();
             }
         }
     });
 
     // ==============================================================================
-    // 🖐️ MOBILE TOUCH & PAN INTERACTIVE IMPLEMENTATION
+    // 🖐️ MOBILE TOUCH GESTURE INTERCEPTORS
     // ==============================================================================
     const container = document.getElementById('chart-container');
 
@@ -129,31 +143,31 @@
     }, { passive: false });
 
     // ==============================================================================
-    // 🎨 CORE TECHNICAL CHART GRAPHICS PLOTTER (CANDLES + INDICATORS + ZONES)
+    // 🎨 PROPORTIONAL SCALE CHART GRAPHICS RENDERER ENGINE
     // ==============================================================================
     function renderChart() {
-        const container = document.getElementById('chart-container');
         const w = container.clientWidth;
         const h = container.clientHeight;
         
         ctx.clearRect(0, 0, w, h);
         if (!chartData || chartData.length === 0) return;
 
-        const paddingLeft = 15;
+        const paddingLeft = 20;
         const paddingRight = 75;
         const paddingTop = 30;
-        const paddingBottom = 130; // Spacing for lower subpanel
+        const paddingBottom = 130; 
 
         const chartWidth = w - paddingLeft - paddingRight;
         const chartHeight = h - paddingTop - paddingBottom;
 
         const isMobile = w < 600;
-        const baseBarsCount = isMobile ? 25 : 55;
-        const maxBarsVisible = Math.max(8, Math.round(baseBarsCount / zoomLevel));
+        const baseBarsCount = isMobile ? 35 : 70;
+        const maxBarsVisible = Math.max(12, Math.round(baseBarsCount / zoomLevel));
         
         const activeBars = chartData.slice(-maxBarsVisible);
+        const totalActive = activeBars.length;
 
-        // Compute extreme scaling limits safely
+        // FIXED CRITICAL SCALE BOUNDS: Scale graph viewport STRICTLY using price values (OHLC) only
         let maxPrice = -Infinity;
         let minPrice = Infinity;
 
@@ -164,16 +178,13 @@
             if (d.vwap && d.vwap < minPrice) minPrice = d.vwap;
         });
 
-        if (maxVolZone > 0) { maxPrice = Math.max(maxPrice, maxVolZone); minPrice = Math.min(minPrice, maxVolZone); }
-        if (maxOiZone > 0) { maxPrice = Math.max(maxPrice, maxOiZone); minPrice = Math.min(minPrice, maxOiZone); }
-
         const priceRange = maxPrice - minPrice;
-        const verticalBuffer = priceRange === 0 ? 20.0 : priceRange * 0.15;
+        const verticalBuffer = priceRange === 0 ? 15.0 : priceRange * 0.12;
         maxPrice += verticalBuffer;
         minPrice -= verticalBuffer;
         const finalRange = maxPrice - minPrice;
 
-        // Draw Coordinate Grid Lines
+        // Draw Grid Lines Mapping System
         ctx.strokeStyle = '#2a2e39';
         ctx.lineWidth = 1;
         ctx.fillStyle = '#848e9c';
@@ -189,29 +200,37 @@
             ctx.fillText(p.toFixed(2), paddingLeft + chartWidth + 6, y + 4);
         }
 
-        // 1. DRAW FROZEN INSTITUTIONAL VOL & OI ZONES (Subah 9:20 Breakout Anchors)
-        if (maxVolZone > 0) {
-            const yVol = paddingTop + chartHeight * (1 - (maxVolZone - minPrice) / finalRange);
-            ctx.strokeStyle = 'rgba(255, 152, 0, 0.75)'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]);
-            ctx.beginPath(); ctx.moveTo(paddingLeft, yVol); ctx.lineTo(paddingLeft + chartWidth, yVol); ctx.stroke();
-            ctx.fillStyle = '#ff9800'; ctx.font = 'bold 10px sans-serif';
-            ctx.fillText("📌 MAX VOL ZONE (" + maxVolZone.toFixed(2) + ")", paddingLeft + 10, yVol - 4);
-        }
-        if (maxOiZone > 0) {
-            const yOi = paddingTop + chartHeight * (1 - (maxOiZone - minPrice) / finalRange);
-            ctx.strokeStyle = 'rgba(0, 188, 212, 0.75)'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]);
-            ctx.beginPath(); ctx.moveTo(paddingLeft, yOi); ctx.lineTo(paddingLeft + chartWidth, yOi); ctx.stroke();
-            ctx.fillStyle = '#00bcd4'; ctx.font = 'bold 10px sans-serif';
-            ctx.fillText("📊 MAX OI ZONE (" + maxOiZone.toFixed(2) + ")", paddingLeft + 10, yOi - 4);
-        }
-        ctx.setLineDash([]); // Reset line pattern
+        // ==============================================================================
+        // 📌 DRAW THE ZONES HORIZONTAL LINES (PROPORTIONAL TO PRICE WINDOW VIEWPORT)
+        // ==============================================================================
+        const drawProportionalZoneLine = (zonePrice, label, lineColor) => {
+            if (zonePrice >= minPrice && zonePrice <= maxPrice) {
+                const yZone = paddingTop + chartHeight * (1 - (zonePrice - minPrice) / finalRange);
+                ctx.strokeStyle = lineColor; 
+                ctx.lineWidth = 2; 
+                ctx.setLineDash([6, 4]);
+                ctx.beginPath(); 
+                ctx.moveTo(paddingLeft, yZone); 
+                ctx.lineTo(paddingLeft + chartWidth, yZone); 
+                ctx.stroke();
+                ctx.setLineDash([]); 
+                
+                ctx.fillStyle = lineColor; 
+                ctx.font = 'bold 10px sans-serif';
+                ctx.fillText(label + " (" + zonePrice.toFixed(2) + ")", paddingLeft + 10, yZone - 4);
+            }
+        };
+
+        // Render frozen breakout level horizontal arrays safely
+        if (maxVolZone > 0) drawProportionalZoneLine(maxVolZone, "📌 MAX VOL ZONE", "#ff9800");
+        if (maxOiZone > 0) drawProportionalZoneLine(maxOiZone, "📊 MAX OI ZONE", "#00bcd4");
 
         const candleSpacing = chartWidth / maxBarsVisible;
-        const candleWidth = Math.max(candleSpacing * 0.65, 2.5);
+        const candleWidth = Math.max(candleSpacing * 0.72, 4.5);
 
-        // 2. PLOT CANDLES & LINEAR INDICATORS (VWAP, MOVING AVERAGES)
+        // 2. PLOT CANDLES & CONTINUOUS INDICATORS PATHS
         activeBars.forEach((bar, index) => {
-            const x = paddingLeft + (index * candleSpacing) + (candleSpacing / 2) + panOffset;
+            const x = (paddingLeft + chartWidth) - ((totalActive - 1 - index) * candleSpacing) - (candleSpacing / 2) + panOffset;
             if (x < paddingLeft || x > (paddingLeft + chartWidth)) return;
 
             const yOpen = paddingTop + chartHeight * (1 - (bar.open - minPrice) / finalRange);
@@ -224,7 +243,7 @@
 
             ctx.strokeStyle = color;
             ctx.fillStyle = color;
-            ctx.lineWidth = 1.5;
+            ctx.lineWidth = 1.8;
 
             ctx.beginPath();
             ctx.moveTo(x, yHigh);
@@ -238,13 +257,13 @@
 
             ctx.fillRect(x - (candleWidth / 2), top, candleWidth, height);
 
-            // Overlay Indicators Path Loops Safely with Fallback Guards
+            // Overlay Indicators smoothly
             if (index > 0) {
                 const prevX = x - candleSpacing;
                 const prevBar = activeBars[index - 1];
 
                 const drawOverlayLine = (pVal, cVal, lineColor) => {
-                    if (pVal && cVal) {
+                    if (pVal && cVal && pVal >= minPrice && pVal <= maxPrice && cVal >= minPrice && cVal <= maxPrice) {
                         ctx.strokeStyle = lineColor; ctx.lineWidth = 1.5;
                         ctx.beginPath();
                         ctx.moveTo(prevX, paddingTop + chartHeight * (1 - (pVal - minPrice) / finalRange));
@@ -259,7 +278,7 @@
             }
         });
 
-        // 3. LOWER TECHNICAL SUB-PANEL DESIGN (MACD WINDOW GENERATOR)
+        // 3. LOWER SUB-PANEL DESIGN (MACD WINDOW GENERATOR)
         const subTop = h - 100;
         const subHeight = 85;
         
@@ -272,7 +291,7 @@
         ctx.fillText("MACD (12, 26, 9)", paddingLeft + 6, subTop - 5);
 
         activeBars.forEach((bar, index) => {
-            const x = paddingLeft + (index * candleSpacing) + (candleSpacing / 2) + panOffset;
+            const x = (paddingLeft + chartWidth) - ((totalActive - 1 - index) * candleSpacing) - (candleSpacing / 2) + panOffset;
             if (x < paddingLeft || x > (paddingLeft + chartWidth)) return;
 
             const macdVal = bar.macd || 0;
@@ -290,7 +309,7 @@
                 const prevX = x - candleSpacing;
                 const prevSig = activeBars[index - 1].signal || 0;
                 
-                ctx.strokeStyle = '#ff9800'; // Signal Orange
+                ctx.strokeStyle = '#ff9800'; 
                 ctx.lineWidth = 1.5;
                 ctx.beginPath();
                 ctx.moveTo(prevX, yZero - (prevSig * 3));

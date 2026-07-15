@@ -62,13 +62,12 @@ selected_tf = st.sidebar.selectbox("Timeframe Window", ["1m", "5m", "10m", "15m"
 tf_seconds_map = {"1m": 60, "5m": 300, "10m": 600, "15m": 900, "30m": 1800, "1d": 86400}
 interval_seconds = tf_seconds_map[selected_tf]
 
-# Track session unique fingerprint key to catch selection adjustments instantly
 state_key = f"sync_{target_index}_{selected_tf}"
 
 # ==============================================================================
-# 🧠 SESSION CONTROLLED ONE-TIME SDK FETCH (SAVES TIMEOUTS)
+# 🧠 RATE-LIMIT CONTROLLED DATA CONVERTER PIPELINE
 # ==============================================================================
-if market_engine is not None and state_key not in st.session_state:
+if market_engine is not None and st.session_state.get(state_key) is not True:
     try:
         exch_name = "NSE" if target_index == "NIFTY" else "BSE"
         type_name = "INDEX"
@@ -76,7 +75,6 @@ if market_engine is not None and state_key not in st.session_state:
         end_dt = datetime.utcnow()
         start_dt = end_dt - timedelta(days=5)
         
-        # Explicit isolated execution mapping
         response = MarketData.historical_data(market_engine, {
             "exchange": exch_name,
             "type": type_name,
@@ -151,6 +149,7 @@ if market_engine is not None and state_key not in st.session_state:
         cursor.execute("SELECT price_level FROM institutional_zones WHERE asset=? AND zone_type='MAX_VOL'", (target_index,))
         has_zone = cursor.fetchone()
         
+        # Pure 9:20 Support/Resistance calculation layer freeze lock
         if not (current_dt.hour == 9 and current_dt.minute > 20 and has_zone):
             if max_vol_price > 0:
                 cursor.execute("INSERT OR REPLACE INTO institutional_zones VALUES (?, 'MAX_VOL', ?, 1, ?)", (target_index, max_vol_price, now_ts))
@@ -159,14 +158,12 @@ if market_engine is not None and state_key not in st.session_state:
 
         conn.commit()
         conn.close()
-        
-        # Mark this specific configuration state active to block recursive overhead
         st.session_state[state_key] = True
     except Exception as e:
-        st.sidebar.warning(f"Fetch Paused: {str(e)}")
+        st.sidebar.warning(f"Fetch Overload Guard Active: {str(e)}")
 
 # ==============================================================================
-# ⚡ LIVE RUNTIME OVERLAY PIPELINE (RUNS LOOP SAFELY WITHOUT TIMEOUTS)
+# ⚡ DYNAMIC TICK INJECTION OVERLAY (RUNS SAFELY INSIDE TIMEOUT LIMITS)
 # ==============================================================================
 if market_engine is not None:
     try:
@@ -197,7 +194,7 @@ if market_engine is not None:
         pass
 
 # ==============================================================================
-# 📊 TECHNICAL MATH MATRICES GENERATOR
+# 📊 PRECISE MATHEMATICAL MATH INDICES GENERATOR
 # ==============================================================================
 master_history_array = []
 max_vol_level, max_oi_level = 0.0, 0.0
@@ -252,12 +249,11 @@ else:
     current_display_price = 0.0
 
 runtime_payload = {
-    target_index: {
-        "price": int(current_display_price * 100),
-        "master_history": master_history_array,
-        "max_vol_zone": max_vol_level,
-        "max_oi_zone": max_oi_level
-    }
+    "current_asset": target_index,
+    "price": int(current_display_price * 100),
+    "master_history": master_history_array,
+    "max_vol_zone": max_vol_level,
+    "max_oi_zone": max_oi_level
 }
 
 st.sidebar.markdown(f"⏱️ **Timeframe Matrix:** `{selected_tf}`")
@@ -272,17 +268,16 @@ if os.path.exists(html_file_path):
     json_data = json.dumps(runtime_payload)
     injection_script = f"""
     <script>
-        window.chartData = {json_data};
-        window.currentAsset = "{target_index}";
+        window.chartPayload = {json_data};
         setTimeout(function() {{
             const iframeWin = document.getElementsByTagName('iframe')[0]?.contentWindow || window;
-            iframeWin.postMessage({{ type: "LIVE_TICK_UPDATE", payload: {json_data}, asset: "{target_index}" }}, "*");
-        }}, 250);
+            iframeWin.postMessage({{ type: "DYNAMIC_TERMINAL_RELOAD", data: {json_data} }}, "*");
+        }}, 300);
     </script>
     """
     html_content = html_content.replace("<head>", f"<head>{injection_script}")
     components.html(html_content, height=720, scrolling=False)
-    time.sleep(1.8)
+    time.sleep(2.0)
     st.rerun()
 else:
     st.error("❌ 'index.html' file nahi mili!")

@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+Mm mm<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -8,20 +8,19 @@
         body, html {
             margin: 0; padding: 0; width: 100%; height: 100%;
             background-color: #131722; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            overflow: hidden; color: #ffffff;
+            overflow: hidden; color: #ffffff; user-select: none; -webkit-user-select: none;
         }
         #top-header-bar {
             height: 45px; background-color: #1c2030; display: flex; align-items: center;
             padding: 0 15px; border-bottom: 1px solid #2a2e39; font-size: 12px; font-weight: 600;
-            overflow-x: auto; white-space: nowrap;
         }
-        #top-header-bar::-webkit-scrollbar { display: none; }
-        .matrix-item { margin-right: 20px; display: inline-block; }
+        .matrix-item { margin-right: 20px; }
         .matrix-lbl { color: #848e9c; margin-right: 4px; }
         .matrix-val.green { color: #089981; }
         .matrix-val.orange { color: #ff9800; }
         #chart-container {
             position: relative; width: 100%; height: calc(100vh - 45px);
+            touch-action: none; /* Prevents default browser scrolling during pinch/drag gestures */
         }
         canvas { display: block; position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
     </style>
@@ -45,9 +44,15 @@
     let chartData = [];
     let currentAsset = "NIFTY";
 
+    // Zoom and Drag Matrix State
+    let zoomLevel = 1.0; 
+    let panOffset = 0;   
+    let isDragging = false;
+    let startX = 0;
+    let lastTouchDistance = 0;
+
     function resizeCanvas() {
         const container = document.getElementById('chart-container');
-        // Handle device pixel ratio for sharp crystal clear candles on mobile screens
         const dpr = window.devicePixelRatio || 1;
         canvas.width = container.clientWidth * dpr;
         canvas.height = container.clientHeight * dpr;
@@ -66,12 +71,81 @@
             if (data.payload[currentAsset]) {
                 const rawPrice = data.payload[currentAsset].price / 100;
                 document.getElementById('lbl-price').innerText = rawPrice.toFixed(2);
-                chartData = data.payload[currentAsset].master_history || [];
+                
+                // CRITICAL FIX: Ensure true left-to-right chronological orientation
+                let rawHistory = data.payload[currentAsset].master_history || [];
+                if (rawHistory.length > 1 && rawHistory[0].time > rawHistory[rawHistory.length - 1].time) {
+                    chartData = rawHistory.reverse();
+                } else {
+                    chartData = rawHistory;
+                }
                 renderChart();
             }
         }
     });
 
+    // ==============================================================================
+    // 🖐️ MOBILE TOUCH & GESTURE FRAMEWORK (ZOOM / PAN ENGINE)
+    // ==============================================================================
+    const container = document.getElementById('chart-container');
+
+    // 1. Touch Start Interceptor
+    container.addEventListener('touchstart', function(e) {
+        if (e.touches.length === 1) {
+            isDragging = true;
+            startX = e.touches[0].clientX - panOffset;
+        } else if (e.touches.length === 2) {
+            isDragging = false;
+            // Calculate starting pinch delta
+            lastTouchDistance = Math.hypot(
+                e.touches[0].clientX - e.touches[1].clientX,
+                e.touches[0].clientY - e.touches[1].clientY
+            );
+        }
+    }, { passive: false });
+
+    // 2. Touch Move Renderer
+    container.addEventListener('touchmove', function(e) {
+        e.preventDefault(); // Mute bounce effect
+        
+        if (isDragging && e.touches.length === 1) {
+            // Drag navigation logic
+            panOffset = e.touches[0].clientX - startX;
+            renderChart();
+        } else if (e.touches.length === 2) {
+            // Pinch Zoom execution rules
+            const currentDistance = Math.hypot(
+                e.touches[0].clientX - e.touches[1].clientX,
+                e.touches[0].clientY - e.touches[1].clientY
+            );
+            
+            if (lastTouchDistance > 0) {
+                const delta = currentDistance / lastTouchDistance;
+                // Boundaries optimization limit
+                zoomLevel = Math.max(0.4, Math.min(zoomLevel * delta, 3.5));
+                renderChart();
+            }
+            lastTouchDistance = currentDistance;
+        }
+    }, { passive: false });
+
+    // 3. Touch End Terminal
+    container.addEventListener('touchend', function(e) {
+        isDragging = false;
+        lastTouchDistance = 0;
+    });
+
+    // Laptop Mouse Wheel Fallback Matrix
+    container.addEventListener('wheel', function(e) {
+        e.preventDefault();
+        const factor = e.deltaY < 0 ? 1.08 : 0.92;
+        zoomLevel = Math.max(0.4, Math.min(zoomLevel * factor, 3.5));
+        renderChart();
+    }, { passive: false });
+
+    // ==============================================================================
+    // 🎨 GRAPHICS RENDERING PIPELINE
+    // ==============================================================================
     function renderChart() {
         const container = document.getElementById('chart-container');
         const w = container.clientWidth;
@@ -81,13 +155,14 @@
         if (!chartData || chartData.length === 0) return;
 
         const paddingLeft = 15;
-        const paddingRight = 70;
+        const paddingRight = 75;
         const paddingTop = 30;
         const paddingBottom = 25;
 
         const chartWidth = w - paddingLeft - paddingRight;
         const chartHeight = h - paddingTop - paddingBottom;
 
+        // Find scale limits
         let maxPrice = -Infinity;
         let minPrice = Infinity;
 
@@ -97,12 +172,12 @@
         });
 
         const priceRange = maxPrice - minPrice;
-        const verticalBuffer = priceRange === 0 ? 15.0 : priceRange * 0.2;
+        const verticalBuffer = priceRange === 0 ? 15.0 : priceRange * 0.18;
         maxPrice += verticalBuffer;
         minPrice -= verticalBuffer;
         const finalRange = maxPrice - minPrice;
 
-        // Draw structural background grid lines
+        // Draw coordinate horizontal scales
         ctx.strokeStyle = '#2a2e39';
         ctx.lineWidth = 1;
         ctx.fillStyle = '#848e9c';
@@ -118,24 +193,25 @@
             ctx.fillText(p.toFixed(2), paddingLeft + chartWidth + 6, y + 4);
         }
 
-        // PROGRESSIVE MOBILE FIX: Show fewer bars on mobile so it doesn't compress or squash
+        // Apply zoom factors to geometric structure mapping
         const isMobile = w < 600;
-        const maxBarsVisible = isMobile ? 25 : 45; 
+        const baseBarsCount = isMobile ? 22 : 48;
+        const maxBarsVisible = Math.max(5, Math.round(baseBarsCount / zoomLevel));
         
-        // Take the latest candles up to our limit
         const activeBars = chartData.slice(-maxBarsVisible);
-        
-        // Calculate stable horizontal sizing matrix
         const candleSpacing = chartWidth / maxBarsVisible;
-        const candleWidth = Math.max(Math.min(candleSpacing * 0.65, 14), 4);
+        const candleWidth = Math.max(candleSpacing * 0.62, 3.0);
 
-        // FIXED: Shift start offset layout mapping so candles anchor to the RIGHT edge natively
-        const startOffset = chartWidth - (activeBars.length * candleSpacing);
+        // FIXED: Anchored to the exact right border tracking left calculations
+        const startOffset = chartWidth - (activeBars.length * candleSpacing) + panOffset;
 
         activeBars.forEach((bar, index) => {
-            // Left-to-right temporal progression mapping (Latest candle sits on the absolute right edge)
+            // CRITICAL DIRECTION FIX: index flows left to right natively, latest candle rendering on the right edge
             const x = paddingLeft + startOffset + (index * candleSpacing) + (candleSpacing / 2);
             
+            // Clip outside bounds to avoid canvas grid leakages during horizontal dragging
+            if (x < paddingLeft || x > (paddingLeft + chartWidth)) return;
+
             const yOpen = paddingTop + chartHeight * (1 - (bar.open - minPrice) / finalRange);
             const yClose = paddingTop + chartHeight * (1 - (bar.close - minPrice) / finalRange);
             const yHigh = paddingTop + chartHeight * (1 - (bar.high - minPrice) / finalRange);

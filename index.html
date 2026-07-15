@@ -2,22 +2,34 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Advanced Interactive Live Chart</title>
+    <title>Advanced Live Chart Terminal</title>
     <style>
         body, html {
             margin: 0; padding: 0; width: 100%; height: 100%;
             background-color: #131722; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            overflow: hidden;
+            overflow: hidden; color: #ffffff;
         }
+        #top-header-bar {
+            height: 45px; background-color: #1c2030; display: flex; align-items: center;
+            padding: 0 20px; border-bottom: 1px solid #2a2e39; font-size: 13px; font-weight: 600;
+        }
+        .matrix-item { margin-right: 30px; }
+        .matrix-lbl { color: #848e9c; margin-right: 6px; }
+        .matrix-val.green { color: #089981; }
+        .matrix-val.orange { color: #ff9800; }
         #chart-container {
-            position: relative; width: 100%; height: 100vh;
+            position: relative; width: 100%; height: calc(100vh - 45px);
         }
-        canvas {
-            display: block; position: absolute; left: 0; top: 0;
-        }
+        canvas { display: block; position: absolute; left: 0; top: 0; }
     </style>
 </head>
 <body>
+
+<div id="top-header-bar">
+    <div class="matrix-item"><span class="matrix-lbl">Asset:</span><span id="lbl-asset" class="matrix-val orange">NIFTY LIVE</span></div>
+    <div class="matrix-item"><span class="matrix-lbl">Zone Status:</span><span class="matrix-val green">CONNECTED</span></div>
+    <div class="matrix-item"><span class="matrix-lbl">Last Price:</span><span id="lbl-price" class="matrix-val orange">0.00</span></div>
+</div>
 
 <div id="chart-container">
     <canvas id="chartCanvas"></canvas>
@@ -31,43 +43,41 @@
     let currentAsset = "NIFTY";
 
     function resizeCanvas() {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
+        const container = document.getElementById('chart-container');
+        canvas.width = container.clientWidth;
+        canvas.height = container.clientHeight;
         renderChart();
     }
 
     window.addEventListener('resize', resizeCanvas);
 
-    // Listen to live data pipeline from Streamlit Core
     window.addEventListener('message', function(e) {
         const data = e.data;
         if (data.type === "LIVE_TICK_UPDATE" && data.payload && data.asset) {
             currentAsset = data.asset;
+            document.getElementById('lbl-asset').innerText = currentAsset + " LIVE";
+            
             if (data.payload[currentAsset]) {
+                const rawPrice = data.payload[currentAsset].price / 100;
+                document.getElementById('lbl-price').innerText = rawPrice.toFixed(2);
                 chartData = data.payload[currentAsset].master_history || [];
                 renderChart();
             }
         }
     });
 
-    if (window.chartData && window.currentAsset) {
-        currentAsset = window.currentAsset;
-        chartData = window.chartData[currentAsset]?.master_history || [];
-    }
-
     function renderChart() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         if (!chartData || chartData.length === 0) return;
 
-        const paddingLeft = 30;
-        const paddingRight = 70;
-        const paddingTop = 60;
-        const paddingBottom = 40;
+        const paddingLeft = 20;
+        const paddingRight = 75;
+        const paddingTop = 40;
+        const paddingBottom = 30;
 
         const chartWidth = canvas.width - paddingLeft - paddingRight;
         const chartHeight = canvas.height - paddingTop - paddingBottom;
 
-        // Find absolute price boundaries
         let maxPrice = -Infinity;
         let minPrice = Infinity;
 
@@ -76,15 +86,13 @@
             if (d.low < minPrice) minPrice = d.low;
         });
 
-        // Safe price buffer padding logic to stop horizontal stretch distortions
         const priceRange = maxPrice - minPrice;
-        const verticalBuffer = priceRange === 0 ? 30.0 : priceRange * 0.15;
+        const verticalBuffer = priceRange === 0 ? 40.0 : priceRange * 0.15;
         maxPrice += verticalBuffer;
         minPrice -= verticalBuffer;
-
         const finalRange = maxPrice - minPrice;
 
-        // Draw structural price coordinate grid lines
+        // Grid lines coordinate system
         ctx.strokeStyle = '#2a2e39';
         ctx.lineWidth = 1;
         ctx.fillStyle = '#848e9c';
@@ -93,7 +101,6 @@
         for (let i = 0; i <= 4; i++) {
             const y = paddingTop + (chartHeight * (i / 4));
             const p = maxPrice - (finalRange * (i / 4));
-            
             ctx.beginPath();
             ctx.moveTo(paddingLeft, y);
             ctx.lineTo(paddingLeft + chartWidth, y);
@@ -101,16 +108,11 @@
             ctx.fillText(p.toFixed(2), paddingLeft + chartWidth + 8, y + 4);
         }
 
-        // Calibrate candle counts and standard horizontal sizing matrix
-        const minBarsVisible = 40; 
-        const totalBars = Math.max(chartData.length, minBarsVisible);
-        
-        // Exact space optimization mapping limits
+        const totalBars = chartData.length;
         const candleSpacing = chartWidth / totalBars;
-        const candleWidth = Math.min(Math.max(candleSpacing * 0.55, 4), 18); 
+        const candleWidth = Math.max(Math.min(candleSpacing * 0.6, 14), 4);
 
         chartData.forEach((bar, index) => {
-            // Center alignment math mapping
             const x = paddingLeft + (index * candleSpacing) + (candleSpacing / 2);
             
             const yOpen = paddingTop + chartHeight * (1 - (bar.open - minPrice) / finalRange);
@@ -125,24 +127,21 @@
             ctx.fillStyle = color;
             ctx.lineWidth = 1.5;
 
-            // 1. Draw standard candle tail/wick lines
             ctx.beginPath();
             ctx.moveTo(x, yHigh);
             ctx.lineTo(x, yLow);
             ctx.stroke();
 
-            // 2. Draw standard solid responsive bar rectangles
             const top = Math.min(yOpen, yClose);
             const bottom = Math.max(yOpen, yClose);
             let height = bottom - top;
-            if (height < 1.5) height = 1.5; // Do not disappear flat lines
+            if (height < 2) height = 2;
 
             ctx.fillRect(x - (candleWidth / 2), top, candleWidth, height);
         });
     }
 
-    // Initialize layout setup rules
-    setTimeout(resizeCanvas, 100);
+    setTimeout(resizeCanvas, 150);
 </script>
 
 </body>

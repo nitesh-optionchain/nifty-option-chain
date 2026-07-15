@@ -35,32 +35,40 @@ def init_market_db():
 
 init_market_db()
 
+# ==============================================================================
+# 🔌 RAW SDK INITIALIZATION ENGINE (WITHOUT UNSAFE CACHING LOGIC)
+# ==============================================================================
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
 
-@st.cache_resource(show_spinner=False)
-def get_sdk_connector():
-    try:
-        client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
-        return MarketData(client)
-    except Exception:
-        return None
+PHONE_NO = st.secrets.get("PHONE_NO") or os.environ.get("PHONE_NO")
+MPIN = st.secrets.get("MPIN") or os.environ.get("MPIN")
 
-market_engine = get_sdk_connector()
+if PHONE_NO and MPIN:
+    os.environ["PHONE_NO"] = str(PHONE_NO)
+    os.environ["MPIN"] = str(MPIN)
+
+# Initialize pure raw instance structures directly to completely eliminate positional missing errors
+try:
+    sdk_client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
+    market_engine = MarketData(sdk_client)
+except Exception as e:
+    market_engine = None
+    st.sidebar.error(f"Initialization Failed: {str(e)}")
+
 target_index = st.sidebar.selectbox("Active Asset Frame", ["NIFTY", "SENSEX"], index=0)
 
 # ==============================================================================
-# 🔌 NUBRA GENUINE HISTORICAL DATA FETCH MATRIX
+# 🧠 EXACT PARSING LAYER MECHANISM
 # ==============================================================================
-if market_engine:
+if market_engine is not None:
     try:
-        # SDK Calibrated Symbol Resolution Mapping
         sdk_symbol = "NSE:NIFTY" if target_index == "NIFTY" else "BSE:SENSEX"
         
         to_date = datetime.now()
         from_date = to_date - timedelta(days=3)
         
-        # CORRECT METHOD FROM YOUR SDK DOCUMENTATION: get_candles()
+        # FIXED: Directly calling explicit function structure from standard instanced class node
         history_response = market_engine.get_candles(
             symbol=sdk_symbol,
             interval="1m",
@@ -68,7 +76,6 @@ if market_engine:
             to_date=to_date.strftime("%Y-%m-%d")
         )
         
-        # Array iteration configuration mapping
         candles_list = []
         if history_response:
             if hasattr(history_response, 'candles'):
@@ -98,7 +105,6 @@ if market_engine:
                     else:
                         continue
                     
-                    # Store standard pricing conversion layers
                     o_final = o / 100.0 if o > 100000 else o
                     h_final = h / 100.0 if h > 100000 else h
                     l_final = l / 100.0 if l > 100000 else l
@@ -113,7 +119,7 @@ if market_engine:
             conn.commit()
             conn.close()
             
-        # 2. OVERLAY RECENT PRICE SYNCS
+        # 2. RUN REAL-TIME LIVE TICK BUFFER ATTACHMENTS
         exch_name = "NSE" if target_index == "NIFTY" else "BSE"
         snap = market_engine.current_price(target_index, exchange=exch_name)
         if snap and getattr(snap, 'price', None):
@@ -140,16 +146,16 @@ if market_engine:
             conn.commit()
             conn.close()
     except Exception as e:
-        st.sidebar.error(f"Sync Issue: {str(e)}")
+        st.sidebar.error(f"Sync Frame Error: {str(e)}")
 
-# Read historical series from storage database to pass to HTML Canvas
+# Read historical series arrays from storage
 master_history_array = []
 try:
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("""
         SELECT timestamp, open, high, low, close FROM market_history 
-        WHERE asset=? ORDER BY timestamp ASC LIMIT 150
+        WHERE asset=? ORDER BY timestamp ASC LIMIT 180
     """, (target_index,))
     rows = cursor.fetchall()
     conn.close()

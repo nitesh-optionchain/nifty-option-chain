@@ -87,12 +87,12 @@
         });
 
         const priceRange = maxPrice - minPrice;
-        const verticalBuffer = priceRange === 0 ? 40.0 : priceRange * 0.15;
+        const verticalBuffer = priceRange === 0 ? 10.0 : priceRange * 0.2;
         maxPrice += verticalBuffer;
         minPrice -= verticalBuffer;
         const finalRange = maxPrice - minPrice;
 
-        // Grid lines coordinate system
+        // Draw structural background grid lines
         ctx.strokeStyle = '#2a2e39';
         ctx.lineWidth = 1;
         ctx.fillStyle = '#848e9c';
@@ -108,12 +108,20 @@
             ctx.fillText(p.toFixed(2), paddingLeft + chartWidth + 8, y + 4);
         }
 
-        const totalBars = chartData.length;
+        // FIXED: Shift drawing anchor to the right side of the screen like professional charts
+        const minBarsToFillSpace = 50; 
+        const totalBars = Math.max(chartData.length, minBarsToFillSpace);
+        
+        // Exact grid block sizing to avoid door-door scattered spacing
         const candleSpacing = chartWidth / totalBars;
-        const candleWidth = Math.max(Math.min(candleSpacing * 0.6, 14), 4);
+        const candleWidth = Math.max(Math.min(candleSpacing * 0.65, 12), 5);
+
+        // Start drawing from the right alignment edge
+        const startOffset = chartData.length < minBarsToFillSpace ? (minBarsToFillSpace - chartData.length) * candleSpacing : 0;
 
         chartData.forEach((bar, index) => {
-            const x = paddingLeft + (index * candleSpacing) + (candleSpacing / 2);
+            // Calculated dynamic position to stack them continuous next to each other
+            const x = paddingLeft + startOffset + (index * candleSpacing) + (candleSpacing / 2);
             
             const yOpen = paddingTop + chartHeight * (1 - (bar.open - minPrice) / finalRange);
             const yClose = paddingTop + chartHeight * (1 - (bar.close - minPrice) / finalRange);

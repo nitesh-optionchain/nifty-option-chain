@@ -37,7 +37,7 @@ def init_market_db():
 init_market_db()
 
 # ==============================================================================
-# 🔌 BROKER LOGIN GATEWAY
+# 🔌 RAW SDK INTENT INSTANTIATION
 # ==============================================================================
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
@@ -52,10 +52,10 @@ if PHONE_NO and MPIN:
 try:
     sdk_client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
     market_engine = MarketData(sdk_client)
-except Exception:
+except Exception as e:
     market_engine = None
+    st.sidebar.error(f"Login Failure: {str(e)}")
 
-# Sidebar Controls Configuration
 target_index = st.sidebar.selectbox("Active Asset Frame", ["NIFTY", "SENSEX"], index=0)
 selected_tf = st.sidebar.selectbox("Timeframe Window", ["1m", "5m", "10m", "15m", "30m", "1d"], index=1)
 
@@ -63,7 +63,7 @@ tf_seconds_map = {"1m": 60, "5m": 300, "10m": 600, "15m": 900, "30m": 1800, "1d"
 interval_seconds = tf_seconds_map[selected_tf]
 
 # ==============================================================================
-# 🧠 DYNAMIC SDK HISTORICAL & LIVE TICK PIPELINE
+# 🧠 EXPLICIT SELF-BINDING HISTORICAL PARSER ENGINE
 # ==============================================================================
 if market_engine is not None:
     try:
@@ -73,8 +73,8 @@ if market_engine is not None:
         end_dt = datetime.utcnow()
         start_dt = end_dt - timedelta(days=5)
         
-        # Pull specific timeframe records to ensure database is populated instantly
-        response = market_engine.historical_data({
+        # FIXED CRITICAL CALL: Passing explicit instanced node references directly to bypass TypeError self missing bounds
+        response = MarketData.historical_data(market_engine, {
             "exchange": exch_name,
             "type": type_name,
             "values": [target_index],
@@ -143,7 +143,6 @@ if market_engine is not None:
                         except Exception:
                             continue
 
-        # Institutional 9:20 Freeze Lock Matrix Block
         now_ts = int(time.time())
         current_dt = datetime.now()
         cursor.execute("SELECT price_level FROM institutional_zones WHERE asset=? AND zone_type='MAX_VOL'", (target_index,))
@@ -158,8 +157,8 @@ if market_engine is not None:
         conn.commit()
         conn.close()
 
-        # 4. APPEND RECENT REAL-TIME RUNTIME TICKS
-        snap = market_engine.current_price(target_index, exchange=exch_name)
+        # OVERLAY RECENT PRICE SYNCS
+        snap = MarketData.current_price(market_engine, target_index, exchange=exch_name)
         if snap and getattr(snap, 'price', None):
             raw_price = float(snap.price)
             base_val = raw_price / 100.0 if raw_price > 100000 else raw_price
@@ -181,12 +180,10 @@ if market_engine is not None:
                 """, (target_index, selected_tf, current_rounded_unix, base_val, base_val, base_val, base_val))
             conn.commit()
             conn.close()
-    except Exception:
-        pass
+    except Exception as e:
+        st.sidebar.error(f"Sync Issue: {str(e)}")
 
-# ==============================================================================
-# 🧠 4. PRECISE SEQUENTIAL LINEAR MATHEMATICAL INDICATORS
-# ==============================================================================
+# Read historical series arrays from storage database
 master_history_array = []
 max_vol_level, max_oi_level = 0.0, 0.0
 
@@ -211,23 +208,18 @@ try:
     
     for idx, row in enumerate(rows):
         t, o, h, l, c = row
-        
-        # VWAP Line calculation
         typ_p = (h + l + c) / 3.0
         cum_pv += typ_p * 100.0
         cum_vol += 100.0
         vwap_val = round(cum_pv / cum_vol, 2)
         
-        # Smooth Averages Filters
         ma9 = round(sum(prices[max(0, idx-8):idx+1]) / len(prices[max(0, idx-8):idx+1]), 2)
         ma20 = round(sum(prices[max(0, idx-19):idx+1]) / len(prices[max(0, idx-19):idx+1]), 2)
         ma50 = round(sum(prices[max(0, idx-49):idx+1]) / len(prices[max(0, idx-49):idx+1]), 2)
         
-        # Smooth MACD Mathematical Alignment
         macd_line = round(ma9 - ma20, 2)
         signal_line = round(sum([p_ma9 - p_ma20 for p_ma9, p_ma20 in zip(prices[max(0, idx-8):idx+1], prices[max(0, idx-19):idx+1])]) / len(prices[max(0, idx-8):idx+1]), 2) if idx >= 8 else 0.0
         
-        # Supertrend Vector Calibration
         atr = (h - l) if (h - l) > 0 else 5.0
         st_val = round(((h + l) / 2.0) - (2.5 * atr) if c >= o else ((h + l) / 2.0) + (2.5 * atr), 2)
 

@@ -49,17 +49,14 @@ def get_sdk_connector():
 market_engine = get_sdk_connector()
 target_index = st.sidebar.selectbox("Active Asset Frame", ["NIFTY", "SENSEX"], index=0)
 
-# FIXED: Hardcoded default templates completely removed. 
-# Ab data seedhe broker API se load hoga chahe market ON ho ya OFF.
 if market_engine:
     try:
         exch_name = "NSE" if target_index == "NIFTY" else "BSE"
         
-        # 1. FETCH ACTUAL HISTORICAL BARS FROM BROKER (Runs even when market is closed)
-        # Fetching past 3 days of historical 1-minute interval data to keep chart full
         to_date = datetime.now()
         from_date = to_date - timedelta(days=3)
         
+        # 1. FETCH HISTORICAL BARS FROM BROKER
         history_response = market_engine.historical_candles(
             asset=target_index,
             exchange=exch_name,
@@ -68,20 +65,47 @@ if market_engine:
             to_date=to_date.strftime("%Y-%m-%d")
         )
         
-        if history_response and hasattr(history_response, 'candles'):
+        # FIXED: Robust parsing mechanism supporting both Objects and Dictionary Formats
+        candles_list = []
+        if history_response:
+            if hasattr(history_response, 'candles'):
+                candles_list = history_response.candles
+            elif isinstance(history_response, dict) and 'candles' in history_response:
+                candles_list = history_response['candles']
+            elif isinstance(history_response, list):
+                candles_list = history_response
+
+        if candles_list:
             conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
-            for candle in history_response.candles:
-                # candle items expected format: timestamp, open, high, low, close
-                t_stamp = int(candle.timestamp)
-                cursor.execute("""
-                    INSERT OR REPLACE INTO market_history (asset, timestamp, open, high, low, close)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """, (target_index, t_stamp, float(candle.open), float(candle.high), float(candle.low), float(candle.close)))
+            for candle in candles_list:
+                try:
+                    # Extracts values perfectly whether candle is a class object or a dict
+                    if hasattr(candle, 'timestamp'):
+                        t_stamp = int(candle.timestamp)
+                        o = float(candle.open)
+                        h = float(candle.high)
+                        l = float(candle.low)
+                        c = float(candle.close)
+                    elif isinstance(candle, dict):
+                        t_stamp = int(candle.get('timestamp') or candle.get('time'))
+                        o = float(candle['open'])
+                        h = float(candle['high'])
+                        l = float(candle['low'])
+                        c = float(candle['close'])
+                    else:
+                        continue
+                    
+                    cursor.execute("""
+                        INSERT OR REPLACE INTO market_history (asset, timestamp, open, high, low, close)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """, (target_index, t_stamp, o, h, l, c))
+                except Exception:
+                    continue
             conn.commit()
             conn.close()
             
-        # 2. SYNC RECENT LIVE TICK (Only captures if live streaming feeds are active)
+        # 2. REAL-TIME LIVE TICK OVERLAY (Runs alongside historical data)
         snap = market_engine.current_price(target_index, exchange=exch_name)
         if snap and getattr(snap, 'price', None):
             raw_price = float(snap.price)
@@ -107,17 +131,16 @@ if market_engine:
             conn.commit()
             conn.close()
     except Exception as e:
-        st.sidebar.error(f"API Connector Error: {str(e)}")
+        st.sidebar.error(f"Sync Issue: {str(e)}")
 
-# Read authentic candles from Database to supply to HTML Chart Canvas
+# Read historical series from local storage
 master_history_array = []
 try:
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    # Pulling up to 100 actual sequential broker bars ordered by timeline
     cursor.execute("""
         SELECT timestamp, open, high, low, close FROM market_history 
-        WHERE asset=? ORDER BY timestamp ASC LIMIT 100
+        WHERE asset=? ORDER BY timestamp ASC LIMIT 150
     """, (target_index,))
     rows = cursor.fetchall()
     conn.close()
@@ -141,7 +164,7 @@ runtime_payload = {
     }
 }
 
-st.sidebar.caption(f"📊 Database Connected Bars: {len(master_history_array)}")
+st.sidebar.markdown(f"**Loaded Broker Bars:** `{len(master_history_array)}`")
 
 if os.path.exists(html_file_path):
     with open(html_file_path, "r", encoding="utf-8") as f:

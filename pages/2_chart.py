@@ -18,7 +18,7 @@ if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
 
 # ==============================================================================
-# 🗄️ 1. DIRECT STORAGE SETUP
+# 🗄️ 1. DATA CENTER STORAGE ARCHIVE INITIALIZATION
 # ==============================================================================
 def init_market_db():
     conn = sqlite3.connect(DB_PATH)
@@ -40,7 +40,7 @@ def init_market_db():
 init_market_db()
 
 # ==============================================================================
-# 🔌 2. SDK BROKER INTERFACE
+# 🔌 2. SDK BROKER INTERFACE CONNECTIONS
 # ==============================================================================
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
@@ -63,11 +63,11 @@ def get_sdk_connector():
 market_engine = get_sdk_connector()
 target_index = st.sidebar.selectbox("Active Asset Frame", ["NIFTY", "SENSEX"], index=0)
 
-# Aligned point-to-point target anchor base
-base_val = 24198.30 if target_index == "NIFTY" else 79650.0
+# Calibrated authentic initial point
+base_val = 24200.0 if target_index == "NIFTY" else 79650.0
 
 # ==============================================================================
-# 🧠 3. PURE LIVE TICK PARSING & REAL CANDLE BUILDER
+# 🧠 3. REAL TICK RAW PARSING WITH /100 DIVISION MATRIX
 # ==============================================================================
 if market_engine:
     try:
@@ -75,10 +75,14 @@ if market_engine:
         snap = market_engine.current_price(target_index, exchange=exch_name)
         
         if snap and getattr(snap, 'price', None):
-            # FIXED: Direct conversion mapping standard value
-            base_val = float(snap.price)
+            raw_price = float(snap.price)
             
-            # Current 5-Minute Window Anchor
+            # CORE MATRIX CORRECTION: Convert dynamic incoming paise response into solid Rupees standard
+            if raw_price > 100000:
+                base_val = raw_price / 100.0
+            else:
+                base_val = raw_price
+                
             current_rounded_unix = (int(time.time()) // 300) * 300
             
             conn = sqlite3.connect(DB_PATH)
@@ -95,7 +99,7 @@ if market_engine:
                 """, (new_high, new_low, base_val, target_index, current_rounded_unix))
             else:
                 cursor.execute("""
-                    INSERT INTO market_history (asset, timestamp, open, high, low, close)
+                    INSERT OR REPLACE INTO market_history (asset, timestamp, open, high, low, close)
                     VALUES (?, ?, ?, ?, ?, ?)
                 """, (target_index, current_rounded_unix, base_val, base_val, base_val, base_val))
                 
@@ -105,7 +109,7 @@ if market_engine:
         pass
 
 # ==============================================================================
-# 📊 4. DISPLAY LAYER DATA ASSEMBLY
+# 📊 4. FINAL PRODUCTION ARRAY LOADING ASSEMBLY
 # ==============================================================================
 master_history_array = []
 try:
@@ -125,7 +129,7 @@ try:
 except Exception:
     pass
 
-# Dynamic active sync node mapping
+# Initialize safe start structure if DB table needs fresh generation nodes
 if not master_history_array:
     current_unix_anchor = (int(time.time()) // 300) * 300
     master_history_array.append({
@@ -138,7 +142,7 @@ if master_history_array:
 
 runtime_payload = {
     target_index: {
-        "price": int(base_val * 100),
+        "price": int(base_val * 100), # Payload matches canonical scale structure
         "master_history": master_history_array
     }
 }
@@ -146,7 +150,7 @@ runtime_payload = {
 st.sidebar.caption("🟢 Genuine Live Sync Module: ACTIVE")
 
 # ==============================================================================
-# 🌐 5. HTML TRANSMISSION ENGINE
+# 🌐 5. HTML TRANSMISSION INTERFACE
 # ==============================================================================
 if os.path.exists(html_file_path):
     with open(html_file_path, "r", encoding="utf-8") as f:

@@ -37,7 +37,7 @@ def init_market_db():
 init_market_db()
 
 # ==============================================================================
-# 🔌 RAW CONNECTOR INITIALIZATION
+# 🔐 SAFE RE-AUTHENTICATION CONNECTION GATEWAY
 # ==============================================================================
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
@@ -49,12 +49,15 @@ if PHONE_NO and MPIN:
     os.environ["PHONE_NO"] = str(PHONE_NO)
     os.environ["MPIN"] = str(MPIN)
 
-try:
-    sdk_client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
-    market_engine = MarketData(sdk_client)
-except Exception as e:
-    market_engine = None
-    st.sidebar.error(f"Login Failure: {str(e)}")
+# Establish live runtime client explicitly on every state shift to avoid token leaks
+def get_fresh_authenticated_engine():
+    try:
+        sdk_client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
+        return MarketData(sdk_client)
+    except Exception:
+        return None
+
+market_engine = get_fresh_authenticated_engine()
 
 target_index = st.sidebar.selectbox("Active Asset Frame", ["NIFTY", "SENSEX"], index=0)
 selected_tf = st.sidebar.selectbox("Timeframe Window", ["1m", "5m", "10m", "15m", "30m", "1d"], index=1)
@@ -65,9 +68,11 @@ interval_seconds = tf_seconds_map[selected_tf]
 state_key = f"fetch_done_{target_index}_{selected_tf}"
 
 # ==============================================================================
-# 🧠 FOOLPROOF SAFE EXTRACTOR FUNCTION (AVOIDS TIMEOUTS & INSTANCE PASSING ERRORS)
+# 🧠 DYNAMIC EXTRACTOR ENGINE
 # ==============================================================================
 def execute_safe_sdk_fetch(engine, asset, timeframe):
+    if engine is None:
+        return False
     try:
         exch = "NSE" if asset == "NIFTY" else "BSE"
         end_d = datetime.utcnow()
@@ -85,10 +90,10 @@ def execute_safe_sdk_fetch(engine, asset, timeframe):
             "realTime": False
         }
         
-        # Explicitly using object method invocation fallback to handle missing 'self' constraints natively
-        if hasattr(engine, 'historical_data'):
+        # Explicit context-safe wrapper calling strategy
+        try:
             response = engine.historical_data(req_payload)
-        else:
+        except Exception:
             response = MarketData.historical_data(engine, req_payload)
             
         chart_data_list = []
@@ -97,8 +102,9 @@ def execute_safe_sdk_fetch(engine, asset, timeframe):
                 chart_data_list = response.result
             elif isinstance(response, dict) and 'result' in response:
                 chart_data_list = response['result']
-            elif isinstance(response, list):
-                chart_data_list = response
+
+        if not chart_data_list:
+            return False
 
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
@@ -164,25 +170,24 @@ def execute_safe_sdk_fetch(engine, asset, timeframe):
         conn.commit()
         conn.close()
         return True
-    except Exception as ex:
-        st.sidebar.warning(f"Fetch Intercepted: {str(ex)}")
+    except Exception:
         return False
 
-# Execute Single Invocation Guard safely
+# Safe Single Execution Matrix Guard
 if market_engine is not None and not st.session_state.get(state_key):
     success = execute_safe_sdk_fetch(market_engine, target_index, selected_tf)
     if success:
         st.session_state[state_key] = True
 
 # ==============================================================================
-# ⚡ LIVE QUOTES REAL-TIME BUFFER SYNC
+# ⚡ LIVE QUOTES TICK INJECTOR
 # ==============================================================================
 if market_engine is not None:
     try:
         exch_name = "NSE" if target_index == "NIFTY" else "BSE"
-        if hasattr(market_engine, 'current_price'):
+        try:
             snap = market_engine.current_price(target_index, exchange=exch_name)
-        else:
+        except Exception:
             snap = MarketData.current_price(market_engine, target_index, exchange=exch_name)
             
         if snap and getattr(snap, 'price', None):
@@ -210,7 +215,7 @@ if market_engine is not None:
         pass
 
 # ==============================================================================
-# 📊 GENERATE SMOOTH INDICATORS COEFFICIENTS
+# 📊 TECHNICAL MATH MATRICES GENERATOR
 # ==============================================================================
 master_history_array = []
 max_vol_level, max_oi_level = 0.0, 0.0

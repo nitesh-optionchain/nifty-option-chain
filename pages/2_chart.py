@@ -17,19 +17,18 @@ if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
 
 # ==============================================================================
-# 🗄️ 1. TIMEFRAME STORAGE DATABASE FIXED SCHEMA
+# 🗄️ 1. TIMEFRAME SEPARATED DATABASE SYSTEM
 # ==============================================================================
 def init_market_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    # FIXED: Added 'timeframe' key inside schema primary keys to completely stop candle mixing
+    # Explicitly check schema structure to accommodate separate timeframes
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS market_history (
             asset TEXT, timeframe TEXT, timestamp INTEGER, open REAL, high REAL, low REAL, close REAL,
             PRIMARY KEY (asset, timeframe, timestamp)
         )
     """)
-    # Table for structural next-day frozen institutional zones
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS institutional_zones (
             asset TEXT, zone_type TEXT, price_level REAL, is_frozen INTEGER, last_updated INTEGER,
@@ -42,81 +41,77 @@ def init_market_db():
 init_market_db()
 
 # ==============================================================================
-# 🔌 2. SDK BROKER CONNECTORS
+# 🔌 2. SDK CONNECTIONS INTERFACE
 # ==============================================================================
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
 
-try:
-    sdk_client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
-    market_engine = MarketData(sdk_client)
-except Exception:
-    market_engine = None
+if "nubra_engine_instance" not in st.session_state:
+    PHONE_NO = st.secrets.get("PHONE_NO") or os.environ.get("PHONE_NO")
+    MPIN = st.secrets.get("MPIN") or os.environ.get("MPIN")
 
-# Sidebar Framework Control Deck
+    if PHONE_NO and MPIN:
+        os.environ["PHONE_NO"] = str(PHONE_NO)
+        os.environ["MPIN"] = str(MPIN)
+    
+    try:
+        sdk_client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
+        st.session_state["nubra_engine_instance"] = MarketData(sdk_client)
+    except Exception:
+        st.session_state["nubra_engine_instance"] = None
+
+market_engine = st.session_state["nubra_engine_instance"]
+
+# Control UI Dropdowns Framework
 target_index = st.sidebar.selectbox("Active Asset Frame", ["NIFTY", "SENSEX"], index=0)
 selected_tf = st.sidebar.selectbox("Timeframe Window", ["5m", "10m", "15m", "30m", "1d"], index=0)
 
-# Map intervals cleanly into operational minutes anchors
 tf_map = {"5m": 5, "10m": 10, "15m": 15, "30m": 30, "1d": 1440}
 interval_minutes = tf_map[selected_tf]
 interval_seconds = interval_minutes * 60
 
-# Safe one-time sync session guard per timeframe
 state_key = f"fetch_done_{target_index}_{selected_tf}"
 
 # ==============================================================================
-# 📊 3. INSTITUTIONAL VOL & OI FROZEN ZONE MATRIX ENGINE
+# 📊 3. HISTORICAL ENGINE PIPELINE (ALIGNED WITH SELECTION DROP-DOWNS)
 # ==============================================================================
-def process_institutional_zones(asset_name, engine):
-    if engine is None:
-        return
+if market_engine is not None and not st.session_state.get(state_key):
     try:
-        now_ts = int(time.time())
-        current_dt = datetime.now()
-        is_market_hours = (current_dt.hour == 9 and current_dt.minute >= 15) or (10 <= current_dt.hour < 15) or (current_dt.hour == 15 and current_dt.minute <= 30)
-        
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute("SELECT price_level, last_updated FROM institutional_zones WHERE asset=? AND zone_type='MAX_VOL'", (asset_name,))
-        row = cursor.fetchone()
-        
-        if is_market_hours and current_dt.hour >= 9 and current_dt.minute > 20 and row:
-            conn.close()
-            return
-
-        exch = "NSE" if asset_name == "NIFTY" else "BSE"
+        exch = "NSE" if target_index == "NIFTY" else "BSE"
         end_d = datetime.utcnow()
-        start_d = end_d - timedelta(days=5) # Expanded buffer for historical checks
+        start_d = end_d - timedelta(days=5) # 5 days deep data query window
         
-        # FIXED: Mapped historical data pulling strictly to 'selected_tf'
-        response = engine.historical_data({
-            "exchange": exch, "type": "INDEX", "values": [asset_name],
-            "fields": ["open", "high", "low", "close", "cumulative_volume", "cumulative_oi"],
+        response = market_engine.historical_data({
+            "exchange": exch, "type": "INDEX", "values": [target_index],
+            "fields": ["open", "high", "low", "close"],
             "startDate": start_d.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
             "endDate": end_d.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-            "interval": selected_tf, "intraDay": False, "realTime": False
+            "interval": selected_tf, # Mapping structural intervals dynamically
+            "intraDay": False, "realTime": False
         })
         
-        max_vol_price = 0.0
-        max_oi_price = 0.0
-        highest_vol = -1
-        highest_oi = -1
-        
-        if response and hasattr(response, 'result') and response.result:
-            for chart_data in response.result:
+        chart_data_list = []
+        if response:
+            if hasattr(response, 'result') and response.result:
+                chart_data_list = response.result
+            elif isinstance(response, dict) and 'result' in response:
+                chart_data_list = response['result']
+
+        if chart_data_list:
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            
+            for chart_data in chart_data_list:
                 vals = getattr(chart_data, 'values', None) or []
                 for element in (vals if isinstance(vals, list) else [vals]):
-                    chart = element.get(asset_name) if isinstance(element, dict) else getattr(element, asset_name, None)
+                    chart = element.get(target_index) if isinstance(element, dict) else getattr(element, target_index, None)
                     if chart:
                         opens = getattr(chart, 'open', None) or []
                         highs = getattr(chart, 'high', None) or []
                         lows = getattr(chart, 'low', None) or []
                         closes = getattr(chart, 'close', None) or []
-                        vols = getattr(chart, 'cumulative_volume', None) or []
-                        ois = getattr(chart, 'cumulative_oi', None) or []
                         
-                        for i in range(len(closes)):
+                        for i in range(len(opens)):
                             try:
                                 raw_ts = opens[i].timestamp
                                 sec_ts = int(raw_ts // 1000000000) if raw_ts > 9999999999 else int(raw_ts)
@@ -131,37 +126,20 @@ def process_institutional_zones(asset_name, engine):
                                 l_f = val_l / 100.0 if val_l > 100000 else val_l
                                 c_f = val_c / 100.0 if val_c > 100000 else val_c
                                 
-                                # FIXED: Storing with active 'selected_tf' inside DB partition
                                 cursor.execute("""
                                     INSERT OR REPLACE INTO market_history (asset, timeframe, timestamp, open, high, low, close)
                                     VALUES (?, ?, ?, ?, ?, ?, ?)
-                                """, (asset_name, selected_tf, sec_ts, o_f, h_f, l_f, c_f))
-                                
-                                if i < len(vols) and float(vols[i].value) > highest_vol:
-                                    highest_vol = float(vols[i].value)
-                                    max_vol_price = c_f
-                                if i < len(ois) and float(ois[i].value) > highest_oi:
-                                    highest_oi = float(ois[i].value)
-                                    max_oi_price = c_f
+                                """, (target_index, selected_tf, sec_ts, o_f, h_f, l_f, c_f))
                             except Exception:
                                 continue
-
-        if max_vol_price > 0:
-            cursor.execute("INSERT OR REPLACE INTO institutional_zones VALUES (?, 'MAX_VOL', ?, 1, ?)", (asset_name, max_vol_price, now_ts))
-        if max_oi_price > 0:
-            cursor.execute("INSERT OR REPLACE INTO institutional_zones VALUES (?, 'MAX_OI', ?, 1, ?)", (asset_name, max_oi_price, now_ts))
-        conn.commit()
-        conn.close()
+            conn.commit()
+            conn.close()
+            st.session_state[state_key] = True
     except Exception:
         pass
 
-# One-time load execution sequence guard
-if market_engine is not None and not st.session_state.get(state_key):
-    process_institutional_zones(target_index, market_engine)
-    st.session_state[state_key] = True
-
 # ==============================================================================
-# 🔌 4. BROKER CORE STREAM TO DATABASE PIPELINE
+# ⚡ 4. RE-INJECT CURRENT REAL-TIME RUNTIME TICKS
 # ==============================================================================
 if market_engine is not None:
     try:
@@ -192,27 +170,18 @@ if market_engine is not None:
         pass
 
 # ==============================================================================
-# 🧠 5. INTERNAL MATHEMATICAL INDICATORS SUITE (VWAP, MA, MACD, SUPERTREND)
+# 📊 5. MATHEMATICAL TECHNICAL MATHEMATICS MATRIX (VWAP, MA, MACD, SUPERTREND)
 # ==============================================================================
 master_history_array = []
-max_vol_level = 0.0
-max_oi_level = 0.0
-
 try:
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    # FIXED: Query strictly filtered by targeted dropdown timeframe selection row
+    # QUERY FILTER: Select items explicitly matching 'timeframe' variable key to stop data bleeding
     cursor.execute("""
         SELECT timestamp, open, high, low, close FROM market_history 
         WHERE asset=? AND timeframe=? ORDER BY timestamp ASC LIMIT 250
     """, (target_index, selected_tf))
     rows = cursor.fetchall()
-    
-    cursor.execute("SELECT zone_type, price_level FROM institutional_zones WHERE asset=?", (target_index,))
-    z_rows = cursor.fetchall()
-    for z in z_rows:
-        if z[0] == 'MAX_VOL': max_vol_level = z[1]
-        if z[0] == 'MAX_OI': max_oi_level = z[1]
     conn.close()
     
     prices = [r[4] for r in rows]
@@ -236,9 +205,7 @@ try:
         signal_line = round(macd_line * 0.9, 2)
         
         atr_range = (h - l) if (h - l) > 0 else 5.0
-        st_upper = round(((h + l) / 2.0) + (3.0 * atr_range), 2)
-        st_lower = round(((h + l) / 2.0) - (3.0 * atr_range), 2)
-        supertrend = st_lower if c >= o else st_upper
+        supertrend = round(((h + l) / 2.0) - (2.5 * atr_range) if c >= o else ((h + l) / 2.0) + (2.5 * atr_range), 2)
         
         master_history_array.append({
             "time": int(t), "open": o, "high": h, "low": l, "close": c,
@@ -252,8 +219,8 @@ runtime_payload = {
     target_index: {
         "price": int((master_history_array[-1]["close"] * 100) if master_history_array else 0),
         "master_history": master_history_array,
-        "max_vol_zone": max_vol_level,
-        "max_oi_zone": max_oi_level
+        "max_vol_zone": 0.0,
+        "max_oi_zone": 0.0
     }
 }
 

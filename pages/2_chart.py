@@ -2,7 +2,6 @@ import sys
 import os
 import time
 import json
-import sqlite3
 import streamlit as st
 import streamlit.components.v1 as components
 from datetime import datetime, timedelta
@@ -11,35 +10,12 @@ st.set_page_config(layout="wide")
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 html_file_path = os.path.join(BASE_DIR, 'index.html')
-DB_PATH = os.path.join(BASE_DIR, "market_ticks.db")
 
 if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
 
 # ==============================================================================
-# 🗄️ 1. AUTOMATIC RE-INITIALIZATION DATABASE MOTOR
-# ==============================================================================
-def init_market_db():
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    # Safely dropping stale formats to overwrite layout correctly
-    cursor.execute("DROP TABLE IF EXISTS market_history")
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS market_history (
-            asset TEXT, timeframe TEXT, timestamp INTEGER, open REAL, high REAL, low REAL, close REAL,
-            PRIMARY KEY (asset, timeframe, timestamp)
-        )
-    """)
-    conn.commit()
-    conn.close()
-
-# Safe one-time execution grid mapping on startup
-if "db_reset_done" not in st.session_state:
-    init_market_db()
-    st.session_state["db_reset_done"] = True
-
-# ==============================================================================
-# 🔌 2. SDK BROKER REBOOT CONTROL DECK
+# 🔌 SDK BROKER REBOOT CONTROL DECK (SINGLETON IN STATE)
 # ==============================================================================
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
@@ -60,53 +36,41 @@ if "nubra_engine_instance" not in st.session_state:
 
 market_engine = st.session_state["nubra_engine_instance"]
 
-# Dynamic Selection Bars
+# Active Navigation Panel Options
 target_index = st.sidebar.selectbox("Active Asset Frame", ["NIFTY", "SENSEX"], index=0)
 selected_tf = st.sidebar.selectbox("Timeframe Window", ["5m", "10m", "15m", "30m", "1d"], index=0)
 
-tf_map = {"5m": 5, "10m": 10, "15m": 15, "30m": 30, "1d": 1440}
-interval_minutes = tf_map[selected_tf]
-interval_seconds = interval_minutes * 60
+# ==============================================================================
+# 📊 3. STABLE RAW DIRECT API MATRIX (NO DATABASE WRITING LABELS NEEDED)
+# ==============================================================================
+master_history_array = []
 
-# ==============================================================================
-# 📊 3. DYNAMIC SDK HISTORICAL FETCHER ENGINE (RE-BUILT FAILSAFE)
-# ==============================================================================
-def pull_fresh_historical_data(engine, asset, timeframe):
-    if engine is None:
-        return []
+if market_engine is not None:
     try:
-        exch = "NSE" if asset == "NIFTY" else "BSE"
+        exch = "NSE" if target_index == "NIFTY" else "BSE"
         end_d = datetime.utcnow()
-        start_d = end_d - timedelta(days=6)
+        start_d = end_d - timedelta(days=6) # 6 Days long backup window buffer
         
-        response = engine.historical_data({
-            "exchange": exch, "type": "INDEX", "values": [asset],
+        response = market_engine.historical_data({
+            "exchange": exch, "type": "INDEX", "values": [target_index],
             "fields": ["open", "high", "low", "close"],
             "startDate": start_d.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
             "endDate": end_d.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-            "interval": timeframe, 
+            "interval": selected_tf, 
             "intraDay": False, "realTime": False
         })
         
-        output_list = []
+        chart_data_list = []
         if response:
             if hasattr(response, 'result') and response.result:
-                output_list = response.result
+                chart_data_list = response.result
             elif isinstance(response, dict) and 'result' in response:
-                output_list = response['result']
-        return output_list
-    except Exception:
-        return []
+                chart_data_list = response['result']
 
-# Execute core sync arrays directly into workspace pipeline
-raw_candles = pull_fresh_historical_data(market_engine, target_index, selected_tf)
-
-if raw_candles:
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        for chart_data in raw_candles:
-            vals = getattr(chart_data, 'values', None) or []
+        # Pure in-memory sequence construction dictionary parser
+        raw_rows = []
+        for chart_data in chart_data_list:
+            vals = getattr(chart_data, 'values', None) or (chart_data.get('values') if isinstance(chart_data, dict) else [])
             for element in (vals if isinstance(vals, list) else [vals]):
                 chart = element.get(target_index) if isinstance(element, dict) else getattr(element, target_index, None)
                 if chart:
@@ -116,100 +80,60 @@ if raw_candles:
                     closes = getattr(chart, 'close', None) or []
                     
                     for i in range(len(opens)):
-                        raw_ts = opens[i].timestamp
-                        sec_ts = int(raw_ts // 1000000000) if raw_ts > 9999999999 else int(raw_ts)
-                        
-                        o_f = float(opens[i].value)
-                        h_f = float(highs[i].value) if i < len(highs) else o_f
-                        l_f = float(lows[i].value) if i < len(lows) else o_f
-                        c_f = float(closes[i].value) if i < len(closes) else o_f
+                        try:
+                            raw_ts = opens[i].timestamp
+                            sec_ts = int(raw_ts // 1000000000) if raw_ts > 9999999999 else int(raw_ts)
+                            
+                            val_o = float(opens[i].value)
+                            val_h = float(highs[i].value) if i < len(highs) else val_o
+                            val_l = float(lows[i].value) if i < len(lows) else val_o
+                            val_c = float(closes[i].value) if i < len(closes) else val_o
 
-                        o_f = o_f / 100.0 if o_f > 100000 else o_f
-                        h_f = h_f / 100.0 if h_f > 100000 else h_f
-                        l_f = l_f / 100.0 if l_f > 100000 else l_f
-                        c_f = c_f / 100.0 if c_f > 100000 else c_f
+                            # Normalizing multiplier segments cleanly
+                            o_f = val_o / 100.0 if val_o > 100000 else val_o
+                            h_f = val_h / 100.0 if val_h > 100000 else val_h
+                            l_f = val_l / 100.0 if val_l > 100000 else val_l
+                            c_f = val_c / 100.0 if val_c > 100000 else val_c
+                            
+                            raw_rows.append((sec_ts, o_f, h_f, l_f, c_f))
+                        except Exception:
+                            continue
 
-                        cursor.execute("""
-                            INSERT OR REPLACE INTO market_history (asset, timeframe, timestamp, open, high, low, close)
-                            VALUES (?, ?, ?, ?, ?, ?, ?)
-                        """, (target_index, selected_tf, sec_ts, o_f, h_f, l_f, c_f))
-        conn.commit()
-        conn.close()
+        # Sort chronologically by timestamp before tracking indicators
+        raw_rows.sort(key=lambda item: item[0])
+        prices = [r[4] for r in raw_rows]
+        
+        cum_pv, cum_vol = 0.0, 0.0
+        
+        for idx, row in enumerate(raw_rows):
+            t, o, h, l, c = row
+            
+            # A. Clean VWAP calculations accruals
+            typ_p = (h + l + c) / 3.0
+            cum_pv += typ_p * 100.0
+            cum_vol += 100.0
+            vwap_val = round(cum_pv / cum_vol, 2)
+            
+            # B. Moving Averages vectors
+            ma9 = round(sum(prices[max(0, idx-8):idx+1]) / len(prices[max(0, idx-8):idx+1]), 2)
+            ma20 = round(sum(prices[max(0, idx-19):idx+1]) / len(prices[max(0, idx-19):idx+1]), 2)
+            ma50 = round(sum(prices[max(0, idx-49):idx+1]) / len(prices[max(0, idx-49):idx+1]), 2)
+            
+            # C. MACD 9 lines calculation overlay matrix
+            macd_line = round(ma9 - ma20, 2)
+            signal_line = round(sum([p_ma9 - p_ma20 for p_ma9, p_ma20 in zip(prices[max(0, idx-8):idx+1], prices[max(0, idx-19):idx+1])]) / len(prices[max(0, idx-8):idx+1]), 2) if idx >= 8 else 0.0
+            
+            # D. Supertrend Channels Parameters
+            atr_range = (h - l) if (h - l) > 0 else 5.0
+            supertrend = round(((h + l) / 2.0) - (2.5 * atr_range) if c >= o else ((h + l) / 2.0) + (2.5 * atr_range), 2)
+            
+            master_history_array.append({
+                "time": int(t), "open": o, "high": h, "low": l, "close": c,
+                "vwap": vwap_val, "ma9": ma9, "ma20": ma20, "ma50": ma50,
+                "macd": macd_line, "signal": signal_line, "supertrend": supertrend
+            })
     except Exception:
         pass
-
-# ==============================================================================
-# ⚡ 4. BROKER REAL-TIME TICK RE-ALIGNER
-# ==============================================================================
-if market_engine is not None:
-    try:
-        exch_name = "NSE" if target_index == "NIFTY" else "BSE"
-        snap = market_engine.current_price(target_index, exchange=exch_name)
-        if snap and getattr(snap, 'price', None):
-            raw_price = float(snap.price)
-            base_val = raw_price / 100.0 if raw_price > 100000 else raw_price
-            current_rounded_unix = (int(time.time()) // interval_seconds) * interval_seconds
-            
-            conn = sqlite3.connect(DB_PATH)
-            cursor = conn.cursor()
-            cursor.execute("SELECT open, high, low, close FROM market_history WHERE asset=? AND timeframe=? AND timestamp=?", (target_index, selected_tf, current_rounded_unix))
-            existing_candle = cursor.fetchone()
-            
-            if existing_candle:
-                cursor.execute("""
-                    UPDATE market_history SET high=?, low=?, close=? WHERE asset=? AND timeframe=? AND timestamp=?
-                """, (max(existing_candle[1], base_val), min(existing_candle[2], base_val), base_val, target_index, selected_tf, current_rounded_unix))
-            else:
-                cursor.execute("""
-                    INSERT OR REPLACE INTO market_history (asset, timeframe, timestamp, open, high, low, close)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (target_index, selected_tf, current_rounded_unix, base_val, base_val, base_val, base_val))
-            conn.commit()
-            conn.close()
-    except Exception:
-        pass
-
-# ==============================================================================
-# 🧠 5. INTERNAL MATHEMATICAL INDICATORS ENGINE COEF DATA
-# ==============================================================================
-master_history_array = []
-try:
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT timestamp, open, high, low, close FROM market_history 
-        WHERE asset=? AND timeframe=? ORDER BY timestamp ASC LIMIT 200
-    """, (target_index, selected_tf))
-    rows = cursor.fetchall()
-    conn.close()
-    
-    prices = [r[4] for r in rows]
-    cum_pv, cum_vol = 0.0, 0.0
-    
-    for idx, row in enumerate(rows):
-        t, o, h, l, c = row
-        typ_p = (h + l + c) / 3.0
-        cum_pv += typ_p * 100.0
-        cum_vol += 100.0
-        vwap_val = round(cum_pv / cum_vol, 2)
-        
-        ma9 = round(sum(prices[max(0, idx-8):idx+1]) / len(prices[max(0, idx-8):idx+1]), 2)
-        ma20 = round(sum(prices[max(0, idx-19):idx+1]) / len(prices[max(0, idx-19):idx+1]), 2)
-        ma50 = round(sum(prices[max(0, idx-49):idx+1]) / len(prices[max(0, idx-49):idx+1]), 2)
-        
-        macd_line = round(ma9 - ma20, 2)
-        signal_line = round(sum([p_ma9 - p_ma20 for p_ma9, p_ma20 in zip(prices[max(0, idx-8):idx+1], prices[max(0, idx-19):idx+1])]) / len(prices[max(0, idx-8):idx+1]), 2) if idx >= 8 else 0.0
-        
-        atr_range = (h - l) if (h - l) > 0 else 5.0
-        supertrend = round(((h + l) / 2.0) - (2.5 * atr_range) if c >= o else ((h + l) / 2.0) + (2.5 * atr_range), 2)
-        
-        master_history_array.append({
-            "time": int(t), "open": o, "high": h, "low": l, "close": c,
-            "vwap": vwap_val, "ma9": ma9, "ma20": ma20, "ma50": ma50,
-            "macd": macd_line, "signal": signal_line, "supertrend": supertrend
-        })
-except Exception:
-    pass
 
 if master_history_array:
     current_display_price = master_history_array[-1]["close"]
@@ -222,8 +146,8 @@ runtime_payload = {
     "master_history": master_history_array
 }
 
-st.sidebar.markdown(f"**Interval Active:** `{selected_tf}`")
-st.sidebar.markdown(f"**Total Sequenced Bars:** `{len(master_history_array)}`")
+st.sidebar.markdown(f"⏱️ **Active Interval:** `{selected_tf}`")
+st.sidebar.markdown(f"🗂️ **Total Sequenced Bars:** `{len(master_history_array)}`")
 
 if os.path.exists(html_file_path):
     with open(html_file_path, "r", encoding="utf-8") as f:
@@ -241,5 +165,5 @@ if os.path.exists(html_file_path):
     """
     html_content = html_content.replace("<head>", f"<head>{injection_script}")
     components.html(html_content, height=720, scrolling=False)
-    time.sleep(1.8)
+    time.sleep(2.0)
     st.rerun()

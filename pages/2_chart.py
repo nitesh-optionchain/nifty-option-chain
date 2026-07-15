@@ -16,19 +16,17 @@ DB_PATH = os.path.join(BASE_DIR, "market_ticks.db")
 if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
 
+# ==============================================================================
+# 🗄️ 1. MULTI-TIMEFRAME STORAGE DATABASE FIXED MATRIX
+# ==============================================================================
 def init_market_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
+    # FIXED: Added 'timeframe' key inside schema primary keys to completely stop candle mixing
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS market_history (
             asset TEXT, timeframe TEXT, timestamp INTEGER, open REAL, high REAL, low REAL, close REAL,
             PRIMARY KEY (asset, timeframe, timestamp)
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS institutional_zones (
-            asset TEXT, zone_type TEXT, price_level REAL, is_frozen INTEGER, last_updated INTEGER,
-            PRIMARY KEY (asset, zone_type)
         )
     """)
     conn.commit()
@@ -37,7 +35,7 @@ def init_market_db():
 init_market_db()
 
 # ==============================================================================
-# 🔐 PRODUCTION AUTH LOGING GATEWAY (SINGLETON SESSION MEMORY POOL)
+# 🔌 2. SDK BROKER INITIALIZATION (SINGLETON REBOOT POOL)
 # ==============================================================================
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
@@ -59,19 +57,17 @@ if "nubra_engine_instance" not in st.session_state:
 
 market_engine = st.session_state["nubra_engine_instance"]
 
+# Active Control Dropdowns Framework
 target_index = st.sidebar.selectbox("Active Asset Frame", ["NIFTY", "SENSEX"], index=0)
-
-# FIXED DYNAMIC TIMEFRAME SELECTOR DROP-DOWN
 selected_tf = st.sidebar.selectbox("Timeframe Window", ["1m", "5m", "10m", "15m", "30m", "1d"], index=1)
 
 tf_seconds_map = {"1m": 60, "5m": 300, "10m": 600, "15m": 900, "30m": 1800, "1d": 86400}
 interval_seconds = tf_seconds_map[selected_tf]
 
-# Dynamic unique caching key matching selection frames strictly
-state_key = f"real_fetch_{target_index}_{selected_tf}"
+state_key = f"fetch_done_{target_index}_{selected_tf}"
 
 # ==============================================================================
-# 🧠 REAL-TIME AUTHENTIC SDK TIMEFRAME SYNC PIPELINE
+# 🧠 3. HISTORICAL ENGINE PIPELINE (TIMEFRAME SPECIFIC NO CACHE OVERLAP)
 # ==============================================================================
 if market_engine is not None and not st.session_state.get(state_key):
     try:
@@ -79,7 +75,7 @@ if market_engine is not None and not st.session_state.get(state_key):
         type_name = "INDEX"
         
         end_dt = datetime.utcnow()
-        start_dt = end_dt - timedelta(days=5) # Expanded range history buffer
+        start_dt = end_dt - timedelta(days=5)
         
         response = MarketData.historical_data(market_engine, {
             "exchange": exch_name,
@@ -88,7 +84,7 @@ if market_engine is not None and not st.session_state.get(state_key):
             "fields": ["open", "high", "low", "close"],
             "startDate": start_dt.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
             "endDate": end_dt.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-            "interval": selected_tf,  # Dynamic targeted parameter reference
+            "interval": selected_tf,  # Map dropdown directly
             "intraDay": False,
             "realTime": False
         })
@@ -132,7 +128,6 @@ if market_engine is not None and not st.session_state.get(state_key):
                                 l_f = val_l / 100.0 if val_l > 100000 else val_l
                                 c_f = val_c / 100.0 if val_c > 100000 else val_c
 
-                                # Locked saving with explicit selection key references
                                 cursor.execute("""
                                     INSERT OR REPLACE INTO market_history (asset, timeframe, timestamp, open, high, low, close)
                                     VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -146,7 +141,7 @@ if market_engine is not None and not st.session_state.get(state_key):
         pass
 
 # ==============================================================================
-# ⚡ LIVE RUNTIME OVERLAY PIPELINE (TICK DATA APPENDER)
+# ⚡ 4. REAL-TIME TICK INJECTOR MATRIX
 # ==============================================================================
 if market_engine is not None:
     try:
@@ -181,16 +176,15 @@ if market_engine is not None:
         pass
 
 # ==============================================================================
-# 📊 TECHNICAL MATHEMATICAL COEFFICIENTS GENERATOR (TIMEFRAME ALIGNED)
+# 📊 5. MATHEMATICAL TECHNICAL COEFFICIENTS COMPUTATION ENGINE
 # ==============================================================================
 master_history_array = []
 try:
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    # CRITICAL TRACKING BASELINE: Filter items strictly matching active chosen dropdown variables
     cursor.execute("""
         SELECT timestamp, open, high, low, close FROM market_history 
-        WHERE asset=? AND timeframe=? ORDER BY timestamp ASC LIMIT 200
+        WHERE asset=? AND timeframe=? ORDER BY timestamp ASC LIMIT 180
     """, (target_index, selected_tf))
     rows = cursor.fetchall()
     conn.close()
@@ -200,23 +194,19 @@ try:
     
     for idx, row in enumerate(rows):
         t, o, h, l, c = row
-        
-        # A. Clean VWAP Math Accruals
         typ_p = (h + l + c) / 3.0
         cum_pv += typ_p * 100.0
         cum_vol += 100.0
         vwap_val = round(cum_pv / cum_vol, 2)
         
-        # B. Smooth Linear Moving Averages Systems
+        # Aligned periods filters
         ma9 = round(sum(prices[max(0, idx-8):idx+1]) / len(prices[max(0, idx-8):idx+1]), 2)
         ma20 = round(sum(prices[max(0, idx-19):idx+1]) / len(prices[max(0, idx-19):idx+1]), 2)
         ma50 = round(sum(prices[max(0, idx-49):idx+1]) / len(prices[max(0, idx-49):idx+1]), 2)
         
-        # C. MACD 9 Line Vector Interpolation
         macd_line = round(ma9 - ma20, 2)
         signal_line = round(sum([p_ma9 - p_ma20 for p_ma9, p_ma20 in zip(prices[max(0, idx-8):idx+1], prices[max(0, idx-19):idx+1])]) / len(prices[max(0, idx-8):idx+1]), 2) if idx >= 8 else 0.0
         
-        # D. Supertrend Channels Parameters
         atr = (h - l) if (h - l) > 0 else 5.0
         st_val = round(((h + l) / 2.0) - (2.5 * atr) if c >= o else ((h + l) / 2.0) + (2.5 * atr), 2)
 
@@ -239,7 +229,7 @@ runtime_payload = {
     "master_history": master_history_array
 }
 
-st.sidebar.markdown(f"⏱️ **Interval Matrix:** `{selected_tf}`")
+st.sidebar.markdown(f"⏱️ **Interval Active:** `{selected_tf}`")
 st.sidebar.markdown(f"🗂️ **Total Sequenced Bars:** `{len(master_history_array)}`")
 
 if os.path.exists(html_file_path):
@@ -259,7 +249,7 @@ if os.path.exists(html_file_path):
     html_content = html_content.replace("<head>", f"<head>{injection_script}")
     components.html(html_content, height=720, scrolling=False)
     
-    time.sleep(2.0)
+    time.sleep(1.8)
     st.rerun()
 else:
     st.error("❌ 'index.html' file nahi mili!")

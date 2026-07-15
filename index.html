@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Advanced Multi-Indicator Terminal</title>
+    <title>Advanced Technical Indicator Terminal</title>
     <style>
         body, html {
             margin: 0; padding: 0; width: 100%; height: 100%;
@@ -39,8 +39,6 @@
     const ctx = canvas.getContext('2d');
     
     let chartData = [];
-    let maxVolZone = 0;
-    let maxOiZone = 0;
     let currentAsset = "NIFTY";
 
     // Zoom & Drag Pan Variables
@@ -63,9 +61,8 @@
 
     window.addEventListener('message', function(e) {
         const data = e.data;
-        
-        // Dynamic payload interception strategy mapping unified objects directly
         let payload = null;
+        
         if (data.type === "LIVE_TICK_UPDATE" && data.payload) {
             payload = data.payload;
             currentAsset = data.asset || "NIFTY";
@@ -78,72 +75,29 @@
 
         if (payload) {
             document.getElementById('lbl-asset').innerText = currentAsset + " LIVE";
-            
-            // Extract baseline models from payload arrays structure
             const assetData = payload[currentAsset] || payload;
             if (assetData) {
                 if (assetData.price) {
                     document.getElementById('lbl-price').innerText = (assetData.price / 100).toFixed(2);
                 }
                 chartData = assetData.master_history || [];
-                maxVolZone = assetData.max_vol_zone || 0;
-                maxOiZone = assetData.max_oi_zone || 0;
                 renderChart();
             }
         }
     });
 
-    // ==============================================================================
-    // 🖐️ MOBILE TOUCH GESTURE INTERCEPTORS
-    // ==============================================================================
+    // Mobile Gestures Interceptors
     const container = document.getElementById('chart-container');
-
     container.addEventListener('touchstart', function(e) {
-        if (e.touches.length === 1) {
-            isDragging = true;
-            startX = e.touches[0].clientX - panOffset;
-        } else if (e.touches.length === 2) {
-            isDragging = false;
-            lastTouchDistance = Math.hypot(
-                e.touches[0].clientX - e.touches[1].clientX,
-                e.touches[0].clientY - e.touches[1].clientY
-            );
-        }
-    }, { passive: false });
-
-    container.addEventListener('touchmove', function(e) {
-        e.preventDefault();
-        if (isDragging && e.touches.length === 1) {
-            panOffset = e.touches[0].clientX - startX;
-            renderChart();
-        } else if (e.touches.length === 2) {
-            const currentDistance = Math.hypot(
-                e.touches[0].clientX - e.touches[1].clientX,
-                e.touches[0].clientY - e.touches[1].clientY
-            );
-            if (lastTouchDistance > 0) {
-                const delta = currentDistance / lastTouchDistance;
-                zoomLevel = Math.max(0.3, Math.min(zoomLevel * delta, 4.0));
-                renderChart();
-            }
-            lastTouchDistance = currentDistance;
-        }
-    }, { passive: false });
-
-    container.addEventListener('touchend', function() {
-        isDragging = false;
-        lastTouchDistance = 0;
+        if (e.touches.length === 1) { isDragging = true; startX = e.touches[0].clientX - panOffset; }
     });
-
-    container.addEventListener('wheel', function(e) {
-        e.preventDefault();
-        const factor = e.deltaY < 0 ? 1.08 : 0.92;
-        zoomLevel = Math.max(0.3, Math.min(zoomLevel * factor, 4.0));
-        renderChart();
-    }, { passive: false });
+    container.addEventListener('touchmove', function(e) {
+        if (isDragging && e.touches.length === 1) { panOffset = e.touches[0].clientX - startX; renderChart(); }
+    });
+    container.addEventListener('touchend', function() { isDragging = false; });
 
     // ==============================================================================
-    // 🎨 PROPORTIONAL SCALE CHART GRAPHICS RENDERER ENGINE
+    // 🎨 CLEAN INDEPENDENT PRICE INDICATORS RENDERING ENGINE
     // ==============================================================================
     function renderChart() {
         const w = container.clientWidth;
@@ -167,7 +121,7 @@
         const activeBars = chartData.slice(-maxBarsVisible);
         const totalActive = activeBars.length;
 
-        // FIXED CRITICAL SCALE BOUNDS: Scale graph viewport STRICTLY using price values (OHLC) only
+        // Reset scaling limits strictly using actual price & overlay values
         let maxPrice = -Infinity;
         let minPrice = Infinity;
 
@@ -176,6 +130,12 @@
             if (d.low < minPrice) minPrice = d.low;
             if (d.vwap && d.vwap > maxPrice) maxPrice = d.vwap;
             if (d.vwap && d.vwap < minPrice) minPrice = d.vwap;
+            if (d.ma20 && d.ma20 > maxPrice) maxPrice = d.ma20;
+            if (d.ma20 && d.ma20 < minPrice) minPrice = d.ma20;
+            if (d.ma50 && d.ma50 > maxPrice) maxPrice = d.ma50;
+            if (d.ma50 && d.ma50 < minPrice) minPrice = d.ma50;
+            if (d.supertrend && d.supertrend > maxPrice) maxPrice = d.supertrend;
+            if (d.supertrend && d.supertrend < minPrice) minPrice = d.supertrend;
         });
 
         const priceRange = maxPrice - minPrice;
@@ -184,7 +144,7 @@
         minPrice -= verticalBuffer;
         const finalRange = maxPrice - minPrice;
 
-        // Draw Grid Lines Mapping System
+        // Horizontal Grid Scale lines
         ctx.strokeStyle = '#2a2e39';
         ctx.lineWidth = 1;
         ctx.fillStyle = '#848e9c';
@@ -200,35 +160,10 @@
             ctx.fillText(p.toFixed(2), paddingLeft + chartWidth + 6, y + 4);
         }
 
-        // ==============================================================================
-        // 📌 DRAW THE ZONES HORIZONTAL LINES (PROPORTIONAL TO PRICE WINDOW VIEWPORT)
-        // ==============================================================================
-        const drawProportionalZoneLine = (zonePrice, label, lineColor) => {
-            if (zonePrice >= minPrice && zonePrice <= maxPrice) {
-                const yZone = paddingTop + chartHeight * (1 - (zonePrice - minPrice) / finalRange);
-                ctx.strokeStyle = lineColor; 
-                ctx.lineWidth = 2; 
-                ctx.setLineDash([6, 4]);
-                ctx.beginPath(); 
-                ctx.moveTo(paddingLeft, yZone); 
-                ctx.lineTo(paddingLeft + chartWidth, yZone); 
-                ctx.stroke();
-                ctx.setLineDash([]); 
-                
-                ctx.fillStyle = lineColor; 
-                ctx.font = 'bold 10px sans-serif';
-                ctx.fillText(label + " (" + zonePrice.toFixed(2) + ")", paddingLeft + 10, yZone - 4);
-            }
-        };
-
-        // Render frozen breakout level horizontal arrays safely
-        if (maxVolZone > 0) drawProportionalZoneLine(maxVolZone, "📌 MAX VOL ZONE", "#ff9800");
-        if (maxOiZone > 0) drawProportionalZoneLine(maxOiZone, "📊 MAX OI ZONE", "#00bcd4");
-
         const candleSpacing = chartWidth / maxBarsVisible;
         const candleWidth = Math.max(candleSpacing * 0.72, 4.5);
 
-        // 2. PLOT CANDLES & CONTINUOUS INDICATORS PATHS
+        // Plot Candles & Continuous Overlay Lines (Left to Right linear)
         activeBars.forEach((bar, index) => {
             const x = (paddingLeft + chartWidth) - ((totalActive - 1 - index) * candleSpacing) - (candleSpacing / 2) + panOffset;
             if (x < paddingLeft || x > (paddingLeft + chartWidth)) return;
@@ -257,14 +192,14 @@
 
             ctx.fillRect(x - (candleWidth / 2), top, candleWidth, height);
 
-            // Overlay Indicators smoothly
+            // Connect indicators arrays smoothly
             if (index > 0) {
                 const prevX = x - candleSpacing;
                 const prevBar = activeBars[index - 1];
 
-                const drawOverlayLine = (pVal, cVal, lineColor) => {
+                const drawOverlayLine = (pVal, cVal, lineColor, lineWidth = 1.5) => {
                     if (pVal && cVal && pVal >= minPrice && pVal <= maxPrice && cVal >= minPrice && cVal <= maxPrice) {
-                        ctx.strokeStyle = lineColor; ctx.lineWidth = 1.5;
+                        ctx.strokeStyle = lineColor; ctx.lineWidth = lineWidth;
                         ctx.beginPath();
                         ctx.moveTo(prevX, paddingTop + chartHeight * (1 - (pVal - minPrice) / finalRange));
                         ctx.lineTo(x, paddingTop + chartHeight * (1 - (cVal - minPrice) / finalRange));
@@ -272,13 +207,14 @@
                     }
                 };
 
-                drawOverlayLine(prevBar.vwap, bar.vwap, '#ffeb3b');       // VWAP (Yellow)
-                drawOverlayLine(prevBar.ma20, bar.ma20, '#2196f3');       // MA20 (Blue)
-                drawOverlayLine(prevBar.supertrend, bar.supertrend, '#e91e63'); // Supertrend (Pink)
+                drawOverlayLine(prevBar.vwap, bar.vwap, '#ffeb3b', 1.5);             // VWAP (Yellow)
+                drawOverlayLine(prevBar.ma20, bar.ma20, '#2196f3', 1.5);             // MA20 (Blue)
+                drawOverlayLine(prevBar.ma50, bar.ma50, '#9c27b0', 1.5);             // MA50 (Purple)
+                drawOverlayLine(prevBar.supertrend, bar.supertrend, '#e91e63', 1.8); // Supertrend (Pink)
             }
         });
 
-        // 3. LOWER SUB-PANEL DESIGN (MACD WINDOW GENERATOR)
+        // Lower MACD subpanel Window
         const subTop = h - 100;
         const subHeight = 85;
         
@@ -300,11 +236,11 @@
             const yZero = subTop + (subHeight / 2);
             const yMacdHeight = -(macdVal * 3);
 
-            // Draw Histograms Columns
+            // Histogram columns
             ctx.fillStyle = macdVal >= 0 ? 'rgba(8, 153, 129, 0.6)' : 'rgba(242, 54, 69, 0.6)';
             ctx.fillRect(x - 1, yZero, 2, yMacdHeight);
 
-            // Draw Signal Line
+            // Signal Orange Line
             if (index > 0) {
                 const prevX = x - candleSpacing;
                 const prevSig = activeBars[index - 1].signal || 0;

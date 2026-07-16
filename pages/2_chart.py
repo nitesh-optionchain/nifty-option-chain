@@ -166,18 +166,25 @@ with st.sidebar.expander("Draw Manual Lines"):
     v_line_idx = st.number_input("Vertical Line Candle Offset", min_value=1, max_value=100, value=5)
     v_line_color = st.color_picker("Vertical Line Color", "#ff00ff")
 
-# 🔒 3. AUTOMATIC SDK AUTH HANDSHAKE (CACHED TO PREVENT STREAMLIT 2-SECOND SPAMMING)
-from engine import get_engine
+# ==============================================================================
+# 🔌 3. DIRECT SDK CONNECTORS LAYOUT (REPLACED GET_ENGINE WITH CLEAN NATIVE BLOCK)
+# ==============================================================================
+from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
+from nubra_python_sdk.marketdata.market_data import MarketData
 
-if "session_market_data" not in st.session_state:
-    st.session_state["session_market_data"] = get_engine()
+if "direct_market_engine" not in st.session_state:
+    try:
+        sdk_client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
+        st.session_state["direct_market_engine"] = MarketData(sdk_client)
+    except Exception:
+        st.session_state["direct_market_engine"] = None
 
-market_data = st.session_state["session_market_data"]
+market_data = st.session_state["direct_market_engine"]
 
 if market_data is None:
-    st.error("Market engine unavailable")
+    st.error("Market engine unavailable. Direct native SDK initialization failed.")
     st.stop()
-# ==============================================================================
+==============================================================================
 # 🧠 4. MATHEMATICAL INDICATORS COMPUTATION ENGINE
 # ==============================================================================
 def calculate_indicators(df, mult_value, period_value, rsi_pd_value, interval):
@@ -276,7 +283,7 @@ def calculate_indicators(df, mult_value, period_value, rsi_pd_value, interval):
     return df
 
 # ==============================================================================
-# 🚀 5. DATA LOADING ENGINE (STRICTLY TUNED FOR 2-3 DAYS AND RESPONSIVE SPACE)
+# 🚀 5. REAL RESPONSIVE DATA LOADING MATRIX (STRICTLY SLICED FOR 2-3 DAYS)
 # ==============================================================================
 df = None
 is_backup_loaded_flag = False
@@ -289,9 +296,9 @@ if load_from_backup and selected_backup_file:
         st.sidebar.success(f"Loaded Offline: {selected_backup_file}")
 
 if df is None:
-    with st.spinner(f"Requesting live chart dataset for {target_symbol}..."):
+    with st.spinner(f"Requesting strict 3-day dynamic dataset for {target_symbol}..."):
         end_dt = datetime.utcnow()
-        # FIXED: Lookback strictly optimized to 3 days max for clear space mapping
+        # LOCKED LOOKBACK FOR 3 DAYS MAXIMUM ACCORDING TO SPACE VISIBILITY NEEDS
         lookback_days = 30 if interval == "1d" else 3
         start_dt = end_dt - timedelta(days=lookback_days) 
         
@@ -361,7 +368,7 @@ latest_row = df.iloc[-1]
 current_ltp = float(latest_row['close'])
 
 # ==============================================================================
-# 👑 7. ACCURATE RATIO PRECISE ZONES
+# 👑 6. ACCURATE RATIO PRECISE ZONES
 # ==============================================================================
 if target_symbol == "NIFTY":
     base_upper = float(((current_ltp + 25) // 50) * 50 + 50)
@@ -422,7 +429,7 @@ header_html = f"""
 st.markdown(header_html, unsafe_allow_html=True)
 
 # ==============================================================================
-# 🖥️ 8. SINGLE SUBPLOT LAYOUT
+# 🖥️ 7. PLOTLY MULTI-INDICATORS GRAPH DECK
 # ==============================================================================
 fig = make_subplots(rows=1, cols=1)
 
@@ -500,9 +507,7 @@ fig.add_trace(gr.Scatter(
     name="Current LTP", showlegend=False
 ), row=1, col=1)
 
-# ==============================================================================
-# 🚀 DYNAMIC SPACE MATRIX RESPONSIVE FIT
-# ==============================================================================
+# Extract progressive peaks for dynamic viewing
 min_price = float(df['low'].min())
 max_price = float(df['high'].max())
 
@@ -554,5 +559,5 @@ with c2:
 with c3:
     st.warning(f"🟡 **Live Market LTP:** ₹{current_ltp:.2f}")
 
-# 🔄 AUTOMATIC 2-SECOND LIVE RE-RUN REFRESH
+# 🔄 AUTOMATIC 2-SECOND DYNAMIC SYNC REFRESH RATE
 st_autorefresh(interval=2000, key="plotly_auto_sync")

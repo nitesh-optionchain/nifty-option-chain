@@ -16,16 +16,19 @@ DB_PATH = os.path.join(BASE_DIR, "market_ticks.db")
 if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
 
+# ==============================================================================
+# 🗄️ 1. FIXED TIMEFRAME SEPARATED DATABASE MOTOR
+# ==============================================================================
 def init_market_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
+    # Safely adding timeframe to the primary key matrix to prevent candle overwriting
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS market_history (
-            asset TEXT, timestamp INTEGER, open REAL, high REAL, low REAL, close REAL,
-            PRIMARY KEY (asset, timestamp)
+            asset TEXT, timeframe TEXT, timestamp INTEGER, open REAL, high REAL, low REAL, close REAL,
+            PRIMARY KEY (asset, timeframe, timestamp)
         )
     """)
-    # Table for structural next-day frozen institutional zones
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS institutional_zones (
             asset TEXT, zone_type TEXT, price_level REAL, is_frozen INTEGER, last_updated INTEGER,
@@ -38,16 +41,26 @@ def init_market_db():
 init_market_db()
 
 # ==============================================================================
-# 🔌 SDK BROKER CONNECTORS
+# 🔌 2. SDK BROKER CONNECTORS
 # ==============================================================================
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
 
-try:
-    sdk_client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
-    market_engine = MarketData(sdk_client)
-except Exception:
-    market_engine = None
+if "nubra_engine_instance" not in st.session_state:
+    PHONE_NO = st.secrets.get("PHONE_NO") or os.environ.get("PHONE_NO")
+    MPIN = st.secrets.get("MPIN") or os.environ.get("MPIN")
+
+    if PHONE_NO and MPIN:
+        os.environ["PHONE_NO"] = str(PHONE_NO)
+        os.environ["MPIN"] = str(MPIN)
+    
+    try:
+        sdk_client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
+        st.session_state["nubra_engine_instance"] = MarketData(sdk_client)
+    except Exception:
+        st.session_state["nubra_engine_instance"] = None
+
+market_engine = st.session_state["nubra_engine_instance"]
 
 # Sidebar Framework Control Deck
 target_index = st.sidebar.selectbox("Active Asset Frame", ["NIFTY", "SENSEX"], index=0)
@@ -58,8 +71,10 @@ tf_map = {"5m": 5, "10m": 10, "15m": 15, "30m": 30, "1d": 1440}
 interval_minutes = tf_map[selected_tf]
 interval_seconds = interval_minutes * 60
 
+state_key = f"fetch_done_{target_index}_{selected_tf}"
+
 # ==============================================================================
-# 📊 3. INSTITUTIONAL VOL & OI FROZEN ZONE MATRIX ENGINE
+# 📊 3. INSTITUTIONAL VOL & OI ZONE FILTER PIPELINE
 # ==============================================================================
 def process_institutional_zones(asset_name, engine):
     if engine is None:
@@ -69,31 +84,28 @@ def process_institutional_zones(asset_name, engine):
         current_dt = datetime.now()
         is_market_hours = (current_dt.hour == 9 and current_dt.minute >= 15) or (10 <= current_dt.hour < 15) or (current_dt.hour == 15 and current_dt.minute <= 30)
         
-        # Check if we already have frozen layout zones from subah 9:20 validation window
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute("SELECT price_level, last_updated FROM institutional_zones WHERE asset=? AND zone_type='MAX_VOL'", (asset_name,))
         row = cursor.fetchone()
         
-        # If market is running and time crossed 9:20 and zone already loaded, freeze execution to prevent repainting lags
         if is_market_hours and current_dt.hour >= 9 and current_dt.minute > 20 and row:
             conn.close()
             return
 
-        # Fetch time-windowed analytics for volume/OI clustering tracking
         exch = "NSE" if asset_name == "NIFTY" else "BSE"
         end_d = datetime.utcnow()
-        start_d = end_d - timedelta(days=2)
+        start_d = end_d - timedelta(days=5)
         
+        # FIXED: Calling historical analytics tailored strictly to selected_tf parameter
         response = engine.historical_data({
             "exchange": exch, "type": "INDEX", "values": [asset_name],
             "fields": ["open", "high", "low", "close", "cumulative_volume", "cumulative_oi"],
             "startDate": start_d.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
             "endDate": end_d.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-            "interval": "1m", "intraDay": False, "realTime": False
+            "interval": selected_tf, "intraDay": False, "realTime": False
         })
         
-        # Pure native variable scanning layers to catch highest clusters
         max_vol_price = 0.0
         max_oi_price = 0.0
         highest_vol = -1
@@ -105,20 +117,42 @@ def process_institutional_zones(asset_name, engine):
                 for element in (vals if isinstance(vals, list) else [vals]):
                     chart = element.get(asset_name) if isinstance(element, dict) else getattr(element, asset_name, None)
                     if chart:
+                        opens = getattr(chart, 'open', None) or []
+                        highs = getattr(chart, 'high', None) or []
+                        lows = getattr(chart, 'low', None) or []
                         closes = getattr(chart, 'close', None) or []
                         vols = getattr(chart, 'cumulative_volume', None) or []
                         ois = getattr(chart, 'cumulative_oi', None) or []
                         
-                        for i in range(len(closes)):
-                            c_p = float(closes[i].value)
-                            c_p = c_p / 100.0 if c_p > 100000 else c_p
-                            
-                            if i < len(vols) and float(vols[i].value) > highest_vol:
-                                highest_vol = float(vols[i].value)
-                                max_vol_price = c_p
-                            if i < len(ois) and float(ois[i].value) > highest_oi:
-                                highest_oi = float(ois[i].value)
-                                max_oi_price = c_p
+                        for i in range(len(opens)):
+                            try:
+                                raw_ts = opens[i].timestamp
+                                sec_ts = int(raw_ts // 1000000000) if raw_ts > 9999999999 else int(raw_ts)
+                                
+                                val_o = float(opens[i].value)
+                                val_h = float(highs[i].value) if i < len(highs) else val_o
+                                val_l = float(lows[i].value) if i < len(lows) else val_o
+                                val_c = float(closes[i].value) if i < len(closes) else val_o
+
+                                o_f = val_o / 100.0 if val_o > 100000 else val_o
+                                h_f = val_h / 100.0 if val_h > 100000 else val_h
+                                l_f = val_l / 100.0 if val_l > 100000 else val_l
+                                c_f = val_c / 100.0 if val_c > 100000 else val_c
+                                
+                                # FIXED: Storing with explicit active timeframe layout filter tags
+                                cursor.execute("""
+                                    INSERT OR REPLACE INTO market_history (asset, timeframe, timestamp, open, high, low, close)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                                """, (asset_name, selected_tf, sec_ts, o_f, h_f, l_f, c_f))
+                                
+                                if i < len(vols) and float(vols[i].value) > highest_vol:
+                                    highest_vol = float(vols[i].value)
+                                    max_vol_price = c_f
+                                if i < len(ois) and float(ois[i].value) > highest_oi:
+                                    highest_oi = float(ois[i].value)
+                                    max_oi_price = c_f
+                            except Exception:
+                                continue
 
         if max_vol_price > 0:
             cursor.execute("INSERT OR REPLACE INTO institutional_zones VALUES (?, 'MAX_VOL', ?, 1, ?)", (asset_name, max_vol_price, now_ts))
@@ -129,10 +163,12 @@ def process_institutional_zones(asset_name, engine):
     except Exception:
         pass
 
-process_institutional_zones(target_index, market_engine)
+if market_engine is not None and not st.session_state.get(state_key):
+    process_institutional_zones(target_index, market_engine)
+    st.session_state[state_key] = True
 
 # ==============================================================================
-# 🔌 4. BROKER CORE STREAM TO DATABASE PIPELINE
+# 🔌 4. BROKER CORE STREAM LIVE RUNTIME APPPENDER
 # ==============================================================================
 if market_engine is not None:
     try:
@@ -141,31 +177,29 @@ if market_engine is not None:
         if snap and getattr(snap, 'price', None):
             raw_price = float(snap.price)
             base_val = raw_price / 100.0 if raw_price > 100000 else raw_price
-            
-            # Align anchor coordinates dynamically based on the user-selected timeframe window
             current_rounded_unix = (int(time.time()) // interval_seconds) * interval_seconds
             
             conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
-            cursor.execute("SELECT open, high, low, close FROM market_history WHERE asset=? AND timestamp=?", (target_index, current_rounded_unix))
+            cursor.execute("SELECT open, high, low, close FROM market_history WHERE asset=? AND timeframe=? AND timestamp=?", (target_index, selected_tf, current_rounded_unix))
             existing_candle = cursor.fetchone()
             
             if existing_candle:
                 cursor.execute("""
-                    UPDATE market_history SET high=?, low=?, close=? WHERE asset=? AND timestamp=?
-                """, (max(existing_candle[1], base_val), min(existing_candle[2], base_val), base_val, target_index, current_rounded_unix))
+                    UPDATE market_history SET high=?, low=?, close=? WHERE asset=? AND timeframe=? AND timestamp=?
+                """, (max(existing_candle[1], base_val), min(existing_candle[2], base_val), base_val, target_index, selected_tf, current_rounded_unix))
             else:
                 cursor.execute("""
-                    INSERT OR REPLACE INTO market_history (asset, timestamp, open, high, low, close)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """, (target_index, current_rounded_unix, base_val, base_val, base_val, base_val))
+                    INSERT OR REPLACE INTO market_history (asset, timeframe, timestamp, open, high, low, close)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (target_index, selected_tf, current_rounded_unix, base_val, base_val, base_val, base_val))
             conn.commit()
             conn.close()
     except Exception:
         pass
 
 # ==============================================================================
-# 🧠 5. INTERNAL MATHEMATICAL INDICATORS SUITE (VWAP, MA, MACD, SUPERTREND)
+# 🧠 5. COMPUTING TECHNICAL METRICS ALIGNED FOR SPLIT SLICES
 # ==============================================================================
 master_history_array = []
 max_vol_level = 0.0
@@ -174,10 +208,13 @@ max_oi_level = 0.0
 try:
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute("SELECT timestamp, open, high, low, close FROM market_history WHERE asset=? ORDER BY timestamp ASC LIMIT 250", (target_index,))
+    # FIXED: Selecting rows filtered strictly using the selected_tf active states parameters
+    cursor.execute("""
+        SELECT timestamp, open, high, low, close FROM market_history 
+        WHERE asset=? AND timeframe=? ORDER BY timestamp ASC LIMIT 250
+    """, (target_index, selected_tf))
     rows = cursor.fetchall()
     
-    # Read institutional zones boundaries fields
     cursor.execute("SELECT zone_type, price_level FROM institutional_zones WHERE asset=?", (target_index,))
     z_rows = cursor.fetchall()
     for z in z_rows:
@@ -185,7 +222,6 @@ try:
         if z[0] == 'MAX_OI': max_oi_level = z[1]
     conn.close()
     
-    # Mathematical computations layout
     cum_pv = 0.0
     cum_vol = 0.0
     prices = [r[4] for r in rows]
@@ -193,23 +229,19 @@ try:
     for idx, row in enumerate(rows):
         t, o, h, l, c = row
         
-        # A. VWAP Calculation
         typ_p = (h + l + c) / 3.0
-        sim_v = 100.0 # Standard simulated volume weights base
+        sim_v = 100.0
         cum_pv += typ_p * sim_v
         cum_vol += sim_v
         vwap_val = round(cum_pv / cum_vol, 2)
         
-        # B. Moving Averages Array Matrix
-        ma9 = round(sum(prices[max(0, idx-8):idx+1]) / len(prices[max(0, idx-8):idx+1]), 2) if idx >= 0 else c
-        ma20 = round(sum(prices[max(0, idx-19):idx+1]) / len(prices[max(0, idx-19):idx+1]), 2) if idx >= 0 else c
-        ma50 = round(sum(prices[max(0, idx-49):idx+1]) / len(prices[max(0, idx-49):idx+1]), 2) if idx >= 0 else c
+        ma9 = round(sum(prices[max(0, idx-8):idx+1]) / len(prices[max(0, idx-8):idx+1]), 2)
+        ma20 = round(sum(prices[max(0, idx-19):idx+1]) / len(prices[max(0, idx-19):idx+1]), 2)
+        ma50 = round(sum(prices[max(0, idx-49):idx+1]) / len(prices[max(0, idx-49):idx+1]), 2)
         
-        # C. Simple Math MACD (Fast 12, Slow 26, Signal 9)
-        macd_line = round(ma9 - ma20, 2) # Scaled fast tracker proxy
+        macd_line = round(ma9 - ma20, 2)
         signal_line = round(macd_line * 0.9, 2)
         
-        # D. Supertrend structural tracking logic limits
         atr_range = (h - l) if (h - l) > 0 else 5.0
         st_upper = round(((h + l) / 2.0) + (3.0 * atr_range), 2)
         st_lower = round(((h + l) / 2.0) - (3.0 * atr_range), 2)

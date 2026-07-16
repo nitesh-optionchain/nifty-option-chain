@@ -17,12 +17,11 @@ if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
 
 # ==============================================================================
-# 🗄️ 1. FIXED TIMEFRAME SEPARATED DATABASE MOTOR
+# 🗄️ 1. AUTOMATIC TIME-FRAME DATA ARCHITECTURE
 # ==============================================================================
 def init_market_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    # Safely adding timeframe to the primary key matrix to prevent candle overwriting
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS market_history (
             asset TEXT, timeframe TEXT, timestamp INTEGER, open REAL, high REAL, low REAL, close REAL,
@@ -41,7 +40,7 @@ def init_market_db():
 init_market_db()
 
 # ==============================================================================
-# 🔌 2. SDK BROKER CONNECTORS
+# 🔌 2. PRODUCTION SDK CONNECTORS
 # ==============================================================================
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
@@ -62,113 +61,85 @@ if "nubra_engine_instance" not in st.session_state:
 
 market_engine = st.session_state["nubra_engine_instance"]
 
-# Sidebar Framework Control Deck
+# Streamlit Active Workspace Sidebar Dropdowns
 target_index = st.sidebar.selectbox("Active Asset Frame", ["NIFTY", "SENSEX"], index=0)
 selected_tf = st.sidebar.selectbox("Timeframe Window", ["5m", "10m", "15m", "30m", "1d"], index=0)
 
-# Map intervals cleanly into operational minutes anchors
 tf_map = {"5m": 5, "10m": 10, "15m": 15, "30m": 30, "1d": 1440}
 interval_minutes = tf_map[selected_tf]
 interval_seconds = interval_minutes * 60
 
-state_key = f"fetch_done_{target_index}_{selected_tf}"
-
 # ==============================================================================
-# 📊 3. INSTITUTIONAL VOL & OI ZONE FILTER PIPELINE
+# 📊 3. STRICT HISTORICAL DATA SYNC GENERATOR (FAIL-SAFE)
 # ==============================================================================
-def process_institutional_zones(asset_name, engine):
+def force_sync_historical_bars(asset_name, engine, timeframe):
     if engine is None:
         return
     try:
-        now_ts = int(time.time())
-        current_dt = datetime.now()
-        is_market_hours = (current_dt.hour == 9 and current_dt.minute >= 15) or (10 <= current_dt.hour < 15) or (current_dt.hour == 15 and current_dt.minute <= 30)
-        
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        cursor.execute("SELECT price_level, last_updated FROM institutional_zones WHERE asset=? AND zone_type='MAX_VOL'", (asset_name,))
-        row = cursor.fetchone()
         
-        if is_market_hours and current_dt.hour >= 9 and current_dt.minute > 20 and row:
-            conn.close()
-            return
+        # Check current row count to verify database dry/empty state
+        cursor.execute("SELECT COUNT(*) FROM market_history WHERE asset=? AND timeframe=?", (asset_name, timeframe))
+        current_bars = cursor.fetchone()[0]
+        
+        # FIXED FAILSAFE: If database has less than 40 bars, force pull historical batch data instantly
+        if current_bars < 40:
+            exch = "NSE" if asset_name == "NIFTY" else "BSE"
+            end_d = datetime.utcnow()
+            start_d = end_d - timedelta(days=6) # 6 Days Deep Range Fetch
+            
+            response = engine.historical_data({
+                "exchange": exch, "type": "INDEX", "values": [asset_name],
+                "fields": ["open", "high", "low", "close"],
+                "startDate": start_d.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                "endDate": end_d.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                "interval": timeframe, 
+                "intraDay": False, "realTime": False
+            })
+            
+            if response and hasattr(response, 'result') and response.result:
+                for chart_data in response.result:
+                    vals = getattr(chart_data, 'values', None) or []
+                    for element in (vals if isinstance(vals, list) else [vals]):
+                        chart = element.get(asset_name) if isinstance(element, dict) else getattr(element, asset_name, None)
+                        if chart:
+                            opens = getattr(chart, 'open', None) or []
+                            highs = getattr(chart, 'high', None) or []
+                            lows = getattr(chart, 'low', None) or []
+                            closes = getattr(chart, 'close', None) or []
+                            
+                            for i in range(len(opens)):
+                                try:
+                                    raw_ts = opens[i].timestamp
+                                    sec_ts = int(raw_ts // 1000000000) if raw_ts > 9999999999 else int(raw_ts)
+                                    
+                                    o_f = float(opens[i].value)
+                                    h_f = float(highs[i].value) if i < len(highs) else o_f
+                                    l_f = float(lows[i].value) if i < len(lows) else o_f
+                                    c_f = float(closes[i].value) if i < len(closes) else o_f
 
-        exch = "NSE" if asset_name == "NIFTY" else "BSE"
-        end_d = datetime.utcnow()
-        start_d = end_d - timedelta(days=5)
-        
-        # FIXED: Calling historical analytics tailored strictly to selected_tf parameter
-        response = engine.historical_data({
-            "exchange": exch, "type": "INDEX", "values": [asset_name],
-            "fields": ["open", "high", "low", "close", "cumulative_volume", "cumulative_oi"],
-            "startDate": start_d.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-            "endDate": end_d.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-            "interval": selected_tf, "intraDay": False, "realTime": False
-        })
-        
-        max_vol_price = 0.0
-        max_oi_price = 0.0
-        highest_vol = -1
-        highest_oi = -1
-        
-        if response and hasattr(response, 'result') and response.result:
-            for chart_data in response.result:
-                vals = getattr(chart_data, 'values', None) or []
-                for element in (vals if isinstance(vals, list) else [vals]):
-                    chart = element.get(asset_name) if isinstance(element, dict) else getattr(element, asset_name, None)
-                    if chart:
-                        opens = getattr(chart, 'open', None) or []
-                        highs = getattr(chart, 'high', None) or []
-                        lows = getattr(chart, 'low', None) or []
-                        closes = getattr(chart, 'close', None) or []
-                        vols = getattr(chart, 'cumulative_volume', None) or []
-                        ois = getattr(chart, 'cumulative_oi', None) or []
-                        
-                        for i in range(len(opens)):
-                            try:
-                                raw_ts = opens[i].timestamp
-                                sec_ts = int(raw_ts // 1000000000) if raw_ts > 9999999999 else int(raw_ts)
-                                
-                                val_o = float(opens[i].value)
-                                val_h = float(highs[i].value) if i < len(highs) else val_o
-                                val_l = float(lows[i].value) if i < len(lows) else val_o
-                                val_c = float(closes[i].value) if i < len(closes) else val_o
+                                    o_f = o_f / 100.0 if o_f > 100000 else o_f
+                                    h_f = h_f / 100.0 if h_f > 100000 else h_f
+                                    l_f = l_f / 100.0 if l_f > 100000 else l_f
+                                    c_f = c_f / 100.0 if c_f > 100000 else c_f
 
-                                o_f = val_o / 100.0 if val_o > 100000 else val_o
-                                h_f = val_h / 100.0 if val_h > 100000 else val_h
-                                l_f = val_l / 100.0 if val_l > 100000 else val_l
-                                c_f = val_c / 100.0 if val_c > 100000 else val_c
-                                
-                                # FIXED: Storing with explicit active timeframe layout filter tags
-                                cursor.execute("""
-                                    INSERT OR REPLACE INTO market_history (asset, timeframe, timestamp, open, high, low, close)
-                                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                                """, (asset_name, selected_tf, sec_ts, o_f, h_f, l_f, c_f))
-                                
-                                if i < len(vols) and float(vols[i].value) > highest_vol:
-                                    highest_vol = float(vols[i].value)
-                                    max_vol_price = c_f
-                                if i < len(ois) and float(ois[i].value) > highest_oi:
-                                    highest_oi = float(ois[i].value)
-                                    max_oi_price = c_f
-                            except Exception:
-                                continue
-
-        if max_vol_price > 0:
-            cursor.execute("INSERT OR REPLACE INTO institutional_zones VALUES (?, 'MAX_VOL', ?, 1, ?)", (asset_name, max_vol_price, now_ts))
-        if max_oi_price > 0:
-            cursor.execute("INSERT OR REPLACE INTO institutional_zones VALUES (?, 'MAX_OI', ?, 1, ?)", (asset_name, max_oi_price, now_ts))
-        conn.commit()
+                                    cursor.execute("""
+                                        INSERT OR REPLACE INTO market_history (asset, timeframe, timestamp, open, high, low, close)
+                                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                                    """, (asset_name, timeframe, sec_ts, o_f, h_f, l_f, c_f))
+                                except Exception:
+                                    continue
+                conn.commit()
         conn.close()
     except Exception:
         pass
 
-if market_engine is not None and not st.session_state.get(state_key):
-    process_institutional_zones(target_index, market_engine)
-    st.session_state[state_key] = True
+# Force trigger un-locked baseline validation directly inside lifecycle loop
+force_sync_historical_bars(target_index, market_engine, selected_tf)
 
 # ==============================================================================
-# 🔌 4. BROKER CORE STREAM LIVE RUNTIME APPPENDER
+# ⚡ 4. LIVE RUNTIME INDEX PIPELINE
 # ==============================================================================
 if market_engine is not None:
     try:
@@ -199,36 +170,25 @@ if market_engine is not None:
         pass
 
 # ==============================================================================
-# 🧠 5. COMPUTING TECHNICAL METRICS ALIGNED FOR SPLIT SLICES
+# 🧠 5. INTERNAL TECHNICAL CALCULATIONS ARRAY DECK
 # ==============================================================================
 master_history_array = []
-max_vol_level = 0.0
-max_oi_level = 0.0
-
 try:
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    # FIXED: Selecting rows filtered strictly using the selected_tf active states parameters
     cursor.execute("""
         SELECT timestamp, open, high, low, close FROM market_history 
         WHERE asset=? AND timeframe=? ORDER BY timestamp ASC LIMIT 250
     """, (target_index, selected_tf))
     rows = cursor.fetchall()
-    
-    cursor.execute("SELECT zone_type, price_level FROM institutional_zones WHERE asset=?", (target_index,))
-    z_rows = cursor.fetchall()
-    for z in z_rows:
-        if z[0] == 'MAX_VOL': max_vol_level = z[1]
-        if z[0] == 'MAX_OI': max_oi_level = z[1]
     conn.close()
     
+    prices = [r[4] for r in rows]
     cum_pv = 0.0
     cum_vol = 0.0
-    prices = [r[4] for r in rows]
     
     for idx, row in enumerate(rows):
         t, o, h, l, c = row
-        
         typ_p = (h + l + c) / 3.0
         sim_v = 100.0
         cum_pv += typ_p * sim_v
@@ -243,9 +203,7 @@ try:
         signal_line = round(macd_line * 0.9, 2)
         
         atr_range = (h - l) if (h - l) > 0 else 5.0
-        st_upper = round(((h + l) / 2.0) + (3.0 * atr_range), 2)
-        st_lower = round(((h + l) / 2.0) - (3.0 * atr_range), 2)
-        supertrend = st_lower if c >= o else st_upper
+        supertrend = round(((h + l) / 2.0) - (2.5 * atr_range) if c >= o else ((h + l) / 2.0) + (2.5 * atr_range), 2)
         
         master_history_array.append({
             "time": int(t), "open": o, "high": h, "low": l, "close": c,
@@ -259,14 +217,13 @@ runtime_payload = {
     target_index: {
         "price": int((master_history_array[-1]["close"] * 100) if master_history_array else 0),
         "master_history": master_history_array,
-        "max_vol_zone": max_vol_level,
-        "max_oi_zone": max_oi_level
+        "max_vol_zone": 0.0,
+        "max_oi_zone": 0.0
     }
 }
 
 st.sidebar.markdown(f"**Interval Active:** `{selected_tf}`")
-st.sidebar.markdown(f"**Vol Zone Level:** `{max_vol_level}`")
-st.sidebar.markdown(f"**OI Zone Level:** `{max_oi_level}`")
+st.sidebar.markdown(f"**Total Sequenced Bars:** `{len(master_history_array)}`")
 
 if os.path.exists(html_file_path):
     with open(html_file_path, "r", encoding="utf-8") as f:

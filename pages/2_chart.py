@@ -18,7 +18,7 @@ if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
 
 # ==============================================================================
-# 🗄️ 1. TIMEFRAME INSULATED CLEAN STORAGE SCHEMA
+# 🗄️ 1. FIXED TIMEFRAME SEPARATED STORAGE SCHEMA
 # ==============================================================================
 def init_market_db():
     try:
@@ -78,7 +78,7 @@ if "cached_nubra_engine" not in st.session_state:
 
 market_engine = st.session_state["cached_nubra_engine"]
 
-# Active Control Dropdowns Framework Deck
+# Active Control Dropdowns Framework
 target_index = st.sidebar.selectbox("Active Asset Frame", ["NIFTY", "SENSEX"], index=0)
 selected_tf = st.sidebar.selectbox("Timeframe Window", ["5m", "10m", "15m", "30m", "1d"], index=0)
 
@@ -197,7 +197,7 @@ if market_engine is not None:
         pass
 
 # ==============================================================================
-# 🧠 5. CHRONOLOGICAL DATA ARRAY ALIGNER (FIXED SPRING ZIGZAG)
+# 🧠 5. CHRONOLOGICAL LEFT-TO-RIGHT ENGINE DECK (FIXED REVERSE PROGRESSION)
 # ==============================================================================
 master_history_array = []
 rows = []
@@ -214,26 +214,29 @@ try:
 except Exception:
     rows = []
 
-# FIXED: Simulated Fallback array maps strictly forward left-to-right chronology
+# FIXED: Fallback progressive curve now plots strictly from left to right chronologically
 if not rows or len(rows) < 10:
     curr_ts = (int(time.time()) // interval_seconds) * interval_seconds
     base_init = base_ltp
     
-    # Forward loop matrix generation (No overlap spring artifacts)
-    for k in range(0, 90):
+    # Generate clean forward chronological data tracking lines natively
+    for k in range(0, 91):
+        # Earliest candle left me hogi, latest candle right me
         t_sim = (curr_ts - (90 * interval_seconds)) + (k * interval_seconds)
         
-        # Smooth organic baseline price moves layout
-        wave = float(k * 1.8 if k % 2 == 0 else k * -1.5)
-        o_sim = base_init - 100.0 + wave
-        h_sim = o_sim + 18.0
-        l_sim = o_sim - 14.0
-        c_sim = o_sim + 8.0 if k % 3 == 0 else o_sim - 6.0
+        # FIXED PROGRESSION: Standard smooth drift wave baseline math
+        drift = float((k - 45) * 0.8) 
+        noise = float(4.0 if k % 2 == 0 else -3.5)
+        
+        o_sim = base_init + drift + noise
+        h_sim = o_sim + 12.0
+        l_sim = o_sim - 10.0
+        c_sim = o_sim + 5.0 if k % 3 == 0 else o_sim - 4.0
         
         master_history_array.append({
             "time": int(t_sim), "open": round(o_sim, 2), "high": round(h_sim, 2), "low": round(l_sim, 2), "close": round(c_sim, 2),
-            "vwap": round(o_sim + 2.0, 2), "ma9": round(o_sim - 1.5, 2), "ma20": round(o_sim - 4.5, 2), "ma50": round(o_sim - 12.0, 2),
-            "macd": 0.2, "signal": 0.1, "supertrend": round(l_sim - 3.5, 2)
+            "vwap": round(o_sim + 1.1, 2), "ma9": round(o_sim - 0.5, 2), "ma20": round(o_sim - 2.5, 2), "ma50": round(o_sim - 6.0, 2),
+            "macd": 0.1, "signal": 0.05, "supertrend": round(l_sim - 3.0, 2)
         })
 else:
     prices = [r[4] for r in rows]
@@ -262,7 +265,6 @@ else:
             "macd": macd_line, "signal": signal_line, "supertrend": supertrend
         })
 
-# DUAL PAYLOAD MATRIX MAPPING (Locks dynamic switches on window reload)
 runtime_payload = {
     "current_asset": target_index,
     "price": int(base_ltp * 100),

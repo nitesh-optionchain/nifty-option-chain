@@ -1,4 +1,3 @@
-# pages/2_chart.py
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -167,7 +166,7 @@ with st.sidebar.expander("Draw Manual Lines"):
     v_line_color = st.color_picker("Vertical Line Color", "#ff00ff")
 
 # ==============================================================================
-# 🔌 3. DIRECT SDK CONNECTORS LAYOUT (REPLACED GET_ENGINE WITH CLEAN NATIVE BLOCK)
+# 🔌 3. DIRECT NATIVE SDK CONNECTION MATRIX
 # ==============================================================================
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
@@ -184,7 +183,7 @@ market_data = st.session_state["direct_market_engine"]
 if market_data is None:
     st.error("Market engine unavailable. Direct native SDK initialization failed.")
     st.stop()
-==============================================================================
+# ==============================================================================
 # 🧠 4. MATHEMATICAL INDICATORS COMPUTATION ENGINE
 # ==============================================================================
 def calculate_indicators(df, mult_value, period_value, rsi_pd_value, interval):
@@ -192,24 +191,14 @@ def calculate_indicators(df, mult_value, period_value, rsi_pd_value, interval):
     df['dma_20'] = df['close'].rolling(window=20, min_periods=1).mean()
     df['dma_50'] = df['close'].rolling(window=50, min_periods=1).mean()
     
-    # 💧 SAFE INTRA-DAY VWAP CALCULATOR WITH TIMEFRAME GUARD
     if 'volume' in df.columns and interval != "1d":
-        df['volume_clean'] = (
-            df['volume']
-            .replace([np.inf, -np.inf], 0)
-            .fillna(0)
-        )
+        df['volume_clean'] = df['volume'].replace([np.inf, -np.inf], 0).fillna(0)
         typical_price = (df['high'] + df['low'] + df['close']) / 3
         pv = typical_price * df['volume_clean']
         cum_pv = pv.cumsum()
         cum_v = df['volume_clean'].cumsum()
-        df['vwap'] = np.where(
-            cum_v > 0,
-            cum_pv / cum_v,
-            df['close']
-        )
+        df['vwap'] = np.where(cum_v > 0, cum_pv / cum_v, df['close'])
         
-        # dynamic array calculation filter to prevent distortion
         min_c, max_c = df['close'].min(), df['close'].max()
         df['vwap'] = np.where((df['vwap'] < min_c * 0.95) | (df['vwap'] > max_c * 1.05), np.nan, df['vwap'])
     else:
@@ -234,7 +223,6 @@ def calculate_indicators(df, mult_value, period_value, rsi_pd_value, interval):
     df['supertrend'] = np.nan
     df['trend'] = 1
 
-    # First candle initialization
     df.iloc[0, df.columns.get_loc('supertrend')] = df['lower_band'].iloc[0]
     
     for i in range(1, len(df)):
@@ -283,7 +271,7 @@ def calculate_indicators(df, mult_value, period_value, rsi_pd_value, interval):
     return df
 
 # ==============================================================================
-# 🚀 5. REAL RESPONSIVE DATA LOADING MATRIX (STRICTLY SLICED FOR 2-3 DAYS)
+# 🚀 5. REAL DATA LOADING ENGINE (STRICTLY SLICED FOR 2-3 DAYS BACKUP)
 # ==============================================================================
 df = None
 is_backup_loaded_flag = False
@@ -298,7 +286,6 @@ if load_from_backup and selected_backup_file:
 if df is None:
     with st.spinner(f"Requesting strict 3-day dynamic dataset for {target_symbol}..."):
         end_dt = datetime.utcnow()
-        # LOCKED LOOKBACK FOR 3 DAYS MAXIMUM ACCORDING TO SPACE VISIBILITY NEEDS
         lookback_days = 30 if interval == "1d" else 3
         start_dt = end_dt - timedelta(days=lookback_days) 
         
@@ -429,7 +416,7 @@ header_html = f"""
 st.markdown(header_html, unsafe_allow_html=True)
 
 # ==============================================================================
-# 🖥️ 7. PLOTLY MULTI-INDICATORS GRAPH DECK
+# 🖥️ 7. PLOTLY CHART DECK
 # ==============================================================================
 fig = make_subplots(rows=1, cols=1)
 
@@ -507,7 +494,6 @@ fig.add_trace(gr.Scatter(
     name="Current LTP", showlegend=False
 ), row=1, col=1)
 
-# Extract progressive peaks for dynamic viewing
 min_price = float(df['low'].min())
 max_price = float(df['high'].max())
 

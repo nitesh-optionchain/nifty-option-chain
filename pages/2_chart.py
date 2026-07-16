@@ -51,13 +51,12 @@ except Exception:
     pass
 
 if current_ltp == 0.0:
-    fallback_prices = {"NIFTY": 24081.10, "BANKNIFTY": 52350.20, "SENSEX": 77156.35}
+    fallback_prices = {"NIFTY": 24081.10, "BANKNIFTY": 57602.00, "SENSEX": 77156.35}
     current_ltp = fallback_prices.get(target_symbol, yesterday_close)
 
 net_change = current_ltp - yesterday_close
 change_pct = (net_change / yesterday_close) * 100.0 if yesterday_close > 0 else 0.0
 
-# 🌟 DYNAMIC MATRIX SELECTION FOR THE INDEX BOX NEO GLOW
 if net_change >= 0:
     color_class = "text-market-up"
     index_glow_class = "index-glow-green"
@@ -125,7 +124,7 @@ if "ticks" in st.session_state and isinstance(st.session_state.ticks, dict) and 
 p_point = round((sup_low + dem_high) / 2)
 now_ist = datetime.now().strftime("%Y-%m-%d %H:%M:%S IST")
 
-# ================= 5. HIGH-END DYNAMIC HTML/CSS ENGINE =================
+# ================= 5. DYNAMIC HTML/CSS VISUAL ENGINE =================
 st.html(f"""
 <style>
     .block-container {{
@@ -134,7 +133,7 @@ st.html(f"""
         max-width: 95% !important;
     }}
     
-    /* 🌟 MAIN BOX WITH EXTERNAL CYAN/BLUE NEO GLOW AURA */
+    /* MAIN CONTROLLER CONTAINER WITH CYAN/BLUE NEO GLOW */
     .terminal-container {{
         background-color: #151922 !important;
         border: 1px solid #00d2ff !important;
@@ -161,7 +160,7 @@ st.html(f"""
         letter-spacing: 1px !important;
     }}
     
-    /* 🌟 INDEX LTP BOX SWITCHABLE REAL-TIME NEO GLOW LIGHTS */
+    /* DYNAMIC MARKET LOG IN LTPS BADGES */
     .live-ltp-badge-container {{
         font-size: 15px !important;
         font-weight: 800 !important;
@@ -187,7 +186,7 @@ st.html(f"""
     .text-market-up {{ color: #00ff66 !important; font-weight: 900 !important; }}
     .text-market-down {{ color: #ff3333 !important; font-weight: 900 !important; }}
     
-    /* THIN INNER CONTENT LAYOUT BLOCKS */
+    /* DETAILED THIN BORDER BOXES RE-ADDED */
     .zones-grid {{
         display: flex !important;
         gap: 16px !important;
@@ -198,11 +197,24 @@ st.html(f"""
     .zone-card {{
         flex: 1 !important;
         min-width: 260px !important;
-        border-radius: 6px !important;
+        border-radius: 8px !important;
         padding: 20px 12px !important;
         text-align: center !important;
         background-color: #1a202c !important;
-        border: 1px solid #232d3f !important;
+        transition: all 0.3s ease !important;
+    }}
+    
+    /* Solid Thin Borders Restored */
+    .card-resistance {{
+        border: 1px solid #ef4444 !important;
+    }}
+    
+    .card-pivot {{
+        border: 1px solid #eab308 !important;
+    }}
+    
+    .card-support {{
+        border: 1px solid #22c55e !important;
     }}
     
     .card-label {{
@@ -241,15 +253,15 @@ st.html(f"""
     </div>
     
     <div class="zones-grid">
-        <div class="zone-card">
+        <div class="zone-card card-resistance">
             <div class="card-label">🔴 SUPPLY / RESISTANCE (DR ZONE)</div>
             <div class="card-value val-red">{int(sup_low)} - {int(sup_high)}</div>
         </div>
-        <div class="zone-card">
+        <div class="zone-card card-pivot">
             <div class="card-label">⚖️ INSTITUTIONAL BALANCE PIVOT (PP)</div>
             <div class="card-value val-yellow">{int(p_point)}</div>
         </div>
-        <div class="zone-card">
+        <div class="zone-card card-support">
             <div class="card-label">🟢 DEMAND / SUPPORT (DS ZONE)</div>
             <div class="card-value val-green">{int(dem_low)} - {int(dem_high)}</div>
         </div>

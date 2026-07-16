@@ -1,4 +1,3 @@
-# pages/2_chart.py
 import streamlit as st
 import time
 import os
@@ -8,7 +7,7 @@ from streamlit_autorefresh import st_autorefresh
 # ================= 1. PAGE SETUP & MODERN DARK STYLES =================
 st.set_page_config(layout="wide", page_title="SmartWealth Premium Zones Terminal")
 
-# 🌟 ULTRA MODERN CYBERPUNK THEME DESIGN
+# 🌟 ULTRA MODERN CYBERPUNK THEME DESIGN (COMPLETELY MINIFIED)
 st.markdown("""
     <style>
         .block-container {
@@ -17,7 +16,6 @@ st.markdown("""
             max-width: 95% !important;
         }
         
-        /* Main Matrix Dashboard Wrapper */
         .terminal-container {
             background: linear-gradient(145deg, #0b0f19 0%, #030712 100%);
             border: 1px solid #1e293b;
@@ -27,7 +25,6 @@ st.markdown("""
             margin-bottom: 25px;
         }
         
-        /* Asset Info Row */
         .asset-header-row {
             display: flex;
             justify-content: space-between;
@@ -56,15 +53,17 @@ st.markdown("""
             box-shadow: 0 0 15px rgba(250, 204, 21, 0.2);
         }
         
-        /* Grid Matrix Boxes */
         .zones-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            display: flex;
             gap: 20px;
             margin-top: 15px;
+            flex-wrap: wrap;
+            width: 100%;
         }
         
         .zone-card {
+            flex: 1;
+            min-width: 280px;
             border-radius: 8px;
             padding: 20px;
             text-align: center;
@@ -72,40 +71,21 @@ st.markdown("""
             box-shadow: 0 4px 6px rgba(0,0,0,0.2);
         }
         
-        /* Red Resistance Card */
         .card-resistance {
             background: linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, rgba(185, 28, 28, 0.03) 100%);
             border: 1px solid rgba(239, 68, 68, 0.4);
-            box-shadow: inset 0 0 12px rgba(239, 68, 68, 0.05);
-        }
-        .card-resistance:hover {
-            border-color: #ef4444;
-            box-shadow: 0 0 20px rgba(239, 68, 68, 0.2);
         }
         
-        /* Green Support Card */
         .card-support {
             background: linear-gradient(135deg, rgba(34, 197, 94, 0.08) 0%, rgba(21, 128, 61, 0.03) 100%);
             border: 1px solid rgba(34, 197, 94, 0.4);
-            box-shadow: inset 0 0 12px rgba(34, 197, 94, 0.05);
-        }
-        .card-support:hover {
-            border-color: #22c55e;
-            box-shadow: 0 0 20px rgba(34, 197, 94, 0.2);
         }
         
-        /* Yellow Pivot Card */
         .card-pivot {
             background: linear-gradient(135deg, rgba(234, 179, 8, 0.08) 0%, rgba(161, 98, 7, 0.03) 100%);
             border: 1px solid rgba(234, 179, 8, 0.4);
-            box-shadow: inset 0 0 12px rgba(234, 179, 8, 0.05);
-        }
-        .card-pivot:hover {
-            border-color: #eab308;
-            box-shadow: 0 0 20px rgba(234, 179, 8, 0.2);
         }
         
-        /* Typography inside boxes */
         .card-label {
             font-size: 13px;
             font-weight: 800;
@@ -135,7 +115,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 🔌 2. NATIVE SDK CONNECTION MATRIX (DIRECT LOGINS WITH SESSION CODES)
+# 🔌 2. NATIVE SDK CONNECTION MATRIX
 # ==============================================================================
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
@@ -150,7 +130,7 @@ if "direct_market_engine" not in st.session_state:
 market_data = st.session_state["direct_market_engine"]
 
 if market_data is None:
-    st.error("❌ Market engine connection failed. Please check credentials configuration in Secrets.")
+    st.error("❌ Market engine connection failed. Check credentials configuration.")
     st.stop()
 
 # ==============================================================================
@@ -159,7 +139,6 @@ if market_data is None:
 st.sidebar.header("⚙️ Terminal Controller")
 target_symbol = st.sidebar.selectbox("🔤 Select Active Index", ["NIFTY", "BANKNIFTY", "SENSEX"], index=0)
 
-# Realtime Data Polling Loop
 exchange_type = "BSE" if target_symbol == "SENSEX" else "NSE"
 current_ltp = 0.0
 
@@ -171,15 +150,13 @@ try:
 except Exception:
     pass
 
-# Safe Fallback values if live connection delays out during non-market hours
 if current_ltp == 0.0:
-    fallback_prices = {"NIFTY": 24140.50, "BANKNIFTY": 52350.20, "SENSEX": 79420.80}
+    fallback_prices = {"NIFTY": 24096.35, "BANKNIFTY": 52350.20, "SENSEX": 79420.80}
     current_ltp = fallback_prices.get(target_symbol, 24000.0)
 
 # ==============================================================================
-# 🧠 4. MATHEMATICAL EXTRACTION ZONES (ORIGINAL ALIGNED RATIOS PARSER)
+# 🧠 4. MATHEMATICAL EXTRACTION ZONES
 # ==============================================================================
-# Using exact proven mathematical breakout filters from your reference code
 if target_symbol == "NIFTY":
     base_upper = float(((current_ltp + 25) // 50) * 50 + 50)
     sup_low = base_upper
@@ -220,29 +197,25 @@ terminal_html = f"""
         <div class="asset-title">🎯 Next Day Institutional Levels Grid</div>
         <div class="live-ltp-badge">⚡ {target_symbol} LTP: ₹{current_ltp:.2f}</div>
     </div>
-    
     <div class="zones-grid">
         <div class="zone-card card-resistance">
             <div class="card-label">🔴 Supply / Resistance (DR Zone)</div>
             <div class="card-value val-red">{int(sup_low)} - {int(sup_high)}</div>
         </div>
-        
         <div class="zone-card card-pivot">
             <div class="card-label">⚖️ Institutional Balance Pivot (PP)</div>
             <div class="card-value val-yellow">{int(p_point)}</div>
         </div>
-        
         <div class="zone-card card-support">
             <div class="card-label">🟢 Demand / Support (DS Zone)</div>
             <div class="card-value val-green">{int(dem_low)} - {int(dem_high)}</div>
         </div>
     </div>
-    
     <div class="sync-timestamp">🔒 Cloud Broker Node Connected | Last Dynamic Refresh: {now_ist}</div>
 </div>
 """
 
-# Dynamic template injection into the center page layout
+# FIXED: Injecting HTML strings properly as structured code blocks
 st.markdown(terminal_html, unsafe_allow_html=True)
 
 # Multi-indicators structural info table sheet below the terminal box
@@ -255,5 +228,4 @@ with c2:
 with c3:
     st.metric(label="Calculated Base Lower Threshold", value=f"₹{int(dem_high)}")
 
-# 🔄 AUTOMATIC 2-SECOND DYNAMIC SYNC REFRESH LOOP
 st_autorefresh(interval=2000, key="premium_zones_auto_sync")

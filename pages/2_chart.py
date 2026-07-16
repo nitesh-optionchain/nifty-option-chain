@@ -1,3 +1,4 @@
+# pages/2_chart.py
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -165,9 +166,13 @@ with st.sidebar.expander("Draw Manual Lines"):
     v_line_idx = st.number_input("Vertical Line Candle Offset", min_value=1, max_value=100, value=5)
     v_line_color = st.color_picker("Vertical Line Color", "#ff00ff")
 
-# 🔒 3. AUTOMATIC SDK AUTH HANDSHAKE
+# 🔒 3. AUTOMATIC SDK AUTH HANDSHAKE (CACHED TO PREVENT STREAMLIT 2-SECOND SPAMMING)
 from engine import get_engine
-market_data = get_engine()
+
+if "session_market_data" not in st.session_state:
+    st.session_state["session_market_data"] = get_engine()
+
+market_data = st.session_state["session_market_data"]
 
 if market_data is None:
     st.error("Market engine unavailable")
@@ -182,13 +187,22 @@ def calculate_indicators(df, mult_value, period_value, rsi_pd_value, interval):
     
     # 💧 SAFE INTRA-DAY VWAP CALCULATOR WITH TIMEFRAME GUARD
     if 'volume' in df.columns and interval != "1d":
-        df['volume_clean'] = df['volume'].replace([np.inf, -np.inf], 0).fillna(0)
+        df['volume_clean'] = (
+            df['volume']
+            .replace([np.inf, -np.inf], 0)
+            .fillna(0)
+        )
         typical_price = (df['high'] + df['low'] + df['close']) / 3
         pv = typical_price * df['volume_clean']
         cum_pv = pv.cumsum()
         cum_v = df['volume_clean'].cumsum()
-        df['vwap'] = np.where(cum_v > 0, cum_pv / cum_v, df['close'])
+        df['vwap'] = np.where(
+            cum_v > 0,
+            cum_pv / cum_v,
+            df['close']
+        )
         
+        # dynamic array calculation filter to prevent distortion
         min_c, max_c = df['close'].min(), df['close'].max()
         df['vwap'] = np.where((df['vwap'] < min_c * 0.95) | (df['vwap'] > max_c * 1.05), np.nan, df['vwap'])
     else:
@@ -213,6 +227,7 @@ def calculate_indicators(df, mult_value, period_value, rsi_pd_value, interval):
     df['supertrend'] = np.nan
     df['trend'] = 1
 
+    # First candle initialization
     df.iloc[0, df.columns.get_loc('supertrend')] = df['lower_band'].iloc[0]
     
     for i in range(1, len(df)):
@@ -261,7 +276,7 @@ def calculate_indicators(df, mult_value, period_value, rsi_pd_value, interval):
     return df
 
 # ==============================================================================
-# 🚀 5. REAL DATA LOADING ENGINE (STRICT 3 DAYS FETCH MATRIX AS REQUESTED)
+# 🚀 5. DATA LOADING ENGINE (STRICTLY TUNED FOR 2-3 DAYS AND RESPONSIVE SPACE)
 # ==============================================================================
 df = None
 is_backup_loaded_flag = False
@@ -274,9 +289,9 @@ if load_from_backup and selected_backup_file:
         st.sidebar.success(f"Loaded Offline: {selected_backup_file}")
 
 if df is None:
-    with st.spinner(f"Requesting 3-Day historical chart dataset for {target_symbol}..."):
+    with st.spinner(f"Requesting live chart dataset for {target_symbol}..."):
         end_dt = datetime.utcnow()
-        # FIXED: Restricted strictly to 3 days depth window for intraday profiles
+        # FIXED: Lookback strictly optimized to 3 days max for clear space mapping
         lookback_days = 30 if interval == "1d" else 3
         start_dt = end_dt - timedelta(days=lookback_days) 
         
@@ -346,7 +361,7 @@ latest_row = df.iloc[-1]
 current_ltp = float(latest_row['close'])
 
 # ==============================================================================
-# 👑 6. ACCURATE RATIO PRECISE ZONES
+# 👑 7. ACCURATE RATIO PRECISE ZONES
 # ==============================================================================
 if target_symbol == "NIFTY":
     base_upper = float(((current_ltp + 25) // 50) * 50 + 50)
@@ -407,7 +422,7 @@ header_html = f"""
 st.markdown(header_html, unsafe_allow_html=True)
 
 # ==============================================================================
-# 🖥️ 6. SINGLE SUBPLOT LAYOUT
+# 🖥️ 8. SINGLE SUBPLOT LAYOUT
 # ==============================================================================
 fig = make_subplots(rows=1, cols=1)
 
@@ -485,6 +500,9 @@ fig.add_trace(gr.Scatter(
     name="Current LTP", showlegend=False
 ), row=1, col=1)
 
+# ==============================================================================
+# 🚀 DYNAMIC SPACE MATRIX RESPONSIVE FIT
+# ==============================================================================
 min_price = float(df['low'].min())
 max_price = float(df['high'].max())
 
@@ -536,5 +554,5 @@ with c2:
 with c3:
     st.warning(f"🟡 **Live Market LTP:** ₹{current_ltp:.2f}")
 
-# 🔄 AUTO REFRESH LOOP ENGINE (HAR 2 SECOND MEIN AUTO REFRESH HOGA)
+# 🔄 AUTOMATIC 2-SECOND LIVE RE-RUN REFRESH
 st_autorefresh(interval=2000, key="plotly_auto_sync")

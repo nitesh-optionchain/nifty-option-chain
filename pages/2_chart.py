@@ -35,7 +35,7 @@ def init_market_db():
 init_market_db()
 
 # ==============================================================================
-# 🔑 2. AUTH LOCAL TOKEN LAYER
+# 🔑 2. AUTH LOCAL TOKEN SECURITY CACHE LAYER
 # ==============================================================================
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
@@ -83,7 +83,7 @@ interval_minutes = tf_map[selected_tf]
 interval_seconds = interval_minutes * 60
 
 # ==============================================================================
-# 📊 3. HISTORICAL REAL DATA PIPELINE (BUG FIXED & NO DEMO SIMULATION)
+# 📊 3. DYNAMIC HISTORICAL DATA NORMALIZATION ENGINE (NO DEMO CODE BALANCED)
 # ==============================================================================
 def pull_broker_history(asset_name, engine, timeframe):
     if engine is None:
@@ -91,7 +91,7 @@ def pull_broker_history(asset_name, engine, timeframe):
     try:
         exch = "NSE" if asset_name == "NIFTY" else "BSE"
         end_d = datetime.utcnow()
-        start_d = end_d - timedelta(days=3)  # Pure 3 Days Range Fetch
+        start_d = end_d - timedelta(days=3) # Strictly scoped to 3 days memory allocation
         
         api_payload = {
             "exchange": exch, "type": "INDEX", "values": [asset_name],
@@ -102,7 +102,7 @@ def pull_broker_history(asset_name, engine, timeframe):
         }
         
         response = None
-        for method_name in ["historical_data", "get_historical_data", "get_history"]:
+        for method_name in ["historical_data", "get_historical_data", "get_history", "history"]:
             if hasattr(engine, method_name):
                 try:
                     response = getattr(engine, method_name)(api_payload)
@@ -122,13 +122,19 @@ def pull_broker_history(asset_name, engine, timeframe):
                 chart_data_list = response.result
             elif isinstance(response, dict) and 'result' in response:
                 chart_data_list = response['result']
+            elif isinstance(response, list):
+                chart_data_list = response
 
         if chart_data_list:
             conn = sqlite3.connect(DB_PATH, timeout=10)
             cursor = conn.cursor()
             for chart_data in chart_data_list:
-                # FIXED: Mismatch dict variable reference completely corrected
-                vals = getattr(chart_data, 'values', None) or (chart_data.get('values') if isinstance(chart_data, dict) else [])
+                vals = []
+                if isinstance(chart_data, dict):
+                    vals = chart_data.get('values', [])
+                else:
+                    vals = getattr(chart_data, 'values', None) or []
+                
                 for element in (vals if isinstance(vals, list) else [vals]):
                     chart = element.get(asset_name) if isinstance(element, dict) else getattr(element, asset_name, None)
                     if chart:
@@ -162,7 +168,7 @@ def pull_broker_history(asset_name, engine, timeframe):
 pull_broker_history(target_index, market_engine, selected_tf)
 
 # ==============================================================================
-# ⚡ 4. REAL-TIME TICK STREAM (LIVE PRICE UPDATE)
+# ⚡ 4. REAL-TIME INTERACTIVE LIVE POLLING OVERLAY
 # ==============================================================================
 base_ltp = 0.0
 
@@ -205,7 +211,7 @@ if market_engine is not None:
         pass
 
 # ==============================================================================
-# 🧠 5. STRICT REAL DATA LOADING (ZERO SIMULATION REPEAT OR DEMO BARS)
+# 🧠 5. CHRONOLOGICAL UNPACK LOADING PIPELINE
 # ==============================================================================
 master_history_array = []
 rows = []
@@ -222,7 +228,7 @@ try:
 except Exception:
     rows = []
 
-# ALL DEMO OR SINUSOIDAL CODES ARE COMPLETELY REMOVED HERE
+# ABSOLUTE FILTER GATE: No artificial demo generator rows exist anymore.
 if not rows:
     st.warning(f"⚠️ Dynamic Sync Status: Fetching real historical database rows from {target_index}. Please check SDK response connection.")
     st.stop()
@@ -233,7 +239,7 @@ else:
             "time": int(t), "open": o, "high": h, "low": l, "close": c
         })
 
-# Compute metrics dynamically strictly on real database values
+# Mathematical analytics compiled metrics indicators block
 prices = [m["close"] for m in master_history_array]
 for idx, m in enumerate(master_history_array):
     o, h, l, c = m["open"], m["high"], m["low"], m["close"]
@@ -259,11 +265,11 @@ runtime_payload = {
     }
 }
 
-st.sidebar.markdown(f"**Asset:** `{target_index}` | **TF:** `{selected_tf}`")
-st.sidebar.markdown(f"**Real Active Bars:** `{len(master_history_array)}`")
+st.sidebar.markdown(f"**Asset Framework:** `{target_index}` | **TF:** `{selected_tf}`")
+st.sidebar.markdown(f"**Real Aligned Bars:** `{len(master_history_array)}`")
 
 if os.path.exists(TOKEN_CACHE_FILE):
-    st.sidebar.success("🔑 Token Connected")
+    st.sidebar.success("🔑 Security Token Locked")
 
 if os.path.exists(html_file_path):
     with open(html_file_path, "r", encoding="utf-8") as f:

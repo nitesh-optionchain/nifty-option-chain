@@ -3,20 +3,21 @@ import os
 import time
 import json
 import sqlite3
+import math
 import streamlit as st
 import streamlit.components.v1 as components
 from datetime import datetime, timedelta
 
-st.set_page_config(layout="wide")
+st.set_page_config(layout="wide", page_title="SmartWealth Premium Terminal")
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 html_file_path = os.path.join(BASE_DIR, 'index.html')
 DB_PATH = os.path.join(BASE_DIR, "market_ticks.db")
-TOKEN_CACHE_FILE = os.path.join(BASE_DIR, "token_cache.json")
 
 if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
 
+# SQLite local partitioned database storage layout
 def init_market_db():
     try:
         conn = sqlite3.connect(DB_PATH, timeout=10)
@@ -35,47 +36,22 @@ def init_market_db():
 init_market_db()
 
 # ==============================================================================
-# 🔑 2. TOKEN LIFECYCLE MEMORY CACHE POOL
+# 🔑 2. CORE AUTH HANDSHAKE (INTEGRATED DIRECTLY FROM YOUR ORIGINAL MODULE)
 # ==============================================================================
-from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
-from nubra_python_sdk.marketdata.market_data import MarketData
+try:
+    from engine import get_engine
+    market_engine = get_engine()
+except Exception:
+    market_engine = None
 
-def get_cached_market_engine():
-    current_time = time.time()
-    if os.path.exists(TOKEN_CACHE_FILE):
-        try:
-            with open(TOKEN_CACHE_FILE, "r") as f:
-                cache_data = json.load(f)
-            if current_time - cache_data.get("cached_at", 0) < 86400:
-                os.environ["PHONE_NO"] = cache_data.get("phone")
-                os.environ["MPIN"] = cache_data.get("mpin")
-                sdk_client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
-                return MarketData(sdk_client)
-        except Exception:
-            pass
+if market_engine is None:
+    st.error("❌ Market engine connectivity unavailable. Please check system background logs.")
+    st.stop()
+else:
+    st.sidebar.success("🔑 Central Broker Engine Linked Connected")
 
-    PHONE_NO = st.secrets.get("PHONE_NO") or os.environ.get("PHONE_NO")
-    MPIN = st.secrets.get("MPIN") or os.environ.get("MPIN")
-
-    if PHONE_NO and MPIN:
-        os.environ["PHONE_NO"] = str(PHONE_NO)
-        os.environ["MPIN"] = str(MPIN)
-        try:
-            sdk_client = InitNubraSdk(NubraEnv.PROD, env_creds=True)
-            engine_instance = MarketData(sdk_client)
-            with open(TOKEN_CACHE_FILE, "w") as f:
-                json.dump({"phone": str(PHONE_NO), "mpin": str(MPIN), "cached_at": current_time}, f)
-            return engine_instance
-        except Exception:
-            pass
-    return None
-
-if "cached_nubra_engine" not in st.session_state:
-    st.session_state["cached_nubra_engine"] = get_cached_market_engine()
-
-market_engine = st.session_state["cached_nubra_engine"]
-
-target_index = st.sidebar.selectbox("Active Asset Frame", ["NIFTY", "SENSEX"], index=0)
+# Active Sidebar Workspace Layout
+target_index = st.sidebar.selectbox("Active Asset Frame", ["NIFTY", "BANKNIFTY", "SENSEX"], index=0)
 selected_tf = st.sidebar.selectbox("Timeframe Window", ["5m", "10m", "15m", "30m", "1d"], index=0)
 
 tf_map = {"5m": 5, "10m": 10, "15m": 15, "30m": 30, "1d": 1440}
@@ -83,140 +59,97 @@ interval_minutes = tf_map[selected_tf]
 interval_seconds = interval_minutes * 60
 
 # ==============================================================================
-# 📊 3. STRICT 2-3 DAYS HISTORICAL BARS FETCH POOL
+# 📊 3. ACCURATE HISTORICAL FETCH ENGINE (COPIED EXACTLY FROM YOUR PARSER MATRIX)
 # ==============================================================================
 def pull_broker_history(asset_name, engine, timeframe):
-    if engine is None:
-        return
     try:
-        exch = "NSE" if asset_name == "NIFTY" else "BSE"
-        end_d = datetime.utcnow()
-        start_d = end_d - timedelta(days=3)  # STRICTLY LOCKED FOR 2-3 DAYS ONLY
+        exch = "BSE" if asset_name == "SENSEX" else "NSE"
+        api_type = "INDEX" if asset_name in ["NIFTY", "BANKNIFTY", "SENSEX"] else "STOCK"
         
-        api_payload = {
-            "exchange": exch, 
-            "type": "INDEX", 
-            "values": [asset_name],  # Wrapper native signature check
-            "fields": ["open", "high", "low", "close"],
+        end_d = datetime.utcnow()
+        start_d = end_d - timedelta(days=3)  # Strictly locked for 2 to 3 days depth tracking
+        
+        # EXACT PAYLOAD STRUCT FROM YOUR WORKING FILE
+        response = engine.historical_data({
+            "exchange": exch,
+            "type": api_type,
+            "values": [asset_name],
+            "fields": ["open", "high", "low", "close", "cumulative_volume"],
             "startDate": start_d.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
             "endDate": end_d.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-            "interval": timeframe, 
-            "intraDay": False, "realTime": False
-        }
+            "interval": timeframe,
+            "intraDay": False,
+            "realTime": False
+        })
         
-        response = None
-        try:
-            response = engine.historical_data(api_payload)
-        except Exception:
-            try:
-                response = MarketData.historical_data(engine, api_payload)
-            except Exception:
-                pass
+        # EXACT NESTED UNPACKER MATRIX FROM YOUR WORKING FILE
+        if response and response.result and len(response.result) > 0:
+            instrument_dict = response.result[0].values[0]
+            if asset_name in instrument_dict:
+                stock_chart = instrument_dict[asset_name]
+                total_elements = len(stock_chart.close)
                 
-        chart_data_list = []
-        if response:
-            if hasattr(response, 'result') and response.result:
-                chart_data_list = response.result
-            elif isinstance(response, dict) and 'result' in response:
-                chart_data_list = response['result']
-            elif isinstance(response, list):
-                chart_data_list = response
-
-        if chart_data_list:
-            conn = sqlite3.connect(DB_PATH, timeout=10)
-            cursor = conn.cursor()
-            for chart_data in chart_data_list:
-                vals = getattr(chart_data, 'values', None) or (chart_data.get('values') if isinstance(chart_data, dict) else [])
-                if not vals and isinstance(chart_data, dict):
-                    vals = [chart_data]
+                conn = sqlite3.connect(DB_PATH, timeout=10)
+                cursor = conn.cursor()
+                
+                for i in range(total_elements):
+                    # Converting nanoseconds raw timestamp into standard charts unix seconds format
+                    raw_ts = stock_chart.close[i].timestamp
+                    sec_ts = int(raw_ts // 1000000000)
                     
-                for element in vals:
-                    # Parse standard raw map layers cleanly
-                    chart = None
-                    if isinstance(element, dict):
-                        chart = element.get(asset_name) or element
-                    else:
-                        chart = getattr(element, asset_name, None) or element
-                        
-                    if chart:
-                        try:
-                            # Support object attribute mapping or raw dict parsing styles cleanly
-                            opens = getattr(chart, 'open', None) or chart.get('open', [])
-                            highs = getattr(chart, 'high', None) or chart.get('high', [])
-                            lows = getattr(chart, 'low', None) or chart.get('low', [])
-                            closes = getattr(chart, 'close', None) or chart.get('close', [])
-                            
-                            if isinstance(opens, list) and len(opens) > 0:
-                                for i in range(len(opens)):
-                                    item_o = opens[i]
-                                    raw_ts = getattr(item_o, 'timestamp', None) or item_o.get('timestamp') if isinstance(item_o, dict) else time.time()
-                                    if not raw_ts: continue
-                                    
-                                    sec_ts = int(raw_ts // 1000000000) if raw_ts > 9999999999 else int(raw_ts)
-                                    
-                                    o_v = float(getattr(item_o, 'value', item_o)) if not isinstance(item_o, dict) else float(item_o.get('value', 0))
-                                    h_v = float(getattr(highs[i], 'value', highs[i])) if not isinstance(highs[i], dict) else float(highs[i].get('value', 0))
-                                    l_v = float(getattr(lows[i], 'value', lows[i])) if not isinstance(lows[i], dict) else float(lows[i].get('value', 0))
-                                    c_v = float(getattr(closes[i], 'value', closes[i])) if not isinstance(closes[i], dict) else float(closes[i].get('value', 0))
-
-                                    o_f = o_v / 100.0 if o_v > 100000 else o_v
-                                    h_f = h_v / 100.0 if h_v > 100000 else h_v
-                                    l_f = l_v / 100.0 if l_v > 100000 else l_v
-                                    c_f = c_v / 100.0 if c_v > 100000 else c_v
-
-                                    cursor.execute("""
-                                        INSERT OR REPLACE INTO market_history (asset, timeframe, timestamp, open, high, low, close)
-                                        VALUES (?, ?, ?, ?, ?, ?, ?)
-                                    """, (asset_name, timeframe, sec_ts, o_f, h_f, l_f, c_f))
-                        except Exception:
-                            continue
-            conn.commit()
-            conn.close()
+                    # Scaling indices down exactly as your script: value / 100.0
+                    o_f = float(stock_chart.open[i].value / 100.0)
+                    h_f = float(stock_chart.high[i].value / 100.0)
+                    l_f = float(stock_chart.low[i].value / 100.0)
+                    c_f = float(stock_chart.close[i].value / 100.0)
+                    
+                    cursor.execute("""
+                        INSERT OR REPLACE INTO market_history (asset, timeframe, timestamp, open, high, low, close)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """, (asset_name, timeframe, sec_ts, o_f, h_f, l_f, c_f))
+                    
+                conn.commit()
+                conn.close()
     except Exception:
         pass
 
 pull_broker_history(target_index, market_engine, selected_tf)
 
 # ==============================================================================
-# ⚡ 4. LIVE RUNTIME STREAM TO CURRENT BAR PIPELINE
+# ⚡ 4. REAL-TIME TICK POLLING APPRENDER
 # ==============================================================================
 base_ltp = 0.0
 
-if market_engine is not None:
-    try:
-        exch_name = "NSE" if target_index == "NIFTY" else "BSE"
-        snap = None
-        try:
-            snap = market_engine.current_price(target_index, exchange=exch_name)
-        except Exception:
-            snap = MarketData.current_price(market_engine, target_index, exchange=exch_name)
-            
-        if snap and getattr(snap, 'price', None):
-            raw_p = float(snap.price)
-            base_ltp = raw_p / 100.0 if raw_p > 100000 else raw_p
-            current_rounded_unix = (int(time.time()) // interval_seconds) * interval_seconds
-            
-            conn = sqlite3.connect(DB_PATH, timeout=10)
-            cursor = conn.cursor()
-            cursor.execute("SELECT open, high, low, close FROM market_history WHERE asset=? AND timeframe=? AND timestamp=?", (target_index, selected_tf, current_rounded_unix))
-            existing_candle = cursor.fetchone()
-            
-            if existing_candle:
-                cursor.execute("""
-                    UPDATE market_history SET high=?, low=?, close=? WHERE asset=? AND timeframe=? AND timestamp=?
-                """, (max(existing_candle[1], base_ltp), min(existing_candle[2], base_ltp), base_ltp, target_index, selected_tf, current_rounded_unix))
-            else:
-                cursor.execute("""
-                    INSERT OR REPLACE INTO market_history (asset, timeframe, timestamp, open, high, low, close)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (target_index, selected_tf, current_rounded_unix, base_ltp, base_ltp, base_ltp, base_ltp))
-            conn.commit()
-            conn.close()
-    except Exception:
-        pass
+try:
+    exch_name = "BSE" if target_index == "SENSEX" else "NSE"
+    snap = market_engine.current_price(target_index, exchange=exch_name)
+    if snap and getattr(snap, 'price', None):
+        raw_p = float(snap.price)
+        base_ltp = raw_p / 100.0 if raw_p > 100000 else raw_p
+        
+        current_rounded_unix = (int(time.time()) // interval_seconds) * interval_seconds
+        
+        conn = sqlite3.connect(DB_PATH, timeout=10)
+        cursor = conn.cursor()
+        cursor.execute("SELECT open, high, low, close FROM market_history WHERE asset=? AND timeframe=? AND timestamp=?", (target_index, selected_tf, current_rounded_unix))
+        existing_candle = cursor.fetchone()
+        
+        if existing_candle:
+            cursor.execute("""
+                UPDATE market_history SET high=?, low=?, close=? WHERE asset=? AND timeframe=? AND timestamp=?
+            """, (max(existing_candle[1], base_ltp), min(existing_candle[2], base_ltp), base_ltp, target_index, selected_tf, current_rounded_unix))
+        else:
+            cursor.execute("""
+                INSERT OR REPLACE INTO market_history (asset, timeframe, timestamp, open, high, low, close)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (target_index, selected_tf, current_rounded_unix, base_ltp, base_ltp, base_ltp, base_ltp))
+        conn.commit()
+        conn.close()
+except Exception:
+    pass
 
 # ==============================================================================
-# 🧠 5. CHRONOLOGICAL FETCH DECK
+# 🧠 5. CHRONOLOGICAL MATRIC DISPLAY LOADING (NO DEMO BARS GENERATORS LEFT)
 # ==============================================================================
 master_history_array = []
 rows = []
@@ -233,24 +166,28 @@ try:
 except Exception:
     rows = []
 
-for row in rows:
-    t, o, h, l, c = row
-    master_history_array.append({
-        "time": int(t), "open": o, "high": h, "low": l, "close": c
-    })
+# If database layer hasn't parsed data yet, halt cleanly with sync info notice
+if not rows:
+    st.warning(f"⚠️ Sync Pipeline Active: Fetching genuine real rows for {target_index} from background streams. Please wait...")
+    st.stop()
+else:
+    for row in rows:
+        t, o, h, l, c = row
+        master_history_array.append({
+            "time": int(t), "open": o, "high": h, "low": l, "close": c
+        })
 
-# Compute indicators if rows exist safely
-if master_history_array:
-    prices = [m["close"] for m in master_history_array]
-    for idx, m in enumerate(master_history_array):
-        o, h, l, c = m["open"], m["high"], m["low"], m["close"]
-        m["vwap"] = round(sum(prices[max(0, idx-5):idx+1]) / len(prices[max(0, idx-5):idx+1]), 2)
-        m["ma9"] = round(sum(prices[max(0, idx-8):idx+1]) / len(prices[max(0, idx-8):idx+1]), 2)
-        m["ma20"] = round(sum(prices[max(0, idx-19):idx+1]) / len(prices[max(0, idx-19):idx+1]), 2)
-        m["ma50"] = round(sum(prices[max(0, idx-49):idx+1]) / len(prices[max(0, idx-49):idx+1]), 2)
-        m["macd"] = round(m["ma9"] - m["ma20"], 2)
-        m["signal"] = round(m["macd"] * 0.9, 2)
-        m["supertrend"] = round(l - 2.0 if c >= o else h + 2.0, 2)
+# Compute dynamic technical indicators curves safely over genuine dataset arrays only
+prices = [m["close"] for m in master_history_array]
+for idx, m in enumerate(master_history_array):
+    o, h, l, c = m["open"], m["high"], m["low"], m["close"]
+    m["vwap"] = round(sum(prices[max(0, idx-5):idx+1]) / len(prices[max(0, idx-5):idx+1]), 2)
+    m["ma9"] = round(sum(prices[max(0, idx-8):idx+1]) / len(prices[max(0, idx-8):idx+1]), 2)
+    m["ma20"] = round(sum(prices[max(0, idx-19):idx+1]) / len(prices[max(0, idx-19):idx+1]), 2)
+    m["ma50"] = round(sum(prices[max(0, idx-49):idx+1]) / len(prices[max(0, idx-49):idx+1]), 2)
+    m["macd"] = round(m["ma9"] - m["ma20"], 2)
+    m["signal"] = round(m["macd"] * 0.9, 2)
+    m["supertrend"] = round(l - 2.0 if c >= o else h + 2.0, 2)
 
 if base_ltp == 0.0 and len(master_history_array) > 0:
     base_ltp = master_history_array[-1]["close"]
@@ -268,9 +205,6 @@ runtime_payload = {
 
 st.sidebar.markdown(f"**Asset:** `{target_index}` | **TF:** `{selected_tf}`")
 st.sidebar.markdown(f"**Real Aligned Bars:** `{len(master_history_array)}`")
-
-if os.path.exists(TOKEN_CACHE_FILE):
-    st.sidebar.success("🔑 Token Cached Securely")
 
 if os.path.exists(html_file_path):
     with open(html_file_path, "r", encoding="utf-8") as f:

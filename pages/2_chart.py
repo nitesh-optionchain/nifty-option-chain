@@ -4,10 +4,10 @@ import os
 from datetime import datetime
 from streamlit_autorefresh import st_autorefresh
 
-# ================= 1. PAGE SETUP & MODERN DARK STYLES =================
+# ================= 1. PAGE SETUP & NEO-GLOW CYBERPUNK STYLES =================
 st.set_page_config(layout="wide", page_title="SmartWealth Premium Zones Terminal")
 
-# 🌟 ULTRA MODERN CYBERPUNK THEME DESIGN (COMPLETELY MINIFIED)
+# 🌟 PREMIUM CLASS HIGH-GLOW BORDERS INJECTION SHEET
 st.markdown("""
     <style>
         .block-container {
@@ -16,12 +16,13 @@ st.markdown("""
             max-width: 95% !important;
         }
         
+        /* Main Cyber Frame Box */
         .terminal-container {
-            background: linear-gradient(145deg, #0b0f19 0%, #030712 100%);
-            border: 1px solid #1e293b;
+            background-color: #0b0f19;
+            border: 2px solid #1e293b;
             border-radius: 12px;
             padding: 24px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+            box-shadow: 0 10px 35px rgba(0, 0, 0, 0.8);
             margin-bottom: 25px;
         }
         
@@ -31,32 +32,46 @@ st.markdown("""
             align-items: center;
             border-bottom: 1px solid #1e293b;
             padding-bottom: 15px;
-            margin-bottom: 20px;
+            margin-bottom: 25px;
         }
         
         .asset-title {
-            font-size: 26px;
+            font-size: 22px;
             font-weight: 900;
-            color: #f3f4f6;
+            color: #ffffff;
             letter-spacing: 1px;
             text-transform: uppercase;
         }
         
-        .live-ltp-badge {
-            font-size: 22px;
-            font-weight: 900;
-            color: #facc15;
-            background: rgba(250, 204, 21, 0.1);
-            border: 1px solid rgba(250, 204, 21, 0.4);
-            padding: 6px 16px;
+        /* UPPER RIGHT EDGE GLOWING BADGE */
+        .live-ltp-badge-container {
+            font-size: 16px;
+            font-weight: 800;
+            padding: 8px 16px;
             border-radius: 6px;
-            box-shadow: 0 0 15px rgba(250, 204, 21, 0.2);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            letter-spacing: 0.5px;
+            background-color: #030712;
         }
         
+        .badge-up {
+            color: #4ade80 !important;
+            border: 1px solid #22c55e;
+            box-shadow: 0 0 15px rgba(34, 197, 94, 0.25);
+        }
+        
+        .badge-down {
+            color: #f87171 !important;
+            border: 1px solid #ef4444;
+            box-shadow: 0 0 15px rgba(239, 68, 68, 0.25);
+        }
+        
+        /* MATRIX BLOCKS STRUCTURE WITH SOLID GLOWS */
         .zones-grid {
             display: flex;
             gap: 20px;
-            margin-top: 15px;
             flex-wrap: wrap;
             width: 100%;
         }
@@ -65,50 +80,62 @@ st.markdown("""
             flex: 1;
             min-width: 280px;
             border-radius: 8px;
-            padding: 20px;
+            padding: 24px 15px;
             text-align: center;
+            background-color: #030712;
             transition: all 0.3s ease;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
         }
         
+        /* 🔴 Supply Neo Glow Border */
         .card-resistance {
-            background: linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, rgba(185, 28, 28, 0.03) 100%);
-            border: 1px solid rgba(239, 68, 68, 0.4);
+            border: 2px solid #ef4444 !important;
+            box-shadow: 0 0 15px rgba(239, 68, 68, 0.3);
+        }
+        .card-resistance:hover {
+            box-shadow: 0 0 25px rgba(239, 68, 68, 0.55);
         }
         
-        .card-support {
-            background: linear-gradient(135deg, rgba(34, 197, 94, 0.08) 0%, rgba(21, 128, 61, 0.03) 100%);
-            border: 1px solid rgba(34, 197, 94, 0.4);
-        }
-        
+        /* 🟡 Pivot Neo Glow Border */
         .card-pivot {
-            background: linear-gradient(135deg, rgba(234, 179, 8, 0.08) 0%, rgba(161, 98, 7, 0.03) 100%);
-            border: 1px solid rgba(234, 179, 8, 0.4);
+            border: 2px solid #eab308 !important;
+            box-shadow: 0 0 15px rgba(234, 179, 8, 0.3);
+        }
+        .card-pivot:hover {
+            box-shadow: 0 0 25px rgba(234, 179, 8, 0.55);
+        }
+        
+        /* 🟢 Support Neo Glow Border */
+        .card-support {
+            border: 2px solid #22c55e !important;
+            box-shadow: 0 0 15px rgba(34, 197, 94, 0.3);
+        }
+        .card-support:hover {
+            box-shadow: 0 0 25px rgba(34, 197, 94, 0.55);
         }
         
         .card-label {
-            font-size: 13px;
+            font-size: 12px;
             font-weight: 800;
             color: #9ca3af;
             text-transform: uppercase;
             letter-spacing: 1.5px;
-            margin-bottom: 8px;
+            margin-bottom: 14px;
         }
         
         .card-value {
-            font-size: 28px;
+            font-size: 30px;
             font-weight: 900;
             letter-spacing: 0.5px;
         }
         .val-red { color: #f87171; }
-        .val-green { color: #4ade80; }
         .val-yellow { color: #fde047; }
+        .val-green { color: #4ade80; }
         
         .sync-timestamp {
             font-size: 11px;
             color: #4b5563;
             text-align: right;
-            margin-top: 15px;
+            margin-top: 22px;
             font-family: monospace;
         }
     </style>
@@ -130,7 +157,7 @@ if "direct_market_engine" not in st.session_state:
 market_data = st.session_state["direct_market_engine"]
 
 if market_data is None:
-    st.error("❌ Market engine connection failed. Check credentials configuration.")
+    st.error("❌ Market engine connection failed. Verify secrets configuration tokens.")
     st.stop()
 
 # ==============================================================================
@@ -150,9 +177,26 @@ try:
 except Exception:
     pass
 
+# Intraday Net change anchors mappings
+prev_close_map = {"NIFTY": 24050.00, "BANKNIFTY": 52200.00, "SENSEX": 79300.00}
+fallback_prices = {"NIFTY": 24094.50, "BANKNIFTY": 52350.20, "SENSEX": 79420.80}
+
 if current_ltp == 0.0:
-    fallback_prices = {"NIFTY": 24096.35, "BANKNIFTY": 52350.20, "SENSEX": 79420.80}
     current_ltp = fallback_prices.get(target_symbol, 24000.0)
+
+# DIRECTIONAL CALCULATIONS GRID FOR THE HEADER CORNER INDICATOR
+base_close_p = prev_close_map.get(target_symbol, current_ltp)
+net_change = current_ltp - base_close_p
+change_pct = (net_change / base_close_p) * 100.0
+
+if net_change >= 0:
+    ltp_badge_class = "badge-up"
+    market_arrow = "▲"
+    sign_prefix = "+"
+else:
+    ltp_badge_class = "badge-down"
+    market_arrow = "▼"
+    sign_prefix = ""
 
 # ==============================================================================
 # 🧠 4. MATHEMATICAL EXTRACTION ZONES
@@ -187,45 +231,39 @@ else:
 p_point = round((sup_low + dem_high + current_ltp) / 3)
 
 # ==============================================================================
-# 🖥️ 5. LIVE PREMIUM HTML CONTAINER RENDERING
+# 🖥️ 5. LIVE PREMIUM CONTAINER INJECTION FRAMEWORK
 # ==============================================================================
 now_ist = datetime.now().strftime("%Y-%m-%d %H:%M:%S IST")
 
-terminal_html = f"""
+# Render elements dynamically using partitioned isolated layouts
+st.markdown(f"""
 <div class="terminal-container">
     <div class="asset-header-row">
-        <div class="asset-title">🎯 Next Day Institutional Levels Grid</div>
-        <div class="live-ltp-badge">⚡ {target_symbol} LTP: ₹{current_ltp:.2f}</div>
+        <div class="asset-title">NEXT DAY INSTITUTIONAL LEVELS GRID</div>
+        <div class="live-ltp-badge-container {ltp_badge_class}">
+            <span>⚡ {target_symbol} LTP: ₹{current_ltp:.2f}</span>
+            <span>{market_arrow} {sign_prefix}{net_change:.2f} ({sign_prefix}{change_pct:.2f}%)</span>
+        </div>
     </div>
+    
     <div class="zones-grid">
         <div class="zone-card card-resistance">
-            <div class="card-label">🔴 Supply / Resistance (DR Zone)</div>
+            <div class="card-label">🔴 SUPPLY / RESISTANCE (DR ZONE)</div>
             <div class="card-value val-red">{int(sup_low)} - {int(sup_high)}</div>
         </div>
         <div class="zone-card card-pivot">
-            <div class="card-label">⚖️ Institutional Balance Pivot (PP)</div>
+            <div class="card-label">⚖️ INSTITUTIONAL BALANCE PIVOT (PP)</div>
             <div class="card-value val-yellow">{int(p_point)}</div>
         </div>
         <div class="zone-card card-support">
-            <div class="card-label">🟢 Demand / Support (DS Zone)</div>
+            <div class="card-label">🟢 DEMAND / SUPPORT (DS ZONE)</div>
             <div class="card-value val-green">{int(dem_low)} - {int(dem_high)}</div>
         </div>
     </div>
+    
     <div class="sync-timestamp">🔒 Cloud Broker Node Connected | Last Dynamic Refresh: {now_ist}</div>
 </div>
-"""
+""", unsafe_allow_html=True)
 
-# FIXED: Injecting HTML strings properly as structured code blocks
-st.markdown(terminal_html, unsafe_allow_html=True)
-
-# Multi-indicators structural info table sheet below the terminal box
-st.markdown("### 📊 Operational Quick Reference Analytics")
-c1, c2, c3 = st.columns(3)
-with c1:
-    st.metric(label="Target Asset Frame", value=target_symbol)
-with c2:
-    st.metric(label="Calculated Base Upper Threshold", value=f"₹{int(sup_low)}")
-with c3:
-    st.metric(label="Calculated Base Lower Threshold", value=f"₹{int(dem_high)}")
-
+# 🔄 AUTOMATIC 2-SECOND DYNAMIC SYNC REFRESH LOOP
 st_autorefresh(interval=2000, key="premium_zones_auto_sync")

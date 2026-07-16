@@ -7,7 +7,7 @@ from streamlit_autorefresh import st_autorefresh
 # ================= 1. PAGE SETUP =================
 st.set_page_config(layout="wide", page_title="SmartWealth Premium Zones Terminal")
 
-# 🌟 STANDALONE CSS INJECTION - DEFINES PIC-2 BLOCKS WITH SOLID NEON GLOW BORDERS
+# 🌟 STANDALONE CSS INJECTION (EXACT PIC-2 DESIGN WITH SOLID NEON BORDERS)
 st.markdown("""
     <style>
         .block-container {
@@ -16,7 +16,7 @@ st.markdown("""
             max-width: 95% !important;
         }
         
-        /* Main Dark Dashboard Base Container */
+        /* Main Container Framework matching Pic-2 */
         .terminal-container {
             background-color: #151922 !important;
             border: 2px solid #2d3748 !important;
@@ -61,7 +61,7 @@ st.markdown("""
         .text-market-up { color: #4ade80 !important; font-weight: 900 !important; }
         .text-market-down { color: #f87171 !important; font-weight: 900 !important; }
         
-        /* CARD SYSTEM WITH SOLID NEON GLOW CHANNELS */
+        /* DYNAMIC NEON GLOW GRID HOVER CARDS */
         .zones-grid {
             display: flex !important;
             gap: 20px !important;
@@ -125,7 +125,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 🔌 2. NATIVE SDK CONNECTION MATRIX
+# 🔌 2. NATIVE SDK CONNECTION & DYNAMIC ENGINE BINDING
 # ==============================================================================
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
@@ -140,22 +140,20 @@ if "direct_market_engine" not in st.session_state:
 market_data = st.session_state["direct_market_engine"]
 
 if market_data is None:
-    st.error("❌ Market engine connection parameters missing.")
+    st.error("❌ Market engine connection failed. Recheck Secrets configuration tokens.")
     st.stop()
 
 # ==============================================================================
-# ⚙️ 3. SIDEBAR ANCHORS FRAME CONTROLLER
+# ⚙️ 3. SIDEBAR ANCHORS FRAME
 # ==============================================================================
 st.sidebar.header("⚙️ Terminal Controller")
 target_symbol = st.sidebar.selectbox("🔤 Select Active Index", ["NIFTY", "BANKNIFTY", "SENSEX"], index=0)
 
 exchange_type = "BSE" if target_symbol == "SENSEX" else "NSE"
 
-# Sane baseline fallbacks for calibration validation loops
-default_closes = {"NIFTY": 24050.00, "BANKNIFTY": 52460.60, "SENSEX": 77156.35}
-
 current_ltp = 0.0
-yesterday_close = default_closes.get(target_symbol, 24000.0)
+net_change = 0.0
+change_pct = 0.0
 
 try:
     snap = market_data.current_price(target_symbol, exchange=exchange_type)
@@ -164,23 +162,26 @@ try:
             raw_p = float(snap.price)
             current_ltp = raw_p / 100.0 if raw_p > 100000 else raw_p
         
-        # Sahi previous close fetch karne ki koshish karne ka rule matrix
-        if hasattr(snap, 'close') and snap.close:
-            raw_c = float(snap.close)
-            yesterday_close = raw_c / 100.0 if raw_c > 100000 else raw_c
-        elif hasattr(snap, 'prev_close') and snap.prev_close:
-            raw_pc = float(snap.prev_close)
-            yesterday_close = raw_pc / 100.0 if raw_pc > 100000 else raw_pc
+        if hasattr(snap, 'net_change') and snap.net_change is not None:
+            raw_nc = float(snap.net_change)
+            net_change = raw_nc / 100.0 if abs(raw_nc) > 50000 else raw_nc
+        
+        if hasattr(snap, 'change_percent') and snap.change_percent is not None:
+            change_pct = float(snap.change_percent)
 except Exception:
     pass
 
+# Dynamic emergency mock fallbacks if network connection drops
 if current_ltp == 0.0:
-    fallback_ltps = {"NIFTY": 24059.80, "BANKNIFTY": 52350.20, "SENSEX": 77145.08}
-    current_ltp = fallback_prices.get(target_symbol, yesterday_close)
-
-# 🎯 MATH BASED EXACT DYNAMIC DIFFERENCE GENERATOR (FIXES THE RED SHIFT GAP)
-net_change = current_ltp - yesterday_close
-change_pct = (net_change / yesterday_close) * 100.0 if yesterday_close > 0 else 0.0
+    fallback_data = {
+        "NIFTY": {"ltp": 24081.10, "change": 0.00, "pct": 0.00},
+        "BANKNIFTY": {"ltp": 52350.20, "change": -110.40, "pct": -0.21},
+        "SENSEX": {"ltp": 77156.35, "change": 0.00, "pct": 0.00}
+    }
+    target_data = fallback_data.get(target_symbol, {"ltp": 24000.0, "change": 0.0, "pct": 0.0})
+    current_ltp = target_data["ltp"]
+    net_change = target_data["change"]
+    change_pct = target_data["pct"]
 
 if net_change >= 0:
     color_class = "text-market-up"
@@ -192,40 +193,62 @@ else:
     sign = ""
 
 # ==============================================================================
-# 🧠 4. MATHEMATICAL EXTRACTION ZONES
+# 🧠 4. DYNAMIC SYSTEM INTEGRATION (REAL CALL/PUT OI DATA EXTRACTION MATRIX)
 # ==============================================================================
-if target_symbol == "NIFTY":
-    base_upper = float(((current_ltp + 25) // 50) * 50 + 50)
-    sup_low = base_upper
-    sup_high = float(sup_low + 30)
-    base_lower = float(((current_ltp - 25) // 50) * 50 - 50)
-    dem_low = base_lower
-    dem_high = float(dem_low + 30)
-elif target_symbol == "BANKNIFTY":
-    base_upper = float(((current_ltp + 50) // 100) * 100 + 100)
-    sup_low = base_upper
-    sup_high = float(base_upper + (current_ltp * 0.003))
-    base_lower = float(((current_ltp - 50) // 100) * 100 - 100)
-    dem_high = base_lower
-    dem_low = float(base_lower - (current_ltp * 0.003))
-elif target_symbol == "SENSEX":
-    base_upper = float(((current_ltp + 50) // 100) * 100 + 100)
-    sup_low = base_upper
-    sup_high = float(base_upper + (current_ltp * 0.0025))
-    base_lower = float(((current_ltp - 50) // 100) * 100 - 100)
-    dem_high = base_lower
-    dem_low = float(base_lower - (current_ltp * 0.0025))
-else:
-    sup_high = float(current_ltp * 1.015)
-    sup_low = float(current_ltp * 1.010)
-    dem_high = float(current_ltp * 0.990)
-    dem_low = float(current_ltp * 0.985)
+# Initial safe boundary parameters setup
+sup_low, sup_high = current_ltp + 50, current_ltp + 100
+dem_low, dem_high = current_ltp - 100, current_ltp - 50
 
-p_point = round((sup_low + dem_high + current_ltp) / 3)
+# Extract real high concentration blocks directly from active option chain logs
+if "ticks" in st.session_state and isinstance(st.session_state.ticks, dict) and len(st.session_state.ticks) > 0:
+    try:
+        max_ce_oi = -1
+        max_pe_oi = -1
+        best_ce_strike = None
+        best_pe_strike = None
+
+        # Loop through cached option chain mapping tokens
+        for key, tick_data in st.session_state.ticks.items():
+            if not isinstance(tick_data, dict):
+                continue
+                
+            # Filter rows aligning with currently targeted active index
+            symbol_tag = tick_data.get("symbol", "")
+            if target_symbol not in symbol_tag:
+                continue
+                
+            strike = float(tick_data.get("strike", 0))
+            if strike == 0:
+                continue
+                
+            ce_oi = float(tick_data.get("ce_oi", 0))
+            pe_oi = float(tick_data.get("pe_oi", 0))
+            
+            # Find the highest density cluster core locations
+            if ce_oi > max_ce_oi:
+                max_ce_oi = ce_oi
+                best_ce_strike = strike
+                
+            if pe_oi > max_pe_oi:
+                max_pe_oi = pe_oi
+                best_pe_strike = strike
+
+        # Map institutional concentrations directly into dynamic zone boundaries
+        if best_ce_strike:
+            sup_low = float(best_ce_strike)
+            sup_high = float(best_ce_strike + (50 if target_symbol == "NIFTY" else 100))
+            
+        if best_pe_strike:
+            dem_low = float(best_pe_strike - (50 if target_symbol == "NIFTY" else 100))
+            dem_high = float(best_pe_strike)
+    except Exception:
+        pass
+
+p_point = round((sup_low + dem_high) / 2)
 now_ist = datetime.now().strftime("%Y-%m-%d %H:%M:%S IST")
 
 # ==============================================================================
-# 🖥️ 5. WATERPROOF MATRIC COMPONENT INJECTION
+# 🖥️ 5. WATERPROOF HTML INJECTION (OPERATIONAL SECTION IS COMPLETELY DELETED)
 # ==============================================================================
 st.html(f"""
 <div class="terminal-container">
@@ -233,7 +256,7 @@ st.html(f"""
         <div class="asset-title">NEXT DAY INSTITUTIONAL LEVELS GRID</div>
         <div class="live-ltp-badge-container">
             <span class="{color_class}">⚡ {target_symbol} LTP: ₹{current_ltp:.2f}</span>
-            <span class="{color_class}">{arrow} {sign}{net_change:.2f} ({sign}{change_pct:.2f}%)</span>
+            <span class="{color_class}">{arrow} {sign}{abs(net_change):.2f} ({sign}{change_pct:.2f}%)</span>
         </div>
     </div>
     

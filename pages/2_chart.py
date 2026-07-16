@@ -4,10 +4,10 @@ import os
 from datetime import datetime
 from streamlit_autorefresh import st_autorefresh
 
-# ================= 1. PAGE SETUP & NEO-GLOW STYLES =================
+# ================= 1. PAGE SETUP =================
 st.set_page_config(layout="wide", page_title="SmartWealth Premium Zones Terminal")
 
-# 🌟 DIRECT STYLES SHEET INJECTION FOR EXACT PIC-2 CARDS WITH NEON BORDERS
+# 🌟 STANDALONE CSS INJECTION - DEFINES PIC-2 BLOCKS WITH SOLID NEON GLOW BORDERS
 st.markdown("""
     <style>
         .block-container {
@@ -16,7 +16,7 @@ st.markdown("""
             max-width: 95% !important;
         }
         
-        /* Main Modern Container Framework */
+        /* Main Dark Dashboard Base Container */
         .terminal-container {
             background-color: #151922;
             border: 2px solid #2d3748;
@@ -43,24 +43,24 @@ st.markdown("""
             text-transform: uppercase;
         }
         
-        /* RIGHT CORNER REFRESHING BADGE MATRIX */
+        /* HEADER RIGHT CORNER DYNAMIC STATUS INDICATORS */
         .live-ltp-badge-container {
-            font-size: 15px;
+            font-size: 16px;
             font-weight: 800;
             padding: 8px 16px;
             border-radius: 6px;
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 12px;
             letter-spacing: 0.5px;
             background-color: #1a202c;
             border: 1px solid #4a5568;
         }
         
-        .text-market-up { color: #4ade80; }
-        .text-market-down { color: #f87171; }
+        .text-market-up { color: #4ade80 !important; font-weight: 900; }
+        .text-market-down { color: #f87171 !important; font-weight: 900; }
         
-        /* NEON GLOW GRID CARD STRUCTURE */
+        /* CARD SYSTEM WITH SOLID NEON GLOW CHANNELS */
         .zones-grid {
             display: flex;
             gap: 20px;
@@ -78,34 +78,31 @@ st.markdown("""
             transition: all 0.3s ease;
         }
         
-        /* 🔴 Resistance Neo Glow Border */
+        /* 🔴 Resistance Solid Neon Glow Card */
         .card-resistance {
-            border: 2px solid #ef4444;
-            box-shadow: 0 0 15px rgba(239, 68, 68, 0.25), inset 0 0 10px rgba(239, 68, 68, 0.1);
+            border: 2px solid #ef4444 !important;
+            box-shadow: 0 0 15px rgba(239, 68, 68, 0.35);
         }
         .card-resistance:hover {
-            box-shadow: 0 0 25px rgba(239, 68, 68, 0.5);
-            transform: translateY(-2px);
+            box-shadow: 0 0 25px rgba(239, 68, 68, 0.6);
         }
         
-        /* 🟡 Pivot Neo Glow Border */
+        /* 🟡 Pivot Solid Neon Glow Card */
         .card-pivot {
-            border: 2px solid #eab308;
-            box-shadow: 0 0 15px rgba(234, 179, 8, 0.25), inset 0 0 10px rgba(234, 179, 8, 0.1);
+            border: 2px solid #eab308 !important;
+            box-shadow: 0 0 15px rgba(234, 179, 8, 0.35);
         }
         .card-pivot:hover {
-            box-shadow: 0 0 25px rgba(234, 179, 8, 0.5);
-            transform: translateY(-2px);
+            box-shadow: 0 0 25px rgba(234, 179, 8, 0.6);
         }
         
-        /* 🟢 Support Neo Glow Border */
+        /* 🟢 Support Solid Neon Glow Card */
         .card-support {
-            border: 2px solid #22c55e;
-            box-shadow: 0 0 15px rgba(34, 197, 94, 0.25), inset 0 0 10px rgba(34, 197, 94, 0.1);
+            border: 2px solid #22c55e !important;
+            box-shadow: 0 0 15px rgba(34, 197, 94, 0.35);
         }
         .card-support:hover {
-            box-shadow: 0 0 25px rgba(34, 197, 94, 0.5);
-            transform: translateY(-2px);
+            box-shadow: 0 0 25px rgba(34, 197, 94, 0.6);
         }
         
         .card-label {
@@ -118,7 +115,7 @@ st.markdown("""
         }
         
         .card-value {
-            font-size: 26px;
+            font-size: 28px;
             font-weight: 900;
             letter-spacing: 0.5px;
         }
@@ -132,7 +129,6 @@ st.markdown("""
             text-align: right;
             margin-top: 22px;
             font-family: monospace;
-            letter-spacing: 0.5px;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -153,11 +149,11 @@ if "direct_market_engine" not in st.session_state:
 market_data = st.session_state["direct_market_engine"]
 
 if market_data is None:
-    st.error("❌ Market engine connection parameters missing. Recheck credentials.")
+    st.error("❌ Market engine connection parameters missing. Check configuration.")
     st.stop()
 
 # ==============================================================================
-# ⚙️ 3. SIDEBAR ANCHORS FRAME
+# ⚙️ 3. SIDEBAR ANCHORS FRAME CONTROLLER
 # ==============================================================================
 st.sidebar.header("⚙️ Terminal Controller")
 target_symbol = st.sidebar.selectbox("🔤 Select Active Index", ["NIFTY", "BANKNIFTY", "SENSEX"], index=0)
@@ -173,14 +169,14 @@ try:
 except Exception:
     pass
 
-# Stable reference arrays mapping
+# Stable reference data mapping parameters
 prev_close_map = {"NIFTY": 24050.00, "BANKNIFTY": 52200.00, "SENSEX": 79300.00}
 fallback_prices = {"NIFTY": 24094.50, "BANKNIFTY": 52350.20, "SENSEX": 79420.80}
 
 if current_ltp == 0.0:
     current_ltp = fallback_prices.get(target_symbol, 24000.0)
 
-# Compute directional data maps fields cleanly
+# Compute net percentage metrics securely
 base_close = prev_close_map.get(target_symbol, current_ltp)
 net_change = current_ltp - base_close
 change_pct = (net_change / base_close) * 100.0
@@ -227,12 +223,12 @@ else:
 p_point = round((sup_low + dem_high + current_ltp) / 3)
 
 # ==============================================================================
-# 🖥️ 5. UNIFIED REAL CARD MARKUP INJECTION (NO MORE CODE BLOCKS DISPLAY)
+# 🖥️ 5. WATERPROOF MATRIC SEPARATION RE-INJECTION
 # ==============================================================================
 now_ist = datetime.now().strftime("%Y-%m-%d %H:%M:%S IST")
 
-# Fixed markup bounds using strict integer parameters conversion strings
-terminal_html = f"""
+# FIXED: Removed the dangerous inline curly brackets style attributes from f-string rendering template
+st.markdown(f"""
 <div class="terminal-container">
     <div class="asset-header-row">
         <div class="asset-title">NEXT DAY INSTITUTIONAL LEVELS GRID</div>
@@ -248,7 +244,7 @@ terminal_html = f"""
             <div class="card-value val-red">{int(sup_low)} - {int(sup_high)}</div>
         </div>
         <div class="zone-card card-pivot">
-            <div class="card-label"> Institutional Balance Pivot (PP)</div>
+            <div class="card-label">⚖️ INSTITUTIONAL BALANCE PIVOT (PP)</div>
             <div class="card-value val-yellow">{int(p_point)}</div>
         </div>
         <div class="zone-card card-support">
@@ -259,10 +255,7 @@ terminal_html = f"""
     
     <div class="sync-timestamp">🔒 Cloud Broker Node Connected | Last Dynamic Refresh: {now_ist}</div>
 </div>
-"""
+""", unsafe_allow_html=True)
 
-# CLEAN RENDERING BLOCK (NO EXTRA LOWER REFERENCE TABLES DISPLAYED AS REQUESTED)
-st.markdown(terminal_html, unsafe_allow_html=True)
-
-# 🔄 AUTOMATIC 2-SECOND RUNTIME REFRESH
+# 🔄 AUTOMATIC 2-SECOND DYNAMIC SYNC REFRESH LOOP
 st_autorefresh(interval=2000, key="premium_zones_auto_sync")

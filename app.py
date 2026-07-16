@@ -110,7 +110,7 @@ def run_option_chain_page():
 
 # 🗺️ DYNAMIC NAVIGATION SYSTEM CONFIGURATION
 page_1 = st.Page(run_option_chain_page, title="📊 Option Chain Data Terminal", icon="🎯", default=True)
-page_2 = st.Page("pages/2_chart.py", title="📈 Advanced Live Chart", icon="📉")
+page_2 = st.Page("pages/2_chart.py", title="Next Day Zone")
 
 # Mount components inside active loop routing network
 pg = st.navigation({"Smart Wealth Navigation": [page_1, page_2]})

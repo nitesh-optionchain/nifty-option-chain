@@ -3,7 +3,6 @@ import os
 import time
 import json
 import sqlite3
-import math
 import streamlit as st
 import streamlit.components.v1 as components
 from datetime import datetime, timedelta
@@ -18,7 +17,6 @@ TOKEN_CACHE_FILE = os.path.join(BASE_DIR, "token_cache.json")
 if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
 
-# Safe SQLite framework initialization 
 def init_market_db():
     try:
         conn = sqlite3.connect(DB_PATH, timeout=10)
@@ -37,7 +35,7 @@ def init_market_db():
 init_market_db()
 
 # ==============================================================================
-# 🔑 2. AUTHENTICATION TOKEN CACHE MANAGER
+# 🔑 2. AUTH LOCAL TOKEN LAYER
 # ==============================================================================
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
@@ -77,7 +75,6 @@ if "cached_nubra_engine" not in st.session_state:
 
 market_engine = st.session_state["cached_nubra_engine"]
 
-# Active Control Dropdowns Framework Deck
 target_index = st.sidebar.selectbox("Active Asset Frame", ["NIFTY", "SENSEX"], index=0)
 selected_tf = st.sidebar.selectbox("Timeframe Window", ["5m", "10m", "15m", "30m", "1d"], index=0)
 
@@ -86,7 +83,7 @@ interval_minutes = tf_map[selected_tf]
 interval_seconds = interval_minutes * 60
 
 # ==============================================================================
-# 📊 3. DUAL BUFFER HISTORICAL FETCH ENGINE
+# 📊 3. HISTORICAL REAL DATA PIPELINE (BUG FIXED & NO DEMO SIMULATION)
 # ==============================================================================
 def pull_broker_history(asset_name, engine, timeframe):
     if engine is None:
@@ -94,7 +91,7 @@ def pull_broker_history(asset_name, engine, timeframe):
     try:
         exch = "NSE" if asset_name == "NIFTY" else "BSE"
         end_d = datetime.utcnow()
-        start_d = end_d - timedelta(days=3) # Aligned strictly to 3 days maximum window depth
+        start_d = end_d - timedelta(days=3)  # Pure 3 Days Range Fetch
         
         api_payload = {
             "exchange": exch, "type": "INDEX", "values": [asset_name],
@@ -105,7 +102,6 @@ def pull_broker_history(asset_name, engine, timeframe):
         }
         
         response = None
-        # Failsafe Method Router Execution Chain
         for method_name in ["historical_data", "get_historical_data", "get_history"]:
             if hasattr(engine, method_name):
                 try:
@@ -131,7 +127,8 @@ def pull_broker_history(asset_name, engine, timeframe):
             conn = sqlite3.connect(DB_PATH, timeout=10)
             cursor = conn.cursor()
             for chart_data in chart_data_list:
-                vals = getattr(chart_data, 'values', None) or (chart_data.get('values') if isinstance(cache_data, dict) else [])
+                # FIXED: Mismatch dict variable reference completely corrected
+                vals = getattr(chart_data, 'values', None) or (chart_data.get('values') if isinstance(chart_data, dict) else [])
                 for element in (vals if isinstance(vals, list) else [vals]):
                     chart = element.get(asset_name) if isinstance(element, dict) else getattr(element, asset_name, None)
                     if chart:
@@ -165,9 +162,9 @@ def pull_broker_history(asset_name, engine, timeframe):
 pull_broker_history(target_index, market_engine, selected_tf)
 
 # ==============================================================================
-# ⚡ 4. REAL-TIME TICK POLLING & DYNAMIC INJECTION PIPELINE
+# ⚡ 4. REAL-TIME TICK STREAM (LIVE PRICE UPDATE)
 # ==============================================================================
-base_ltp = 24140.0 if target_index == "NIFTY" else 77420.0
+base_ltp = 0.0
 
 if market_engine is not None:
     try:
@@ -186,7 +183,6 @@ if market_engine is not None:
         if snap and getattr(snap, 'price', None):
             raw_p = float(snap.price)
             base_ltp = raw_p / 100.0 if raw_p > 100000 else raw_p
-            
             current_rounded_unix = (int(time.time()) // interval_seconds) * interval_seconds
             
             conn = sqlite3.connect(DB_PATH, timeout=10)
@@ -209,7 +205,7 @@ if market_engine is not None:
         pass
 
 # ==============================================================================
-# 🧠 5. HYBRID HISTORICAL ARRAYS MERGER SYSTEM (PREVENTS STATIC REPETITIONS)
+# 🧠 5. STRICT REAL DATA LOADING (ZERO SIMULATION REPEAT OR DEMO BARS)
 # ==============================================================================
 master_history_array = []
 rows = []
@@ -219,37 +215,17 @@ try:
     cursor = conn.cursor()
     cursor.execute("""
         SELECT timestamp, open, high, low, close FROM market_history 
-        WHERE asset=? AND timeframe=? ORDER BY timestamp ASC LIMIT 200
+        WHERE asset=? AND timeframe=? ORDER BY timestamp ASC LIMIT 300
     """, (target_index, selected_tf))
     rows = cursor.fetchall()
     conn.close()
 except Exception:
     rows = []
 
-# FIXED: Hybrid generator combines static curves safely with new dynamic incoming candle streams
-if not rows or len(rows) < 3:
-    curr_ts = (int(time.time()) // interval_seconds) * interval_seconds
-    base_init = base_ltp
-    total_sim_bars = 35 
-    
-    for k in range(0, total_sim_bars):
-        t_sim = (curr_ts - (total_sim_bars * interval_seconds)) + (k * interval_seconds)
-        
-        wave_pattern = math.sin(k * 0.5) * 20.0 + math.cos(k * 0.3) * 10.0
-        o_sim = base_init - 10.0 + wave_pattern
-        spread = 6.0 if k % 2 == 0 else -5.0
-        c_sim = o_sim + spread
-        h_sim = max(o_sim, c_sim) + 2.0
-        l_sim = min(o_sim, c_sim) - 2.0
-        
-        master_history_array.append({
-            "time": int(t_sim), "open": round(o_sim, 2), "high": round(h_sim, 2), "low": round(l_sim, 2), "close": round(c_sim, 2)
-        })
-    
-    # CRITICAL INJECTION: Append the current real-time live index tick immediately at the end
-    master_history_array.append({
-        "time": int(curr_ts), "open": round(base_ltp - 2.0, 2), "high": round(base_ltp + 3.0, 2), "low": round(base_ltp - 4.0, 2), "close": round(base_ltp, 2)
-    })
+# ALL DEMO OR SINUSOIDAL CODES ARE COMPLETELY REMOVED HERE
+if not rows:
+    st.warning(f"⚠️ Dynamic Sync Status: Fetching real historical database rows from {target_index}. Please check SDK response connection.")
+    st.stop()
 else:
     for row in rows:
         t, o, h, l, c = row
@@ -257,11 +233,10 @@ else:
             "time": int(t), "open": o, "high": h, "low": l, "close": c
         })
 
-# Compute standard indices indicator metrics safely on the final compiled dataset
+# Compute metrics dynamically strictly on real database values
 prices = [m["close"] for m in master_history_array]
 for idx, m in enumerate(master_history_array):
     o, h, l, c = m["open"], m["high"], m["low"], m["close"]
-    
     m["vwap"] = round(sum(prices[max(0, idx-5):idx+1]) / len(prices[max(0, idx-5):idx+1]), 2)
     m["ma9"] = round(sum(prices[max(0, idx-8):idx+1]) / len(prices[max(0, idx-8):idx+1]), 2)
     m["ma20"] = round(sum(prices[max(0, idx-19):idx+1]) / len(prices[max(0, idx-19):idx+1]), 2)
@@ -269,6 +244,9 @@ for idx, m in enumerate(master_history_array):
     m["macd"] = round(m["ma9"] - m["ma20"], 2)
     m["signal"] = round(m["macd"] * 0.9, 2)
     m["supertrend"] = round(l - 2.0 if c >= o else h + 2.0, 2)
+
+if base_ltp == 0.0 and len(master_history_array) > 0:
+    base_ltp = master_history_array[-1]["close"]
 
 runtime_payload = {
     "current_asset": target_index,
@@ -281,11 +259,11 @@ runtime_payload = {
     }
 }
 
-st.sidebar.markdown(f"**Interval Active:** `{selected_tf}`")
-st.sidebar.markdown(f"**Total Sequenced Bars:** `{len(master_history_array)}`")
+st.sidebar.markdown(f"**Asset:** `{target_index}` | **TF:** `{selected_tf}`")
+st.sidebar.markdown(f"**Real Active Bars:** `{len(master_history_array)}`")
 
 if os.path.exists(TOKEN_CACHE_FILE):
-    st.sidebar.success("🔑 Token Loaded from Cache (24h Lock active)")
+    st.sidebar.success("🔑 Token Connected")
 
 if os.path.exists(html_file_path):
     with open(html_file_path, "r", encoding="utf-8") as f:

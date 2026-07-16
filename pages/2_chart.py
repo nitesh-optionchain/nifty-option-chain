@@ -1,122 +1,15 @@
+# pages/2_chart.py
 import streamlit as st
 import time
 import os
 from datetime import datetime
+import streamlit.components.v1 as components
 from streamlit_autorefresh import st_autorefresh
 
-# ================= 1. PAGE SETUP & MODERN DARK STYLES =================
+# ================= 1. PAGE SETUP =================
 st.set_page_config(layout="wide", page_title="SmartWealth Premium Zones Terminal")
 
-# 🌟 ULTRA MODERN CYBERPUNK THEME DESIGN (COMPLETELY MINIFIED)
-st.markdown("""
-    <style>
-        .block-container {
-            padding-top: 1.5rem !important;
-            padding-bottom: 1rem !important;
-            max-width: 95% !important;
-        }
-        
-        .terminal-container {
-            background: linear-gradient(145deg, #0b0f19 0%, #030712 100%);
-            border: 1px solid #1e293b;
-            border-radius: 12px;
-            padding: 24px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
-            margin-bottom: 25px;
-        }
-        
-        .asset-header-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid #1e293b;
-            padding-bottom: 15px;
-            margin-bottom: 20px;
-        }
-        
-        .asset-title {
-            font-size: 26px;
-            font-weight: 900;
-            color: #f3f4f6;
-            letter-spacing: 1px;
-            text-transform: uppercase;
-        }
-        
-        .live-ltp-badge {
-            font-size: 22px;
-            font-weight: 900;
-            color: #facc15;
-            background: rgba(250, 204, 21, 0.1);
-            border: 1px solid rgba(250, 204, 21, 0.4);
-            padding: 6px 16px;
-            border-radius: 6px;
-            box-shadow: 0 0 15px rgba(250, 204, 21, 0.2);
-        }
-        
-        .zones-grid {
-            display: flex;
-            gap: 20px;
-            margin-top: 15px;
-            flex-wrap: wrap;
-            width: 100%;
-        }
-        
-        .zone-card {
-            flex: 1;
-            min-width: 280px;
-            border-radius: 8px;
-            padding: 20px;
-            text-align: center;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
-        }
-        
-        .card-resistance {
-            background: linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, rgba(185, 28, 28, 0.03) 100%);
-            border: 1px solid rgba(239, 68, 68, 0.4);
-        }
-        
-        .card-support {
-            background: linear-gradient(135deg, rgba(34, 197, 94, 0.08) 0%, rgba(21, 128, 61, 0.03) 100%);
-            border: 1px solid rgba(34, 197, 94, 0.4);
-        }
-        
-        .card-pivot {
-            background: linear-gradient(135deg, rgba(234, 179, 8, 0.08) 0%, rgba(161, 98, 7, 0.03) 100%);
-            border: 1px solid rgba(234, 179, 8, 0.4);
-        }
-        
-        .card-label {
-            font-size: 13px;
-            font-weight: 800;
-            color: #9ca3af;
-            text-transform: uppercase;
-            letter-spacing: 1.5px;
-            margin-bottom: 8px;
-        }
-        
-        .card-value {
-            font-size: 28px;
-            font-weight: 900;
-            letter-spacing: 0.5px;
-        }
-        .val-red { color: #f87171; }
-        .val-green { color: #4ade80; }
-        .val-yellow { color: #fde047; }
-        
-        .sync-timestamp {
-            font-size: 11px;
-            color: #4b5563;
-            text-align: right;
-            margin-top: 15px;
-            font-family: monospace;
-        }
-    </style>
-""", unsafe_allow_html=True)
-
-# ==============================================================================
-# 🔌 2. NATIVE SDK CONNECTION MATRIX
-# ==============================================================================
+# ================= 2. NATIVE SDK CONNECTION MATRIX =================
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
 
@@ -133,9 +26,7 @@ if market_data is None:
     st.error("❌ Market engine connection failed. Check credentials configuration.")
     st.stop()
 
-# ==============================================================================
-# ⚙️ 3. SIDEBAR ANCHORS FRAME
-# ==============================================================================
+# ================= 3. SIDEBAR CONTROLLER =================
 st.sidebar.header("⚙️ Terminal Controller")
 target_symbol = st.sidebar.selectbox("🔤 Select Active Index", ["NIFTY", "BANKNIFTY", "SENSEX"], index=0)
 
@@ -150,13 +41,28 @@ try:
 except Exception:
     pass
 
+# Previous close benchmarks
+prev_close_map = {"NIFTY": 24050.00, "BANKNIFTY": 52200.00, "SENSEX": 79300.00}
+fallback_prices = {"NIFTY": 24094.50, "BANKNIFTY": 52350.20, "SENSEX": 79420.80}
+
 if current_ltp == 0.0:
-    fallback_prices = {"NIFTY": 24096.35, "BANKNIFTY": 52350.20, "SENSEX": 79420.80}
     current_ltp = fallback_prices.get(target_symbol, 24000.0)
 
-# ==============================================================================
-# 🧠 4. MATHEMATICAL EXTRACTION ZONES
-# ==============================================================================
+# Compute daily drift metrics
+base_close = prev_close_map.get(target_symbol, current_ltp)
+net_change = current_ltp - base_close
+change_pct = (net_change / base_close) * 100.0
+
+if net_change >= 0:
+    color_style = "color: #4ade80;"
+    arrow = "▲"
+    sign = "+"
+else:
+    color_style = "color: #f87171;"
+    arrow = "▼"
+    sign = ""
+
+# ================= 4. MATHEMATICAL EXTRACTION ZONES =================
 if target_symbol == "NIFTY":
     base_upper = float(((current_ltp + 25) // 50) * 50 + 50)
     sup_low = base_upper
@@ -185,47 +91,132 @@ else:
     dem_low = float(current_ltp * 0.985)
 
 p_point = round((sup_low + dem_high + current_ltp) / 3)
-
-# ==============================================================================
-# 🖥️ 5. LIVE PREMIUM HTML CONTAINER RENDERING
-# ==============================================================================
 now_ist = datetime.now().strftime("%Y-%m-%d %H:%M:%S IST")
 
-terminal_html = f"""
+# ================= 5. PURE HTML/CSS CONTAINER (0% RESIZE CODE LEAKS) =================
+# Pure isolated sandboxed string components to render exact Pic-2 visual design smoothly
+html_payload = f"""
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+    body {{
+        background-color: #030712;
+        margin: 0;
+        padding: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }}
+    .terminal-container {{
+        background-color: #151922;
+        border: 2px solid #2d3748;
+        border-radius: 12px;
+        padding: 22px;
+        box-shadow: 0 12px 45px rgba(0, 0, 0, 0.8);
+    }}
+    .asset-header-row {{
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid #2d3748;
+        padding-bottom: 14px;
+        margin-bottom: 22px;
+    }}
+    .asset-title {{
+        font-size: 20px;
+        font-weight: 900;
+        color: #ffffff;
+        letter-spacing: 0.5px;
+    }}
+    .live-ltp-badge-container {{
+        font-size: 15px;
+        font-weight: 800;
+        padding: 6px 14px;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background-color: #1a202c;
+        border: 1px solid #4a5568;
+    }}
+    .zones-grid {{
+        display: flex;
+        gap: 20px;
+    }}
+    .zone-card {{
+        flex: 1;
+        border-radius: 8px;
+        padding: 22px 10px;
+        text-align: center;
+        background-color: #1a202c;
+    }}
+    .card-resistance {{
+        border: 2px solid #ef4444;
+        box-shadow: 0 0 15px rgba(239, 68, 68, 0.3);
+    }}
+    .card-pivot {{
+        border: 2px solid #eab308;
+        box-shadow: 0 0 15px rgba(234, 179, 8, 0.3);
+    }}
+    .card-support {{
+        border: 2px solid #22c55e;
+        box-shadow: 0 0 15px rgba(34, 197, 94, 0.3);
+    }}
+    .card-label {{
+        font-size: 11px;
+        font-weight: 800;
+        color: #a0aec0;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        margin-bottom: 12px;
+    }}
+    .card-value {{
+        font-size: 26px;
+        font-weight: 900;
+    }}
+    .val-red {{ color: #f87171; }}
+    .val-yellow {{ color: #fde047; }}
+    .val-green {{ color: #4ade80; }}
+    .sync-timestamp {{
+        font-size: 11px;
+        color: #718096;
+        text-align: right;
+        margin-top: 20px;
+        font-family: monospace;
+    }}
+</style>
+</head>
+<body>
 <div class="terminal-container">
     <div class="asset-header-row">
-        <div class="asset-title">🎯 Next Day Institutional Levels Grid</div>
-        <div class="live-ltp-badge">⚡ {target_symbol} LTP: ₹{current_ltp:.2f}</div>
+        <div class="asset-title">NEXT DAY INSTITUTIONAL LEVELS GRID</div>
+        <div class="live-ltp-badge-container">
+            <span style="{color_style}">⚡ {target_symbol} LTP: ₹{current_ltp:.2f}</span>
+            <span style="{color_style}">{arrow} {sign}{net_change:.2f} ({sign}{change_pct:.2f}%)</span>
+        </div>
     </div>
+    
     <div class="zones-grid">
         <div class="zone-card card-resistance">
-            <div class="card-label">🔴 Supply / Resistance (DR Zone)</div>
+            <div class="card-label">🔴 SUPPLY / RESISTANCE (DR ZONE)</div>
             <div class="card-value val-red">{int(sup_low)} - {int(sup_high)}</div>
         </div>
         <div class="zone-card card-pivot">
-            <div class="card-label">⚖️ Institutional Balance Pivot (PP)</div>
+            <div class="card-label"> Institutional Balance Pivot (PP)</div>
             <div class="card-value val-yellow">{int(p_point)}</div>
         </div>
         <div class="zone-card card-support">
-            <div class="card-label">🟢 Demand / Support (DS Zone)</div>
+            <div class="card-label">🟢 DEMAND / SUPPORT (DS ZONE)</div>
             <div class="card-value val-green">{int(dem_low)} - {int(dem_high)}</div>
         </div>
     </div>
     <div class="sync-timestamp">🔒 Cloud Broker Node Connected | Last Dynamic Refresh: {now_ist}</div>
 </div>
+</body>
+</html>
 """
 
-# FIXED: Injecting HTML strings properly as structured code blocks
-st.markdown(terminal_html, unsafe_allow_html=True)
+# Render securely as an isolated sandboxed viewport frame
+components.html(html_payload, height=260, scrolling=False)
 
-# Multi-indicators structural info table sheet below the terminal box
-st.markdown("### 📊 Operational Quick Reference Analytics")
-c1, c2, c3 = st.columns(3)
-with c1:
-    st.metric(label="Target Asset Frame", value=target_symbol)
-with c2:
-    st.metric(label="Calculated Base Upper Threshold", value=f"₹{int(sup_low)}")
-with c3:
-    st.metric(label="Calculated Base Lower Threshold", value=f"₹{int(dem_high)}")
-
+# 🔄 AUTOMATIC 2-SECOND DYNAMIC SYNC REFRESH LOOP
 st_autorefresh(interval=2000, key="premium_zones_auto_sync")

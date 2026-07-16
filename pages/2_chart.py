@@ -35,7 +35,7 @@ def init_market_db():
 init_market_db()
 
 # ==============================================================================
-# 🔑 2. TOKEN LIFECYCLE AUTHENTICATION LAYER
+# 🔑 2. TOKEN LIFECYCLE MEMORY CACHE POOL
 # ==============================================================================
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
@@ -83,7 +83,7 @@ interval_minutes = tf_map[selected_tf]
 interval_seconds = interval_minutes * 60
 
 # ==============================================================================
-# 📊 3. DEEP UNWRAP HISTORICAL PARSER (EXTRACTS REAL BARS FROM ANY RESPONSE WRAPPER)
+# 📊 3. STRICT 2-3 DAYS HISTORICAL BARS FETCH POOL
 # ==============================================================================
 def pull_broker_history(asset_name, engine, timeframe):
     if engine is None:
@@ -91,12 +91,12 @@ def pull_broker_history(asset_name, engine, timeframe):
     try:
         exch = "NSE" if asset_name == "NIFTY" else "BSE"
         end_d = datetime.utcnow()
-        start_d = end_d - timedelta(days=3) # Strictly 3 Days data limit
+        start_d = end_d - timedelta(days=3)  # STRICTLY LOCKED FOR 2-3 DAYS ONLY
         
         api_payload = {
             "exchange": exch, 
             "type": "INDEX", 
-            "values": asset_name, 
+            "values": [asset_name],  # Wrapper native signature check
             "fields": ["open", "high", "low", "close"],
             "startDate": start_d.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
             "endDate": end_d.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
@@ -105,33 +105,24 @@ def pull_broker_history(asset_name, engine, timeframe):
         }
         
         response = None
-        for method_name in ["historical_data", "get_historical_data", "history", "get_history"]:
-            if hasattr(engine, method_name):
-                try:
-                    response = getattr(engine, method_name)(api_payload)
-                    if response: break
-                except Exception:
-                    pass
-        
-        if not response:
+        try:
+            response = engine.historical_data(api_payload)
+        except Exception:
             try:
                 response = MarketData.historical_data(engine, api_payload)
             except Exception:
                 pass
                 
-        # DEEP EXTRACTION LAYER: Unpacks lists, objects, or dicts dynamically
         chart_data_list = []
         if response:
             if hasattr(response, 'result') and response.result:
                 chart_data_list = response.result
-            elif hasattr(response, 'data') and response.data:
-                chart_data_list = response.data
-            elif isinstance(response, dict):
-                chart_data_list = response.get('result') or response.get('data') or [response]
+            elif isinstance(response, dict) and 'result' in response:
+                chart_data_list = response['result']
             elif isinstance(response, list):
                 chart_data_list = response
 
-        if chart_data_list and isinstance(chart_data_list, list):
+        if chart_data_list:
             conn = sqlite3.connect(DB_PATH, timeout=10)
             cursor = conn.cursor()
             for chart_data in chart_data_list:
@@ -139,43 +130,46 @@ def pull_broker_history(asset_name, engine, timeframe):
                 if not vals and isinstance(chart_data, dict):
                     vals = [chart_data]
                     
-                for element in (vals if isinstance(vals, list) else [vals]):
-                    chart = element.get(asset_name) if isinstance(element, dict) else getattr(element, asset_name, None)
-                    if not chart and isinstance(element, dict) and ('open' in element or 'close' in element):
-                        chart = element
+                for element in vals:
+                    # Parse standard raw map layers cleanly
+                    chart = None
+                    if isinstance(element, dict):
+                        chart = element.get(asset_name) or element
+                    else:
+                        chart = getattr(element, asset_name, None) or element
                         
                     if chart:
-                        opens = getattr(chart, 'open', None) or chart.get('open', [])
-                        highs = getattr(chart, 'high', None) or chart.get('high', [])
-                        lows = getattr(chart, 'low', None) or chart.get('low', [])
-                        closes = getattr(chart, 'close', None) or chart.get('close', [])
-                        
-                        if isinstance(opens, (int, float)):
-                            opens, highs, lows, closes = [opens], [highs], [lows], [closes]
+                        try:
+                            # Support object attribute mapping or raw dict parsing styles cleanly
+                            opens = getattr(chart, 'open', None) or chart.get('open', [])
+                            highs = getattr(chart, 'high', None) or chart.get('high', [])
+                            lows = getattr(chart, 'low', None) or chart.get('low', [])
+                            closes = getattr(chart, 'close', None) or chart.get('close', [])
                             
-                        for i in range(len(opens)):
-                            try:
-                                item_o = opens[i]
-                                raw_ts = getattr(item_o, 'timestamp', time.time()) if hasattr(item_o, 'timestamp') else item_o.get('timestamp', time.time())
-                                sec_ts = int(raw_ts // 1000000000) if raw_ts > 9999999999 else int(raw_ts)
-                                
-                                o_v = float(getattr(item_o, 'value', item_o)) if hasattr(item_o, 'value') else float(item_o.get('value', item_o))
-                                h_v = float(getattr(highs[i], 'value', highs[i])) if hasattr(highs[i], 'value') else float(highs[i].get('value', highs[i]))
-                                l_v = float(getattr(lows[i], 'value', lows[i])) if hasattr(lows[i], 'value') else float(lows[i].get('value', lows[i]))
-                                c_v = float(getattr(closes[i], 'value', closes[i])) if hasattr(closes[i], 'value') else float(closes[i].get('value', closes[i]))
+                            if isinstance(opens, list) and len(opens) > 0:
+                                for i in range(len(opens)):
+                                    item_o = opens[i]
+                                    raw_ts = getattr(item_o, 'timestamp', None) or item_o.get('timestamp') if isinstance(item_o, dict) else time.time()
+                                    if not raw_ts: continue
+                                    
+                                    sec_ts = int(raw_ts // 1000000000) if raw_ts > 9999999999 else int(raw_ts)
+                                    
+                                    o_v = float(getattr(item_o, 'value', item_o)) if not isinstance(item_o, dict) else float(item_o.get('value', 0))
+                                    h_v = float(getattr(highs[i], 'value', highs[i])) if not isinstance(highs[i], dict) else float(highs[i].get('value', 0))
+                                    l_v = float(getattr(lows[i], 'value', lows[i])) if not isinstance(lows[i], dict) else float(lows[i].get('value', 0))
+                                    c_v = float(getattr(closes[i], 'value', closes[i])) if not isinstance(closes[i], dict) else float(closes[i].get('value', 0))
 
-                                # Formats standard index multiplier scaling checks
-                                o_f = o_v / 100.0 if o_v > 100000 else o_v
-                                h_f = h_v / 100.0 if h_v > 100000 else h_v
-                                l_f = l_v / 100.0 if l_v > 100000 else l_v
-                                c_f = c_v / 100.0 if c_v > 100000 else c_v
+                                    o_f = o_v / 100.0 if o_v > 100000 else o_v
+                                    h_f = h_v / 100.0 if h_v > 100000 else h_v
+                                    l_f = l_v / 100.0 if l_v > 100000 else l_v
+                                    c_f = c_v / 100.0 if c_v > 100000 else c_v
 
-                                cursor.execute("""
-                                    INSERT OR REPLACE INTO market_history (asset, timeframe, timestamp, open, high, low, close)
-                                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                                """, (asset_name, timeframe, sec_ts, o_f, h_f, l_f, c_f))
-                            except Exception:
-                                continue
+                                    cursor.execute("""
+                                        INSERT OR REPLACE INTO market_history (asset, timeframe, timestamp, open, high, low, close)
+                                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                                    """, (asset_name, timeframe, sec_ts, o_f, h_f, l_f, c_f))
+                        except Exception:
+                            continue
             conn.commit()
             conn.close()
     except Exception:
@@ -184,7 +178,7 @@ def pull_broker_history(asset_name, engine, timeframe):
 pull_broker_history(target_index, market_engine, selected_tf)
 
 # ==============================================================================
-# ⚡ 4. REAL-TIME INTERACTIVE TICK STREAM (LIVE OVERLAY ENGINE)
+# ⚡ 4. LIVE RUNTIME STREAM TO CURRENT BAR PIPELINE
 # ==============================================================================
 base_ltp = 0.0
 
@@ -192,14 +186,9 @@ if market_engine is not None:
     try:
         exch_name = "NSE" if target_index == "NIFTY" else "BSE"
         snap = None
-        for live_method in ["current_price", "get_current_price", "get_quote"]:
-            if hasattr(market_engine, live_method):
-                try:
-                    snap = getattr(market_engine, live_method)(target_index, exchange=exch_name)
-                    if snap: break
-                except Exception:
-                    pass
-        if not snap:
+        try:
+            snap = market_engine.current_price(target_index, exchange=exch_name)
+        except Exception:
             snap = MarketData.current_price(market_engine, target_index, exchange=exch_name)
             
         if snap and getattr(snap, 'price', None):
@@ -227,7 +216,7 @@ if market_engine is not None:
         pass
 
 # ==============================================================================
-# 🧠 5. NO-FALLBACK DATA MATRIX (HYBRID STREAMER)
+# 🧠 5. CHRONOLOGICAL FETCH DECK
 # ==============================================================================
 master_history_array = []
 rows = []
@@ -244,34 +233,24 @@ try:
 except Exception:
     rows = []
 
-# FIXED: If historical arrays are empty, start capturing live stream data instead of showing warnings!
-if not rows:
-    if base_ltp > 0:
-        current_rounded_unix = (int(time.time()) // interval_seconds) * interval_seconds
-        master_history_array.append({
-            "time": int(current_rounded_unix), "open": base_ltp, "high": base_ltp, "low": base_ltp, "close": base_ltp
-        })
-    else:
-        st.warning(f"⚠️ Dynamic Sync Status: Awaiting fresh ticks from {target_index} live stream connection.")
-        st.stop()
-else:
-    for row in rows:
-        t, o, h, l, c = row
-        master_history_array.append({
-            "time": int(t), "open": o, "high": h, "low": l, "close": c
-        })
+for row in rows:
+    t, o, h, l, c = row
+    master_history_array.append({
+        "time": int(t), "open": o, "high": h, "low": l, "close": c
+    })
 
-# Safe dynamic metrics calculation block
-prices = [m["close"] for m in master_history_array]
-for idx, m in enumerate(master_history_array):
-    o, h, l, c = m["open"], m["high"], m["low"], m["close"]
-    m["vwap"] = round(sum(prices[max(0, idx-5):idx+1]) / len(prices[max(0, idx-5):idx+1]), 2)
-    m["ma9"] = round(sum(prices[max(0, idx-8):idx+1]) / len(prices[max(0, idx-8):idx+1]), 2)
-    m["ma20"] = round(sum(prices[max(0, idx-19):idx+1]) / len(prices[max(0, idx-19):idx+1]), 2)
-    m["ma50"] = round(sum(prices[max(0, idx-49):idx+1]) / len(prices[max(0, idx-49):idx+1]), 2)
-    m["macd"] = round(m["ma9"] - m["ma20"], 2)
-    m["signal"] = round(m["macd"] * 0.9, 2)
-    m["supertrend"] = round(l - 2.0 if c >= o else h + 2.0, 2)
+# Compute indicators if rows exist safely
+if master_history_array:
+    prices = [m["close"] for m in master_history_array]
+    for idx, m in enumerate(master_history_array):
+        o, h, l, c = m["open"], m["high"], m["low"], m["close"]
+        m["vwap"] = round(sum(prices[max(0, idx-5):idx+1]) / len(prices[max(0, idx-5):idx+1]), 2)
+        m["ma9"] = round(sum(prices[max(0, idx-8):idx+1]) / len(prices[max(0, idx-8):idx+1]), 2)
+        m["ma20"] = round(sum(prices[max(0, idx-19):idx+1]) / len(prices[max(0, idx-19):idx+1]), 2)
+        m["ma50"] = round(sum(prices[max(0, idx-49):idx+1]) / len(prices[max(0, idx-49):idx+1]), 2)
+        m["macd"] = round(m["ma9"] - m["ma20"], 2)
+        m["signal"] = round(m["macd"] * 0.9, 2)
+        m["supertrend"] = round(l - 2.0 if c >= o else h + 2.0, 2)
 
 if base_ltp == 0.0 and len(master_history_array) > 0:
     base_ltp = master_history_array[-1]["close"]

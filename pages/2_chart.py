@@ -3,6 +3,7 @@ import os
 import time
 import json
 import sqlite3
+import math
 import streamlit as st
 import streamlit.components.v1 as components
 from datetime import datetime, timedelta
@@ -17,9 +18,7 @@ TOKEN_CACHE_FILE = os.path.join(BASE_DIR, "token_cache.json")
 if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
 
-# ==============================================================================
-# 🗄️ 1. FIXED TIMEFRAME SEPARATED STORAGE SCHEMA
-# ==============================================================================
+# Database schema model initialization
 def init_market_db():
     try:
         conn = sqlite3.connect(DB_PATH, timeout=10)
@@ -38,7 +37,7 @@ def init_market_db():
 init_market_db()
 
 # ==============================================================================
-# 🔑 2. TOKEN PERSISTENCE CACHE INTERCEPTOR
+# 🔑 2. TOKEN PERSISTENCE CACHE LAYER
 # ==============================================================================
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
@@ -78,7 +77,7 @@ if "cached_nubra_engine" not in st.session_state:
 
 market_engine = st.session_state["cached_nubra_engine"]
 
-# Active Control Dropdowns Framework
+# Active Control Dropdowns Framework Deck
 target_index = st.sidebar.selectbox("Active Asset Frame", ["NIFTY", "SENSEX"], index=0)
 selected_tf = st.sidebar.selectbox("Timeframe Window", ["5m", "10m", "15m", "30m", "1d"], index=0)
 
@@ -87,7 +86,7 @@ interval_minutes = tf_map[selected_tf]
 interval_seconds = interval_minutes * 60
 
 # ==============================================================================
-# 📊 3. HISTORICAL ENGINE PIPELINE (DYNAMIC DATA ARRAYS SYNC)
+# 📊 3. HISTORICAL ENGINE PIPELINE
 # ==============================================================================
 def pull_broker_history(asset_name, engine, timeframe):
     if engine is None:
@@ -159,9 +158,9 @@ def pull_broker_history(asset_name, engine, timeframe):
 pull_broker_history(target_index, market_engine, selected_tf)
 
 # ==============================================================================
-# ⚡ 4. REAL-TIME INTERACTIVE TICK STREAM ENGINE
+# ⚡ 4. REAL-TIME INTERACTIVE TICK STREAM
 # ==============================================================================
-base_ltp = 24130.0 if target_index == "NIFTY" else 77400.0
+base_ltp = 24150.0 if target_index == "NIFTY" else 77350.0
 
 if market_engine is not None:
     try:
@@ -197,7 +196,7 @@ if market_engine is not None:
         pass
 
 # ==============================================================================
-# 🧠 5. CHRONOLOGICAL LEFT-TO-RIGHT ENGINE DECK (FIXED REVERSE PROGRESSION)
+# 🧠 5. CHRONOLOGICAL DATA ARRAY ALIGNER (FIXED DIAGONAL SLANT & BAR COUNT)
 # ==============================================================================
 master_history_array = []
 rows = []
@@ -214,29 +213,30 @@ try:
 except Exception:
     rows = []
 
-# FIXED: Fallback progressive curve now plots strictly from left to right chronologically
+# FIXED CONFIGURATION: Restrict default dynamic simulation bars to 45 count for better spacing
 if not rows or len(rows) < 10:
     curr_ts = (int(time.time()) // interval_seconds) * interval_seconds
     base_init = base_ltp
+    total_sim_bars = 45 # Perfect visible size count
     
-    # Generate clean forward chronological data tracking lines natively
-    for k in range(0, 91):
-        # Earliest candle left me hogi, latest candle right me
-        t_sim = (curr_ts - (90 * interval_seconds)) + (k * interval_seconds)
+    for k in range(0, total_sim_bars):
+        t_sim = (curr_ts - (total_sim_bars * interval_seconds)) + (k * interval_seconds)
         
-        # FIXED PROGRESSION: Standard smooth drift wave baseline math
-        drift = float((k - 45) * 0.8) 
-        noise = float(4.0 if k % 2 == 0 else -3.5)
+        # FIXED PROGRESSION: Using Sinusoidal movement instead of linear drift to prevent diagonal lines
+        wave_movement = math.sin(k * 0.4) * 25.0 + math.cos(k * 0.2) * 12.0
+        o_sim = base_init - 15.0 + wave_movement
         
-        o_sim = base_init + drift + noise
-        h_sim = o_sim + 12.0
-        l_sim = o_sim - 10.0
-        c_sim = o_sim + 5.0 if k % 3 == 0 else o_sim - 4.0
+        # Add slight natural randomness to open/close spread
+        candle_spread = 8.0 if k % 2 == 0 else -6.0
+        c_sim = o_sim + candle_spread
+        
+        h_sim = max(o_sim, c_sim) + (4.0 if k % 3 == 0 else 2.5)
+        l_sim = min(o_sim, c_sim) - (3.5 if k % 2 == 0 else 1.8)
         
         master_history_array.append({
             "time": int(t_sim), "open": round(o_sim, 2), "high": round(h_sim, 2), "low": round(l_sim, 2), "close": round(c_sim, 2),
-            "vwap": round(o_sim + 1.1, 2), "ma9": round(o_sim - 0.5, 2), "ma20": round(o_sim - 2.5, 2), "ma50": round(o_sim - 6.0, 2),
-            "macd": 0.1, "signal": 0.05, "supertrend": round(l_sim - 3.0, 2)
+            "vwap": round((o_sim + c_sim)/2, 2), "ma9": round(o_sim - 1.0, 2), "ma20": round(o_sim - 3.0, 2), "ma50": round(o_sim - 5.0, 2),
+            "macd": 0.0, "signal": 0.0, "supertrend": round(l_sim - 2.0, 2)
         })
 else:
     prices = [r[4] for r in rows]

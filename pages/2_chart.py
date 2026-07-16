@@ -18,7 +18,7 @@ if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
 
 # ==============================================================================
-# 🗄️ 1. RE-ENGINEERED UN-LOCKABLE DATABASE INIT MATRIX
+# 🗄️ 1. TIMEFRAME INSULATED CLEAN STORAGE SCHEMA
 # ==============================================================================
 def init_market_db():
     try:
@@ -33,27 +33,12 @@ def init_market_db():
         conn.commit()
         conn.close()
     except Exception:
-        # Failsafe: Try removing corrupt DB file if sqlite gets hard-locked
-        try:
-            if os.path.exists(DB_PATH):
-                os.remove(DB_PATH)
-            conn = sqlite3.connect(DB_PATH)
-            cursor = conn.cursor()
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS market_history (
-                    asset TEXT, timeframe TEXT, timestamp INTEGER, open REAL, high REAL, low REAL, close REAL,
-                    PRIMARY KEY (asset, timeframe, timestamp)
-                )
-            """)
-            conn.commit()
-            conn.close()
-        except Exception:
-            pass
+        pass
 
 init_market_db()
 
 # ==============================================================================
-# 🔑 2. AUTH CACHE LAYER PROXY
+# 🔑 2. TOKEN PERSISTENCE CACHE INTERCEPTOR
 # ==============================================================================
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
@@ -93,7 +78,7 @@ if "cached_nubra_engine" not in st.session_state:
 
 market_engine = st.session_state["cached_nubra_engine"]
 
-# Active Control Dropdowns Framework
+# Active Control Dropdowns Framework Deck
 target_index = st.sidebar.selectbox("Active Asset Frame", ["NIFTY", "SENSEX"], index=0)
 selected_tf = st.sidebar.selectbox("Timeframe Window", ["5m", "10m", "15m", "30m", "1d"], index=0)
 
@@ -102,7 +87,7 @@ interval_minutes = tf_map[selected_tf]
 interval_seconds = interval_minutes * 60
 
 # ==============================================================================
-# 📊 3. HISTORICAL BARS FETCH SEQUENCE (ROBUST RE-TRY STRATEGY)
+# 📊 3. HISTORICAL ENGINE PIPELINE (DYNAMIC DATA ARRAYS SYNC)
 # ==============================================================================
 def pull_broker_history(asset_name, engine, timeframe):
     if engine is None:
@@ -174,9 +159,9 @@ def pull_broker_history(asset_name, engine, timeframe):
 pull_broker_history(target_index, market_engine, selected_tf)
 
 # ==============================================================================
-# ⚡ 4. REAL-TIME RUNTIME OVERLAY PIPELINE
+# ⚡ 4. REAL-TIME INTERACTIVE TICK STREAM ENGINE
 # ==============================================================================
-base_ltp = 24140.0 if target_index == "NIFTY" else 77200.0
+base_ltp = 24130.0 if target_index == "NIFTY" else 77400.0
 
 if market_engine is not None:
     try:
@@ -212,7 +197,7 @@ if market_engine is not None:
         pass
 
 # ==============================================================================
-# 🧠 5. SEAMLESS FALLBACK RENDERING FILTER POOL (NEVER BLANK DISPLAY GUARANTEE)
+# 🧠 5. CHRONOLOGICAL DATA ARRAY ALIGNER (FIXED SPRING ZIGZAG)
 # ==============================================================================
 master_history_array = []
 rows = []
@@ -229,22 +214,26 @@ try:
 except Exception:
     rows = []
 
-# CRITICAL SECURITY FALLBACK: If DB fails or is completely dry, generate baseline matrix instantly
+# FIXED: Simulated Fallback array maps strictly forward left-to-right chronology
 if not rows or len(rows) < 10:
     curr_ts = (int(time.time()) // interval_seconds) * interval_seconds
-    base_init = base_ltp if base_ltp > 1000 else (24140.0 if target_index == "NIFTY" else 77200.0)
+    base_init = base_ltp
     
-    for k in range(90, -1, -1):
-        t_sim = curr_ts - (k * interval_seconds)
-        o_sim = base_init + (k * 2.0 * (1 if k % 2 == 0 else -1))
-        h_sim = o_sim + 15.0
-        l_sim = o_sim - 12.0
-        c_sim = o_sim + 6.0 if k % 3 == 0 else o_sim - 5.0
+    # Forward loop matrix generation (No overlap spring artifacts)
+    for k in range(0, 90):
+        t_sim = (curr_ts - (90 * interval_seconds)) + (k * interval_seconds)
+        
+        # Smooth organic baseline price moves layout
+        wave = float(k * 1.8 if k % 2 == 0 else k * -1.5)
+        o_sim = base_init - 100.0 + wave
+        h_sim = o_sim + 18.0
+        l_sim = o_sim - 14.0
+        c_sim = o_sim + 8.0 if k % 3 == 0 else o_sim - 6.0
         
         master_history_array.append({
             "time": int(t_sim), "open": round(o_sim, 2), "high": round(h_sim, 2), "low": round(l_sim, 2), "close": round(c_sim, 2),
-            "vwap": round(o_sim + 1.5, 2), "ma9": round(o_sim - 1.0, 2), "ma20": round(o_sim - 4.0, 2), "ma50": round(o_sim - 10.0, 2),
-            "macd": 0.4, "signal": 0.2, "supertrend": round(l_sim - 3.0, 2)
+            "vwap": round(o_sim + 2.0, 2), "ma9": round(o_sim - 1.5, 2), "ma20": round(o_sim - 4.5, 2), "ma50": round(o_sim - 12.0, 2),
+            "macd": 0.2, "signal": 0.1, "supertrend": round(l_sim - 3.5, 2)
         })
 else:
     prices = [r[4] for r in rows]
@@ -273,6 +262,7 @@ else:
             "macd": macd_line, "signal": signal_line, "supertrend": supertrend
         })
 
+# DUAL PAYLOAD MATRIX MAPPING (Locks dynamic switches on window reload)
 runtime_payload = {
     "current_asset": target_index,
     "price": int(base_ltp * 100),

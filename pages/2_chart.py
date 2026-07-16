@@ -4,10 +4,10 @@ import os
 from datetime import datetime
 from streamlit_autorefresh import st_autorefresh
 
-# ================= 1. PAGE SETUP =================
+# ================= 1. PAGE SETUP & MODERN DARK STYLES =================
 st.set_page_config(layout="wide", page_title="SmartWealth Premium Zones Terminal")
 
-# 🌟 SEPARATED CSS INJECTION (PREVENTS PYTHON STRING PARSING CORRUPTION)
+# 🌟 ULTRA MODERN CYBERPUNK THEME DESIGN (COMPLETELY MINIFIED)
 st.markdown("""
     <style>
         .block-container {
@@ -16,109 +16,100 @@ st.markdown("""
             max-width: 95% !important;
         }
         
-        /* Main Container matching Pic-2 */
         .terminal-container {
-            background-color: #151922 !important;
-            border: 2px solid #2d3748 !important;
-            border-radius: 12px !important;
-            padding: 26px !important;
-            box-shadow: 0 12px 45px rgba(0, 0, 0, 0.8) !important;
-            margin-bottom: 25px !important;
+            background: linear-gradient(145deg, #0b0f19 0%, #030712 100%);
+            border: 1px solid #1e293b;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+            margin-bottom: 25px;
         }
         
         .asset-header-row {
-            display: flex !important;
-            justify-content: space-between !important;
-            align-items: center !important;
-            border-bottom: 1px solid #2d3748 !important;
-            padding-bottom: 16px !important;
-            margin-bottom: 24px !important;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #1e293b;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
         }
         
         .asset-title {
-            font-size: 22px !important;
-            font-weight: 900 !important;
-            color: #ffffff !important;
-            letter-spacing: 1px !important;
-            text-transform: uppercase !important;
+            font-size: 26px;
+            font-weight: 900;
+            color: #f3f4f6;
+            letter-spacing: 1px;
+            text-transform: uppercase;
         }
         
-        /* HEADER RIGHT CORNER DYNAMIC STATUS INDICATORS */
-        .live-ltp-badge-container {
-            font-size: 16px !important;
-            font-weight: 800 !important;
-            padding: 8px 16px !important;
-            border-radius: 6px !important;
-            display: flex !important;
-            align-items: center !important;
-            gap: 12px !important;
-            letter-spacing: 0.5px !important;
-            background-color: #1a202c !important;
-            border: 1px solid #4a5568 !important;
+        .live-ltp-badge {
+            font-size: 22px;
+            font-weight: 900;
+            color: #facc15;
+            background: rgba(250, 204, 21, 0.1);
+            border: 1px solid rgba(250, 204, 21, 0.4);
+            padding: 6px 16px;
+            border-radius: 6px;
+            box-shadow: 0 0 15px rgba(250, 204, 21, 0.2);
         }
         
-        .text-market-up { color: #4ade80 !important; font-weight: 900 !important; }
-        .text-market-down { color: #f87171 !important; font-weight: 900 !important; }
-        
-        /* DYNAMIC NEON GLOW GRID HOVER CARDS */
         .zones-grid {
-            display: flex !important;
-            gap: 20px !important;
-            flex-wrap: wrap !important;
-            width: 100% !important;
+            display: flex;
+            gap: 20px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+            width: 100%;
         }
         
         .zone-card {
-            flex: 1 !important;
-            min-width: 280px !important;
-            border-radius: 8px !important;
-            padding: 24px 15px !important;
-            text-align: center !important;
-            background-color: #1a202c !important;
+            flex: 1;
+            min-width: 280px;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
         }
         
-        /* 🔴 Resistance Solid Neon Glow Card */
         .card-resistance {
-            border: 2px solid #ef4444 !important;
-            box-shadow: 0 0 15px rgba(239, 68, 68, 0.35) !important;
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, rgba(185, 28, 28, 0.03) 100%);
+            border: 1px solid rgba(239, 68, 68, 0.4);
         }
         
-        /* 🟡 Pivot Solid Neon Glow Card */
-        .card-pivot {
-            border: 2px solid #eab308 !important;
-            box-shadow: 0 0 15px rgba(234, 179, 8, 0.35) !important;
-        }
-        
-        /* 🟢 Support Solid Neon Glow Card */
         .card-support {
-            border: 2px solid #22c55e !important;
-            box-shadow: 0 0 15px rgba(34, 197, 94, 0.35) !important;
+            background: linear-gradient(135deg, rgba(34, 197, 94, 0.08) 0%, rgba(21, 128, 61, 0.03) 100%);
+            border: 1px solid rgba(34, 197, 94, 0.4);
+        }
+        
+        .card-pivot {
+            background: linear-gradient(135deg, rgba(234, 179, 8, 0.08) 0%, rgba(161, 98, 7, 0.03) 100%);
+            border: 1px solid rgba(234, 179, 8, 0.4);
         }
         
         .card-label {
-            font-size: 11px !important;
-            font-weight: 800 !important;
-            color: #a0aec0 !important;
-            text-transform: uppercase !important;
-            letter-spacing: 1.5px !important;
-            margin-bottom: 14px !important;
+            font-size: 13px;
+            font-weight: 800;
+            color: #9ca3af;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 8px;
         }
         
         .card-value {
-            font-size: 28px !important;
-            font-weight: 900 !important;
-            letter-spacing: 0.5px !important;
+            font-size: 28px;
+            font-weight: 900;
+            letter-spacing: 0.5px;
         }
-        .val-red { color: #f87171 !important; }
-        .val-yellow { color: #fde047 !important; }
-        .val-green { color: #4ade80 !important; }
+        .val-red { color: #f87171; }
+        .val-green { color: #4ade80; }
+        .val-yellow { color: #fde047; }
         
         .sync-timestamp {
-            font-size: 11px !important;
-            color: #718096 !important;
-            text-align: right !important;
-            margin-top: 22px !important;
-            font-family: monospace !important;
+            font-size: 11px;
+            color: #4b5563;
+            text-align: right;
+            margin-top: 15px;
+            font-family: monospace;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -139,7 +130,7 @@ if "direct_market_engine" not in st.session_state:
 market_data = st.session_state["direct_market_engine"]
 
 if market_data is None:
-    st.error("❌ Market engine connection parameters missing.")
+    st.error("❌ Market engine connection failed. Check credentials configuration.")
     st.stop()
 
 # ==============================================================================
@@ -159,26 +150,9 @@ try:
 except Exception:
     pass
 
-# Previous close benchmarks
-prev_close_map = {"NIFTY": 24050.00, "BANKNIFTY": 52200.00, "SENSEX": 79300.00}
-fallback_prices = {"NIFTY": 24094.50, "BANKNIFTY": 52350.20, "SENSEX": 79420.80}
-
 if current_ltp == 0.0:
+    fallback_prices = {"NIFTY": 24096.35, "BANKNIFTY": 52350.20, "SENSEX": 79420.80}
     current_ltp = fallback_prices.get(target_symbol, 24000.0)
-
-# Compute daily drift data metrics
-base_close = prev_close_map.get(target_symbol, current_ltp)
-net_change = current_ltp - base_close
-change_pct = (net_change / base_close) * 100.0
-
-if net_change >= 0:
-    color_class = "text-market-up"
-    arrow = "▲"
-    sign = "+"
-else:
-    color_class = "text-market-down"
-    arrow = "▼"
-    sign = ""
 
 # ==============================================================================
 # 🧠 4. MATHEMATICAL EXTRACTION ZONES
@@ -213,69 +187,45 @@ else:
 p_point = round((sup_low + dem_high + current_ltp) / 3)
 
 # ==============================================================================
-# 🖥️ 5. CLEAN HTML MARKUP EXECUTION (ZERO PYTHON INTERPOLATION ERRORS)
+# 🖥️ 5. LIVE PREMIUM HTML CONTAINER RENDERING
 # ==============================================================================
 now_ist = datetime.now().strftime("%Y-%m-%d %H:%M:%S IST")
 
-# Conversion primitives to bypass rendering issues
-s_low = str(int(sup_low))
-s_high = str(int(sup_high))
-d_low = str(int(dem_low))
-d_high = str(int(dem_high))
-pp_val = str(int(p_point))
-ltp_val = f"{current_ltp:.2f}"
-chg_val = f"{net_change:.2f}"
-pct_val = f"{change_pct:.2f}"
-
-# Clean layout array matrix definition (Operational reference block fully deleted)
-terminal_html = """
+terminal_html = f"""
 <div class="terminal-container">
     <div class="asset-header-row">
-        <div class="asset-title">NEXT DAY INSTITUTIONAL LEVELS GRID</div>
-        <div class="live-ltp-badge-container">
-            <span class="##COLOR##">⚡ ##SYMBOL## LTP: ₹##LTP##</span>
-            <span class="##COLOR##">##ARROW## ##SIGN####CHANGE## (##SIGN####PCT##%)</span>
-        </div>
+        <div class="asset-title">🎯 Next Day Institutional Levels Grid</div>
+        <div class="live-ltp-badge">⚡ {target_symbol} LTP: ₹{current_ltp:.2f}</div>
     </div>
-    
     <div class="zones-grid">
         <div class="zone-card card-resistance">
-            <div class="card-label">🔴 SUPPLY / RESISTANCE (DR ZONE)</div>
-            <div class="card-value val-red">##SLow## - ##SHigh##</div>
+            <div class="card-label">🔴 Supply / Resistance (DR Zone)</div>
+            <div class="card-value val-red">{int(sup_low)} - {int(sup_high)}</div>
         </div>
         <div class="zone-card card-pivot">
-            <div class="card-label">⚖️ INSTITUTIONAL BALANCE PIVOT (PP)</div>
-            <div class="card-value val-yellow">##PP##</div>
+            <div class="card-label">⚖️ Institutional Balance Pivot (PP)</div>
+            <div class="card-value val-yellow">{int(p_point)}</div>
         </div>
         <div class="zone-card card-support">
-            <div class="card-label">🟢 DEMAND / SUPPORT (DS ZONE)</div>
-            <div class="card-value val-green">##DLow## - ##DHigh##</div>
+            <div class="card-label">🟢 Demand / Support (DS Zone)</div>
+            <div class="card-value val-green">{int(dem_low)} - {int(dem_high)}</div>
         </div>
     </div>
-    
-    <div class="sync-timestamp">🔒 Cloud Broker Node Connected | Last Dynamic Refresh: ##TS##</div>
+    <div class="sync-timestamp">🔒 Cloud Broker Node Connected | Last Dynamic Refresh: {now_ist}</div>
 </div>
 """
 
-# Absolute watertight manual replace mappings (Safeguards HTML layout boxes loading)
-final_render = (
-    terminal_html
-    .replace("##SYMBOL##", target_symbol)
-    .replace("##LTP##", ltp_val)
-    .replace("##COLOR##", color_class)
-    .replace("##ARROW##", arrow)
-    .replace("##SIGN##", sign)
-    .replace("##CHANGE##", chg_val)
-    .replace("##PCT##", pct_val)
-    .replace("##SLow##", s_low)
-    .replace("##SHigh##", s_high)
-    .replace("##DLow##", d_low)
-    .replace("##DHigh##", d_high)
-    .replace("##PP##", pp_val)
-    .replace("##TS##", now_ist)
-)
+# FIXED: Injecting HTML strings properly as structured code blocks
+st.markdown(terminal_html, unsafe_allow_html=True)
 
-st.markdown(final_render, unsafe_allow_html=True)
+# Multi-indicators structural info table sheet below the terminal box
+st.markdown("### 📊 Operational Quick Reference Analytics")
+c1, c2, c3 = st.columns(3)
+with c1:
+    st.metric(label="Target Asset Frame", value=target_symbol)
+with c2:
+    st.metric(label="Calculated Base Upper Threshold", value=f"₹{int(sup_low)}")
+with c3:
+    st.metric(label="Calculated Base Lower Threshold", value=f"₹{int(dem_high)}")
 
-# 🔄 AUTOMATIC 2-SECOND DYNAMIC SYNC REFRESH LOOP
 st_autorefresh(interval=2000, key="premium_zones_auto_sync")

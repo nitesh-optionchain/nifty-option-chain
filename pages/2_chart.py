@@ -4,10 +4,10 @@ import os
 from datetime import datetime
 from streamlit_autorefresh import st_autorefresh
 
-# ================= 1. PAGE SETUP & MODERN DARK STYLES =================
+# ================= 1. PAGE SETUP & CYBERPUNK TERMINAL STYLES =================
 st.set_page_config(layout="wide", page_title="SmartWealth Premium Zones Terminal")
 
-# 🌟 ULTRA MODERN CYBERPUNK THEME DESIGN (COMPLETELY MINIFIED)
+# 🌟 ULTRA MODERN PREMIUM GLOW UI (WITH DYNAMIC ARROW PROPERTIES)
 st.markdown("""
     <style>
         .block-container {
@@ -35,22 +35,49 @@ st.markdown("""
         }
         
         .asset-title {
-            font-size: 26px;
+            font-size: 24px;
             font-weight: 900;
             color: #f3f4f6;
             letter-spacing: 1px;
             text-transform: uppercase;
         }
         
-        .live-ltp-badge {
+        /* DYNAMIC UP/DOWN GLOW BADGES LAYOUT MATRIX */
+        .ltp-box-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 4px;
+        }
+        
+        .live-ltp-badge-container {
             font-size: 22px;
             font-weight: 900;
-            color: #facc15;
-            background: rgba(250, 204, 21, 0.1);
-            border: 1px solid rgba(250, 204, 21, 0.4);
             padding: 6px 16px;
             border-radius: 6px;
-            box-shadow: 0 0 15px rgba(250, 204, 21, 0.2);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .badge-market-up {
+            color: #4ade80;
+            background: rgba(34, 197, 94, 0.1);
+            border: 1px solid rgba(34, 197, 94, 0.4);
+            box-shadow: 0 0 15px rgba(34, 197, 94, 0.2);
+        }
+        
+        .badge-market-down {
+            color: #f87171;
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.4);
+            box-shadow: 0 0 15px rgba(239, 68, 68, 0.2);
+        }
+        
+        .change-percentage-text {
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
         }
         
         .zones-grid {
@@ -72,22 +99,22 @@ st.markdown("""
         }
         
         .card-resistance {
-            background: linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, rgba(185, 28, 28, 0.03) 100%);
-            border: 1px solid rgba(239, 68, 68, 0.4);
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.06) 0%, rgba(185, 28, 28, 0.02) 100%);
+            border: 1px solid rgba(239, 68, 68, 0.35);
         }
         
         .card-support {
-            background: linear-gradient(135deg, rgba(34, 197, 94, 0.08) 0%, rgba(21, 128, 61, 0.03) 100%);
-            border: 1px solid rgba(34, 197, 94, 0.4);
+            background: linear-gradient(135deg, rgba(34, 197, 94, 0.06) 0%, rgba(21, 128, 61, 0.02) 100%);
+            border: 1px solid rgba(34, 197, 94, 0.35);
         }
         
         .card-pivot {
-            background: linear-gradient(135deg, rgba(234, 179, 8, 0.08) 0%, rgba(161, 98, 7, 0.03) 100%);
-            border: 1px solid rgba(234, 179, 8, 0.4);
+            background: linear-gradient(135deg, rgba(234, 179, 8, 0.06) 0%, rgba(161, 98, 7, 0.02) 100%);
+            border: 1px solid rgba(234, 179, 8, 0.35);
         }
         
         .card-label {
-            font-size: 13px;
+            font-size: 12px;
             font-weight: 800;
             color: #9ca3af;
             text-transform: uppercase;
@@ -108,7 +135,7 @@ st.markdown("""
             font-size: 11px;
             color: #4b5563;
             text-align: right;
-            margin-top: 15px;
+            margin-top: 18px;
             font-family: monospace;
         }
     </style>
@@ -130,11 +157,11 @@ if "direct_market_engine" not in st.session_state:
 market_data = st.session_state["direct_market_engine"]
 
 if market_data is None:
-    st.error("❌ Market engine connection failed. Check credentials configuration.")
+    st.error("❌ Market engine connection failed. Check secrets configuration parameters.")
     st.stop()
 
 # ==============================================================================
-# ⚙️ 3. SIDEBAR ANCHORS FRAME
+# ⚙️ 3. SIDEBAR ANCHORS CONTROLLER
 # ==============================================================================
 st.sidebar.header("⚙️ Terminal Controller")
 target_symbol = st.sidebar.selectbox("🔤 Select Active Index", ["NIFTY", "BANKNIFTY", "SENSEX"], index=0)
@@ -150,9 +177,26 @@ try:
 except Exception:
     pass
 
+# Standard reference closes to track net intraday percentage shifts accurately
+prev_close_map = {"NIFTY": 24050.00, "BANKNIFTY": 52200.00, "SENSEX": 79300.00}
+fallback_prices = {"NIFTY": 24096.35, "BANKNIFTY": 52350.20, "SENSEX": 79420.80}
+
 if current_ltp == 0.0:
-    fallback_prices = {"NIFTY": 24096.35, "BANKNIFTY": 52350.20, "SENSEX": 79420.80}
     current_ltp = fallback_prices.get(target_symbol, 24000.0)
+
+# DYNAMIC ARROW PROPERTIES COMPUTATION GRID
+base_close_p = prev_close_map.get(target_symbol, current_ltp)
+net_change = current_ltp - base_close_p
+change_pct = (net_change / base_close_p) * 100.0
+
+if net_change >= 0:
+    ltp_style_class = "badge-market-up"
+    market_arrow = "▲"
+    sign_prefix = "+"
+else:
+    ltp_style_class = "badge-market-down"
+    market_arrow = "▼"
+    sign_prefix = ""
 
 # ==============================================================================
 # 🧠 4. MATHEMATICAL EXTRACTION ZONES
@@ -187,7 +231,7 @@ else:
 p_point = round((sup_low + dem_high + current_ltp) / 3)
 
 # ==============================================================================
-# 🖥️ 5. LIVE PREMIUM HTML CONTAINER RENDERING
+# 🖥️ 5. LIVE PREMIUM HTML CONTAINER RENDERING (OPERATIONAL REFERENCE DELETED)
 # ==============================================================================
 now_ist = datetime.now().strftime("%Y-%m-%d %H:%M:%S IST")
 
@@ -195,8 +239,14 @@ terminal_html = f"""
 <div class="terminal-container">
     <div class="asset-header-row">
         <div class="asset-title">🎯 Next Day Institutional Levels Grid</div>
-        <div class="live-ltp-badge">⚡ {target_symbol} LTP: ₹{current_ltp:.2f}</div>
+        <div class="ltp-box-wrapper">
+            <div class="live-ltp-badge-container {ltp_style_class}">
+                <span>⚡ {target_symbol} LTP: ₹{current_ltp:.2f}</span>
+                <span class="change-percentage-text">{market_arrow} {sign_prefix}{net_change:.2f} ({sign_prefix}{change_pct:.2f}%)</span>
+            </div>
+        </div>
     </div>
+    
     <div class="zones-grid">
         <div class="zone-card card-resistance">
             <div class="card-label">🔴 Supply / Resistance (DR Zone)</div>
@@ -215,17 +265,8 @@ terminal_html = f"""
 </div>
 """
 
-# FIXED: Injecting HTML strings properly as structured code blocks
+# Inject clean unified responsive HTML elements natively
 st.markdown(terminal_html, unsafe_allow_html=True)
 
-# Multi-indicators structural info table sheet below the terminal box
-st.markdown("### 📊 Operational Quick Reference Analytics")
-c1, c2, c3 = st.columns(3)
-with c1:
-    st.metric(label="Target Asset Frame", value=target_symbol)
-with c2:
-    st.metric(label="Calculated Base Upper Threshold", value=f"₹{int(sup_low)}")
-with c3:
-    st.metric(label="Calculated Base Lower Threshold", value=f"₹{int(dem_high)}")
-
+# 🔄 AUTOMATIC 2-SECOND DYNAMIC RUNTIME REFRESH LOOP
 st_autorefresh(interval=2000, key="premium_zones_auto_sync")

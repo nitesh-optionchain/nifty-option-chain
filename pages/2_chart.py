@@ -7,146 +7,7 @@ from streamlit_autorefresh import st_autorefresh
 # ================= 1. PAGE SETUP =================
 st.set_page_config(layout="wide", page_title="SmartWealth Premium Zones Terminal")
 
-# 🌟 STANDALONE CSS INJECTION (PREMIUM MODERN AESTHETICS WITH EMBEDDED DROPDOWN STYLES)
-st.markdown("""
-    <style>
-        .block-container {
-            padding-top: 1.5rem !important;
-            padding-bottom: 1rem !important;
-            max-width: 95% !important;
-        }
-        
-        /* Main Container Frame with External Cyan Aura */
-        .terminal-container {
-            background-color: #151922 !important;
-            border: 1px solid #00d2ff !important;
-            border-radius: 14px !important;
-            padding: 24px !important;
-            box-shadow: 0 0 25px rgba(0, 210, 255, 0.28) !important;
-            margin-bottom: 10px !important;
-            font-family: sans-serif !important;
-        }
-        
-        .asset-header-row {
-            display: flex !important;
-            justify-content: space-between !important;
-            align-items: center !important;
-            border-bottom: 1px solid #232d3f !important;
-            padding-bottom: 16px !important;
-            margin-bottom: 22px !important;
-            flex-wrap: wrap !important;
-            gap: 12px !important;
-        }}
-        
-        .asset-title {
-            font-size: 20px !important;
-            font-weight: 800 !important;
-            color: #ffffff !important;
-            letter-spacing: 1px !important;
-        }
-        
-        /* Right Side Controls Layout */
-        .header-controls {
-            display: flex !important;
-            align-items: center !important;
-            gap: 15px !important;
-            flex-wrap: wrap !important;
-        }
-        
-        /* INDEX LTP BOX REAL-TIME NEO GLOW LIGHTS */
-        .live-ltp-badge-container {
-            font-size: 15px !important;
-            font-weight: 800 !important;
-            padding: 8px 16px !important;
-            border-radius: 8px !important;
-            display: flex !important;
-            align-items: center !important;
-            gap: 12px !important;
-            background-color: #11151d !important;
-        }
-        
-        .index-glow-green {
-            border: 2px solid #00ff66 !important;
-            box-shadow: 0 0 18px rgba(0, 255, 102, 0.45) !important;
-        }
-        
-        .index-glow-red {
-            border: 2px solid #ff3333 !important;
-            box-shadow: 0 0 18px rgba(255, 51, 51, 0.45) !important;
-        }
-        
-        .text-market-up { color: #00ff66 !important; font-weight: 900 !important; }
-        .text-market-down { color: #ff3333 !important; font-weight: 900 !important; }
-        
-        /* 🌟 TOP EMBEDDED STREAMLIT SELECTBOX CUSTOM TARGET GLOW */
-        div[data-baseweb="select"] {
-            border: 1px solid #00d2ff !important;
-            border-radius: 6px !important;
-            background-color: #11151d !important;
-            box-shadow: 0 0 12px rgba(0, 210, 255, 0.3) !important;
-            min-width: 140px !important;
-        }
-        div[data-baseweb="select"] * {
-            color: #ffffff !important;
-            font-weight: bold !important;
-        }
-        
-        /* Hide Boring Streamlit Native Selectbox Label Text */
-        .stSelectbox label {
-            display: none !important;
-        }
-        
-        /* THIN INNER CONTENT LAYOUT BLOCKS */
-        .zones-grid {
-            display: flex !important;
-            gap: 16px !important;
-            flex-wrap: wrap !important;
-            width: 100% !important;
-        }
-        
-        .zone-card {
-            flex: 1 !important;
-            min-width: 260px !important;
-            border-radius: 8px !important;
-            padding: 20px 12px !important;
-            text-align: center !important;
-            background-color: #1a202c !important;
-        }
-        
-        .card-resistance { border: 1px solid #ef4444 !important; }
-        .card-pivot { border: 1px solid #eab308 !important; }
-        .card-support { border: 1px solid #22c55e !important; }
-        
-        .card-label {
-            font-size: 11px !important;
-            font-weight: 700 !important;
-            color: #a0aec0 !important;
-            text-transform: uppercase !important;
-            letter-spacing: 1px !important;
-            margin-bottom: 10px !important;
-        }
-        
-        .card-value {
-            font-size: 26px !important;
-            font-weight: 800 !important;
-        }
-        .val-red { color: #ff4d4d !important; }
-        .val-yellow { color: #ffcc00 !important; }
-        .val-green { color: #33ff77 !important; }
-        
-        .sync-timestamp {
-            font-size: 10px !important;
-            color: #5c6b73 !important;
-            text-align: right !important;
-            margin-top: 18px !important;
-            font-family: monospace !important;
-        }
-    </style>
-""", unsafe_allow_html=True)
-
-# ==============================================================================
-# 🔌 2. NATIVE SDK CONNECTION MATRIX
-# ==============================================================================
+# ================= 2. NATIVE SDK CONNECTION MATRIX =================
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 from nubra_python_sdk.marketdata.market_data import MarketData
 
@@ -163,17 +24,12 @@ if market_data is None:
     st.error("❌ Market engine connection failed.")
     st.stop()
 
-# ==============================================================================
-# 🎛️ 3. TOP ROW DROP-DOWN EXTRACTION CORE (MOBILEUX REPLACEMENT)
-# ==============================================================================
-# 3 Columns grid create kiya taaki dropdown right column me proper align ho sake
-header_cols = st.columns([3, 1])
-
-with header_cols[1]:
-    # Streamlit natively selects target symbol inside panel bounds now
-    target_symbol = st.selectbox("Active Index Selector", ["NIFTY", "BANKNIFTY", "SENSEX"], index=0, label_visibility="collapsed")
+# ================= 3. SIDEBAR ANCHORS FRAME =================
+st.sidebar.header("⚙️ Terminal Controller")
+target_symbol = st.sidebar.selectbox("🔤 Select Active Index", ["NIFTY", "BANKNIFTY", "SENSEX"], index=0)
 
 exchange_type = "BSE" if target_symbol == "SENSEX" else "NSE"
+
 prev_close_map = {"NIFTY": 24050.00, "BANKNIFTY": 52200.00, "SENSEX": 79300.00}
 current_ltp = 0.0
 yesterday_close = prev_close_map.get(target_symbol, 24000.0)
@@ -212,9 +68,7 @@ else:
     arrow = "▼"
     sign = ""
 
-# ==============================================================================
-# 🧠 4. DYNAMIC OI + VOLUME CLUSTERING ENGINE
-# ==============================================================================
+# ================= 4. DYNAMIC OI + VOLUME CLUSTERING ENGINE =================
 if target_symbol == "NIFTY":
     base_upper = float(((current_ltp + 25) // 50) * 50 + 50)
     sup_low, sup_high = base_upper, base_upper + 30
@@ -270,19 +124,131 @@ if "ticks" in st.session_state and isinstance(st.session_state.ticks, dict) and 
 p_point = round((sup_low + dem_high) / 2)
 now_ist = datetime.now().strftime("%Y-%m-%d %H:%M:%S IST")
 
-# ==============================================================================
-# 🖥️ 5. DYNAMIC HTML RENDER CORE
-# ==============================================================================
-# Dropdown placeholder injection mechanism built natively using standard text streams
-terminal_html = f"""
+# ================= 5. DYNAMIC HTML/CSS VISUAL ENGINE =================
+st.html(f"""
+<style>
+    .block-container {{
+        padding-top: 1.5rem !important;
+        padding-bottom: 1rem !important;
+        max-width: 95% !important;
+    }}
+    
+    /* MAIN CONTROLLER CONTAINER WITH CYAN/BLUE NEO GLOW */
+    .terminal-container {{
+        background-color: #151922 !important;
+        border: 1px solid #00d2ff !important;
+        border-radius: 14px !important;
+        padding: 24px !important;
+        box-shadow: 0 0 25px rgba(0, 210, 255, 0.28) !important;
+        margin-bottom: 25px !important;
+        font-family: sans-serif !important;
+    }}
+    
+    .asset-header-row {{
+        display: flex !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+        border-bottom: 1px solid #232d3f !important;
+        padding-bottom: 16px !important;
+        margin-bottom: 22px !important;
+    }}
+    
+    .asset-title {{
+        font-size: 20px !important;
+        font-weight: 800 !important;
+        color: #ffffff !important;
+        letter-spacing: 1px !important;
+    }}
+    
+    /* DYNAMIC MARKET LOG IN LTPS BADGES */
+    .live-ltp-badge-container {{
+        font-size: 15px !important;
+        font-weight: 800 !important;
+        padding: 8px 16px !important;
+        border-radius: 8px !important;
+        display: flex !important;
+        align-items: center !important;
+        gap: 12px !important;
+        background-color: #11151d !important;
+        transition: all 0.4s ease !important;
+    }}
+    
+    .index-glow-green {{
+        border: 2px solid #00ff66 !important;
+        box-shadow: 0 0 18px rgba(0, 255, 102, 0.45) !important;
+    }}
+    
+    .index-glow-red {{
+        border: 2px solid #ff3333 !important;
+        box-shadow: 0 0 18px rgba(255, 51, 51, 0.45) !important;
+    }}
+    
+    .text-market-up {{ color: #00ff66 !important; font-weight: 900 !important; }}
+    .text-market-down {{ color: #ff3333 !important; font-weight: 900 !important; }}
+    
+    /* DETAILED THIN BORDER BOXES RE-ADDED */
+    .zones-grid {{
+        display: flex !important;
+        gap: 16px !important;
+        flex-wrap: wrap !important;
+        width: 100% !important;
+    }}
+    
+    .zone-card {{
+        flex: 1 !important;
+        min-width: 260px !important;
+        border-radius: 8px !important;
+        padding: 20px 12px !important;
+        text-align: center !important;
+        background-color: #1a202c !important;
+        transition: all 0.3s ease !important;
+    }}
+    
+    /* Solid Thin Borders Restored */
+    .card-resistance {{
+        border: 1px solid #ef4444 !important;
+    }}
+    
+    .card-pivot {{
+        border: 1px solid #eab308 !important;
+    }}
+    
+    .card-support {{
+        border: 1px solid #22c55e !important;
+    }}
+    
+    .card-label {{
+        font-size: 11px !important;
+        font-weight: 700 !important;
+        color: #a0aec0 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 1px !important;
+        margin-bottom: 10px !important;
+    }}
+    
+    .card-value {{
+        font-size: 26px !important;
+        font-weight: 800 !important;
+    }}
+    .val-red {{ color: #ff4d4d !important; }}
+    .val-yellow {{ color: #ffcc00 !important; }}
+    .val-green {{ color: #33ff77 !important; }}
+    
+    .sync-timestamp {{
+        font-size: 10px !important;
+        color: #5c6b73 !important;
+        text-align: right !important;
+        margin-top: 18px !important;
+        font-family: monospace !important;
+    }}
+</style>
+
 <div class="terminal-container">
     <div class="asset-header-row">
         <div class="asset-title">NEXT DAY INSTITUTIONAL LEVELS GRID</div>
-        <div class="header-controls">
-            <div class="live-ltp-badge-container {index_glow_class}">
-                <span class="{color_class}">⚡ {target_symbol} LTP: ₹{current_ltp:.2f}</span>
-                <span class="{color_class}">{arrow} {sign}{abs(net_change):.2f} ({sign}{change_pct:.2f}%)</span>
-            </div>
+        <div class="live-ltp-badge-container {index_glow_class}">
+            <span class="{color_class}">⚡ {target_symbol} LTP: ₹{current_ltp:.2f}</span>
+            <span class="{color_class}">{arrow} {sign}{abs(net_change):.2f} ({sign}{change_pct:.2f}%)</span>
         </div>
     </div>
     
@@ -303,10 +269,7 @@ terminal_html = f"""
     
     <div class="sync-timestamp">🔒 Cloud Broker Node Connected | Last Dynamic Refresh: {now_ist}</div>
 </div>
-"""
-
-# Render clean visual dashboard component block
-st.markdown(terminal_html, unsafe_allow_html=True)
+""")
 
 # 🔄 AUTOMATIC 2-SECOND RUNTIME REFRESH
 st_autorefresh(interval=2000, key="premium_zones_auto_sync")

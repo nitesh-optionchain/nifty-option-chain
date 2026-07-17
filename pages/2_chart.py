@@ -7,7 +7,7 @@ from streamlit_autorefresh import st_autorefresh
 # ================= 1. PAGE SETUP =================
 st.set_page_config(layout="wide", page_title="SmartWealth Premium Zones Terminal")
 
-# 🌟 PURE INJECTED DYNAMIC CYBERPUNK BOX CSS (NO COLS BREAKOUT)
+# 🌟 SOLID TERMINAL BACKBONE DESIGN (RESTORED & FIXED)
 st.markdown("""
     <style>
         .block-container {
@@ -16,10 +16,10 @@ st.markdown("""
             max-width: 96% !important;
         }
         
-        /* Fixed Master Solid Black Container Box matching Pic 2 Layout */
+        /* The Absolute Solid Black Main Box Container */
         .terminal-container {
-            background-color: #1a1e29 !important;
-            border: 1px solid #2d3748 !important;
+            background-color: #151922 !important;
+            border: 2px solid #232d3f !important;
             border-radius: 10px !important;
             padding: 24px !important;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7) !important;
@@ -27,17 +27,18 @@ st.markdown("""
             font-family: sans-serif !important;
         }
         
-        /* Inside Layout Header Alignment Structure */
+        /* Master Layout Row inside the Black Box */
         .asset-header-row {
             display: flex !important;
             justify-content: space-between !important;
             align-items: center !important;
-            border-bottom: 1px solid #2d3748 !important;
+            border-bottom: 1px solid #232d3f !important;
             padding-bottom: 16px !important;
             margin-bottom: 22px !important;
+            width: 100% !important;
         }
         
-        /* LEFT CORNER RECTANGULAR SELECTBOX GLOW BUTTON OVERRIDES */
+        /* LEFT SIDEWAY IN-BOX CUSTOM DROP-DOWN GLOW OVERRIDES */
         div[data-baseweb="select"] {
             border-radius: 6px !important;
             background-color: #11151d !important;
@@ -45,7 +46,6 @@ st.markdown("""
             transition: all 0.3s ease !important;
         }
         
-        /* Dynamic Neon Glow Borders for Left Selector Match */
         .glow-box-green div[data-baseweb="select"] {
             border: 2px solid #00ff66 !important;
             box-shadow: 0 0 14px rgba(0, 255, 102, 0.45) !important;
@@ -66,7 +66,7 @@ st.markdown("""
             display: none !important;
         }
         
-        /* RIGHT CORNER Sleek Live LTP Container Badges */
+        /* RIGHT SIDEWAY LIVE LTP BADGES */
         .live-ltp-badge-container {
             font-size: 12px !important;
             font-weight: 700 !important;
@@ -89,10 +89,10 @@ st.markdown("""
             box-shadow: 0 0 12px rgba(255, 51, 51, 0.3) !important;
         }
         
-        .text-market-up { color: #00ff66 !important; }
-        .text-market-down { color: #ff3333 !important; }
+        .text-market-up { color: #00ff66 !important; font-weight: 900 !important; }
+        .text-market-down { color: #ff3333 !important; font-weight: 900 !important; }
         
-        /* CONTENT COMPONENT TABLES CARDS GRAPHIC LINK */
+        /* ZONE CONTENT BOXES GRID */
         .zones-grid {
             display: flex !important;
             gap: 16px !important;
@@ -106,7 +106,7 @@ st.markdown("""
             border-radius: 6px !important;
             padding: 22px 12px !important;
             text-align: center !important;
-            background-color: #141722 !important;
+            background-color: #1a202c !important;
         }
         
         .card-resistance { border: 1px solid #ef4444 !important; }
@@ -138,11 +138,6 @@ st.markdown("""
             display: block !important;
             width: 100% !important;
         }
-        
-        /* Fix to hide external container breaks */
-        .element-container iframe {
-            display: none !important;
-        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -166,7 +161,7 @@ if market_data is None:
     st.stop()
 
 # ==============================================================================
-# 🎛️ 3. RUNTIME ARGS DETECTION MATRIX
+# 🎛️ 3. RUNTIME GLOBAL VARIABLE MANAGEMENT
 # ==============================================================================
 if "active_selected_index" not in st.session_state:
     st.session_state.active_selected_index = "NIFTY"
@@ -215,7 +210,7 @@ else:
     sign = ""
 
 # ==============================================================================
-# 🧠 4. STRIKE CORRECTOR ENGINE (Target Locked: 24150-180 and 24300-330)
+# 🎛️ 4. DATA ENGINE LOGIC BLOCK
 # ==============================================================================
 if current_selection == "NIFTY":
     base_strike = float((current_ltp // 50) * 50)
@@ -236,9 +231,6 @@ else:  # SENSEX
     dem_high = base_strike - 200
     dem_low = dem_high - 100
 
-# ==============================================================================
-# ⚡ 5. HIGH STABILITY OI PROCESSOR ENGINE
-# ==============================================================================
 if "ticks" in st.session_state and isinstance(st.session_state.ticks, dict) and len(st.session_state.ticks) > 0:
     try:
         max_ce_oi = -1
@@ -277,36 +269,35 @@ p_point = round((sup_low + dem_high) / 2)
 now_ist = datetime.now().strftime("%Y-%m-%d %H:%M:%S IST")
 
 # ==============================================================================
-# 🖥️ 6. SINGLE BALANCED CONTAINER PRESENTATION BLOCK (PIC 2 MIRROR)
+# 🖥️ 5. SOLID STRUCTURAL VISUAL RENDER (PURE HTML WRAPPER FOR EXACT LAYOUT)
 # ==============================================================================
-# Injected single continuous solid container block securely
+# Injected main container system box securely
 st.markdown('<div class="terminal-container">', unsafe_allow_html=True)
 
-# Generate inner layout columns architecture explicitly to separate left and right top ends
-h_mesh = st.columns([2, 4])
+# Native horizontal flow control column mapping to avoid HTML fragmentation
+inbox_cols = st.columns([2, 4])
 
-with h_mesh[0]:
-    # Left Box Corner: Glowing Rectangular Dropdown Selector Button (Replaces Heading Text)
+with inbox_cols[0]:
+    # Left Side inside Main Box: Clean Rectangular Dropdown Box with Target Neon Glow Stylesheet
     st.markdown(f'<div class="{dropdown_glow_class}">', unsafe_allow_html=True)
-    opts_arr = ["NIFTY", "BANKNIFTY", "SENSEX"]
-    active_idx = opts_arr.index(current_selection) if current_selection in opts_arr else 0
+    opts_list = ["NIFTY", "BANKNIFTY", "SENSEX"]
+    active_idx = opts_list.index(current_selection) if current_selection in opts_list else 0
     
     chosen_symbol = st.selectbox(
-        "Box Header Selector Controller",
-        opts_arr,
+        "Box Embedded Selector Element Control",
+        opts_list,
         index=active_idx,
         label_visibility="collapsed",
-        key="terminal_embedded_rectangular_dropdown"
+        key="master_terminal_inbox_dropdown"
     )
     st.markdown('</div>', unsafe_allow_html=True)
 
-# Hot reload immediate trigger loop state
 if chosen_symbol != st.session_state.active_selected_index:
     st.session_state.active_selected_index = chosen_symbol
     st.rerun()
 
-with h_mesh[1]:
-    # Right Box Corner: Sleek Neon LTP Badge Container
+with inbox_cols[1]:
+    # Right Side inside Main Box: Perfect Sleek Horizontal LTP Gimmick
     st.markdown(f"""
         <div style="display: flex; justify-content: flex-end;">
             <div class="live-ltp-badge-container {index_glow_class}">
@@ -316,9 +307,9 @@ with h_mesh[1]:
         </div>
     """, unsafe_allow_html=True)
 
-# Lower Cards Section Layout Map inside the main container boundary framework
-cards_html_body = f"""
-    <div style="border-bottom: 1px solid #2d3748; margin-bottom: 22px; margin-top: 16px; width: 100%;"></div>
+# Main Solid Black Table Grid Content Core injection
+cards_html_render = f"""
+    <div style="border-bottom: 1px solid #232d3f; margin-bottom: 22px; margin-top: 18px; width: 100%;"></div>
     <div class="zones-grid">
         <div class="zone-card card-resistance">
             <div class="card-label">🔴 SUPPLY / RESISTANCE (DR ZONE)</div>
@@ -337,7 +328,7 @@ cards_html_body = f"""
 </div>
 """
 
-st.markdown(cards_html_body, unsafe_allow_html=True)
+st.markdown(cards_html_render, unsafe_allow_html=True)
 
 # 🔄 AUTOMATIC 2-SECOND RUNTIME REFRESH
 st_autorefresh(interval=2000, key="premium_zones_auto_sync")

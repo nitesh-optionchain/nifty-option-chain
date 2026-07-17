@@ -7,7 +7,7 @@ from streamlit_autorefresh import st_autorefresh
 # ================= 1. PAGE SETUP =================
 st.set_page_config(layout="wide", page_title="SmartWealth Premium Zones Terminal")
 
-# 🌟 PURE INJECTED CYBERPUNK TERMINAL STYLESheet
+# 🌟 CLEAN CYBERPUNK THEME AND UI GLOW RE-ALIGNMENT
 st.markdown("""
     <style>
         .block-container {
@@ -16,43 +16,25 @@ st.markdown("""
             max-width: 96% !important;
         }
         
-        /* Main Visual Container Frame with Neon Cyan Aura */
+        /* Main Container Box styling */
         .terminal-container {
             background-color: #151922 !important;
             border: 1px solid #00d2ff !important;
             border-radius: 14px !important;
-            padding: 20px 16px !important;
+            padding: 22px 18px !important;
             box-shadow: 0 0 25px rgba(0, 210, 255, 0.28) !important;
-            margin-bottom: 10px !important;
+            margin-bottom: 15px !important;
             font-family: sans-serif !important;
         }
         
-        /* Unified Header Layout System */
-        .asset-header-row {
-            display: flex !important;
-            justify-content: space-between !important;
-            align-items: center !important;
-            border-bottom: 1px solid #232d3f !important;
-            padding-bottom: 14px !important;
-            margin-bottom: 20px !important;
-        }
-        
-        .asset-title {
-            font-size: 16px !important;
-            font-weight: 800 !important;
-            color: #ffffff !important;
-            letter-spacing: 0.5px !important;
-        }
-        
-        /* INDEX REAL-TIME DROPDOWN CONTAINER ARCHITECTURE */
+        /* Custom UI Dropdown wrapper matching right lights */
         div[data-baseweb="select"] {
             border-radius: 6px !important;
             background-color: #11151d !important;
-            width: 130px !important;
+            width: 140px !important;
             transition: all 0.3s ease !important;
         }
         
-        /* Dynamic Matrix Glow Class Styles matching Right Badges */
         .glow-dropdown-green div[data-baseweb="select"] {
             border: 2px solid #00ff66 !important;
             box-shadow: 0 0 14px rgba(0, 255, 102, 0.45) !important;
@@ -69,20 +51,19 @@ st.markdown("""
             font-weight: 900 !important;
         }
         
-        /* Remove Streamlit Native Labels safely */
         .stSelectbox label {
             display: none !important;
         }
         
-        /* Right Section: LTP Showcase Block */
+        /* LTP Right Box Component Badge */
         .live-ltp-badge-container {
             font-size: 13px !important;
             font-weight: 800 !important;
-            padding: 6px 12px !important;
+            padding: 8px 14px !important;
             border-radius: 8px !important;
             display: flex !important;
-            align-items: center !important;
-            gap: 8px !important;
+            align-items: center;
+            gap: 8px;
             background-color: #11151d !important;
             white-space: nowrap !important;
         }
@@ -100,7 +81,7 @@ st.markdown("""
         .text-market-up { color: #00ff66 !important; font-weight: 900 !important; }
         .text-market-down { color: #ff3333 !important; font-weight: 900 !important; }
         
-        /* DATA CONTENT BLOCK STRUCTURES */
+        /* Grid Table Structure Cards */
         .zones-grid {
             display: flex !important;
             gap: 14px !important;
@@ -112,7 +93,7 @@ st.markdown("""
             flex: 1 !important;
             min-width: 240px !important;
             border-radius: 8px !important;
-            padding: 18px 10px !important;
+            padding: 22px 12px !important;
             text-align: center !important;
             background-color: #1a202c !important;
         }
@@ -122,7 +103,7 @@ st.markdown("""
         .card-support { border: 1px solid #22c55e !important; }
         
         .card-label {
-            font-size: 10px !important;
+            font-size: 11px !important;
             font-weight: 700 !important;
             color: #a0aec0 !important;
             text-transform: uppercase !important;
@@ -131,19 +112,21 @@ st.markdown("""
         }
         
         .card-value {
-            font-size: 24px !important;
+            font-size: 26px !important;
             font-weight: 800 !important;
         }
         .val-red { color: #ff4d4d !important; }
         .val-yellow { color: #ffcc00 !important; }
         .val-green { color: #33ff77 !important; }
         
-        .sync-timestamp {
-            font-size: 9px !important;
+        .sync-timestamp-footer {
+            font-size: 10px !important;
             color: #5c6b73 !important;
             text-align: right !important;
-            margin-top: 14px !important;
+            margin-top: 15px !important;
             font-family: monospace !important;
+            width: 100% !important;
+            display: block !important;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -168,7 +151,7 @@ if market_data is None:
     st.stop()
 
 # ==============================================================================
-# 🎛️ 3. SESSION STATE LOGIC & ACTIVE SYMBOL CHECK
+# 🎛️ 3. DYNAMIC SYNC STATE MANAGER
 # ==============================================================================
 if "active_selected_index" not in st.session_state:
     st.session_state.active_selected_index = "NIFTY"
@@ -217,74 +200,73 @@ else:
     sign = ""
 
 # ==============================================================================
-# 📊 4. STREAMLIT GRID INTERFACE FOR HEADER CONTROL (NO HTML CLASH)
+# 🎛️ 4. CLEAN HEADER STRUCTURAL GRID (DROP SIDEBAR ACCESS COMPLETELY)
 # ==============================================================================
-# Injected 3-column configuration framework to prevent markdown code leakage
-header_cols = st.columns([1.5, 1, 1.5])
+header_container = st.container()
+with header_container:
+    h_col1, h_col2, h_col3 = st.columns([1.2, 1, 1.8])
+    
+    with h_col1:
+        # Side by side title and aligned selector layout
+        sub_layout1, sub_layout2 = st.columns([1, 1.1])
+        with sub_layout1:
+            st.markdown('<div style="padding-top: 8px; font-size: 16px; font-weight: 800; color: #ffffff; white-space: nowrap;">🎯 INST ZONES</div>', unsafe_allow_html=True)
+        with sub_layout2:
+            st.markdown(f'<div class="{dropdown_glow_class}">', unsafe_allow_html=True)
+            display_list = ["NIFTY", "BANKNIFTY", "SENSEX"]
+            selected_idx = display_list.index(current_selection) if current_selection in display_list else 0
+            
+            chosen_idx = st.selectbox(
+                "Active Selector Node",
+                display_list,
+                index=selected_idx,
+                label_visibility="collapsed",
+                key="clean_integrated_selector"
+            )
+            st.markdown('</div>', unsafe_allow_html=True)
 
-with header_cols[0]:
-    # Left container rendering both elements natively
-    sub_col1, sub_col2 = st.columns([1, 1.2])
-    with sub_col1:
-        st.markdown('<div style="padding-top: 8px; font-size: 16px; font-weight: 800; color: #ffffff; white-space: nowrap;">🎯 INST ZONES</div>', unsafe_allow_html=True)
-    with sub_col2:
-        st.markdown(f'<div class="{dropdown_glow_class}">', unsafe_allow_html=True)
-        display_list = ["NIFTY", "BANKNIFTY", "SENSEX"]
-        selected_idx = display_list.index(current_selection) if current_selection in display_list else 0
-        
-        chosen_idx = st.selectbox(
-            "Index Selector Dropdown Node",
-            display_list,
-            index=selected_idx,
-            label_visibility="collapsed",
-            key="dashboard_integrated_selector"
-        )
-        st.markdown('</div>', unsafe_allow_html=True)
+    if chosen_idx != st.session_state.active_selected_index:
+        st.session_state.active_selected_index = chosen_idx
+        st.rerun()
 
-# Immediately trigger loop reload if selection toggled
-if chosen_idx != st.session_state.active_selected_index:
-    st.session_state.active_selected_index = chosen_idx
-    st.rerun()
+    target_symbol = st.session_state.active_selected_index
 
-target_symbol = st.session_state.active_selected_index
-
-with header_cols[2]:
-    # Right side element showcases the live LTP metric
-    st.markdown(f"""
-        <div style="display: flex; justify-content: flex-end;">
-            <div class="live-ltp-badge-container {index_glow_class}">
-                <span class="{color_class}">⚡ {target_symbol} LTP: ₹{current_ltp:.2f}</span>
-                <span class="{color_class}">{arrow} {sign}{abs(net_change):.2f} ({sign}{change_pct:.2f}%)</span>
+    with h_col3:
+        st.markdown(f"""
+            <div style="display: flex; justify-content: flex-end; margin-bottom: 15px;">
+                <div class="live-ltp-badge-container {index_glow_class}">
+                    <span class="{color_class}">⚡ {target_symbol} LTP: ₹{current_ltp:.2f}</span>
+                    <span class="{color_class}">{arrow} {sign}{abs(net_change):.2f} ({sign}{change_pct:.2f}%)</span>
+                </div>
             </div>
-        </div>
-    """, unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 🧠 5. MATHEMATICAL STRIKE MATRIX ALIGNMENT (FIXED 1 STRIKE PREMATURE OVERFLOW)
+# 🧠 5. EXACT MATHEMATICAL STRIKE MATRIX REALIGNMENT (30 POINT STRIKE REDUCTION)
 # ==============================================================================
-# Enforcing standard algorithmic rules to map parameters directly to correct zones
+# Fixing mathematical boundaries to prevent premature zone overflows
 if target_symbol == "NIFTY":
-    # Round down strictly to ensure current price sits within executing boundary ranges
+    # Round down lower target boundaries to strictly display standard zones
     base_strike = float((current_ltp // 50) * 50)
-    sup_low = base_strike - 50
-    sup_high = sup_low + 30
-    dem_high = base_strike - 200
+    sup_low = base_strike - 30      # Exact 24170 allocation map target
+    sup_high = base_strike          # Exact 24200 allocation map target
+    dem_high = base_strike - 170
     dem_low = dem_high - 30
 elif target_symbol == "BANKNIFTY":
     base_strike = float((current_ltp // 100) * 100)
     sup_low = base_strike - 100
-    sup_high = sup_low + 150
-    dem_high = base_strike - 400
+    sup_high = base_strike + 50
+    dem_high = base_strike - 350
     dem_low = dem_high - 150
 else: # SENSEX
     base_strike = float((current_ltp // 100) * 100)
     sup_low = base_strike - 100
-    sup_high = sup_low + 100
+    sup_high = base_strike
     dem_high = base_strike - 300
     dem_low = dem_high - 100
 
 # ==============================================================================
-# ⚡ 6. NO-NOISE STABLE OI INTERPRETER MATRIX
+# ⚡ 6. HIGH-STABILITY OI DEVIATION SUPPRESSOR ENGINE
 # ==============================================================================
 if "ticks" in st.session_state and isinstance(st.session_state.ticks, dict) and len(st.session_state.ticks) > 0:
     try:
@@ -312,13 +294,13 @@ if "ticks" in st.session_state and isinstance(st.session_state.ticks, dict) and 
                 max_pe_oi = pe_oi
                 best_pe_strike = strike
 
-        # Pull back parsing bounds to completely stabilize institutional shifts
+        # Pull back math thresholds strictly to match institutional target bands
         if best_ce_strike and best_pe_strike:
-            if target_symbol == "NIFTY" and best_ce_strike > current_ltp + 50:
-                best_ce_strike -= 50
+            if target_symbol == "NIFTY" and best_ce_strike >= base_strike:
+                best_ce_strike = base_strike - 30
                 
             sup_low = float(best_ce_strike)
-            sup_high = float(best_ce_strike + (30 if target_symbol == "NIFTY" else 150 if target_symbol == "BANKNIFTY" else 100))
+            sup_high = float(best_ce_strike + 30 if target_symbol == "NIFTY" else 150 if target_symbol == "BANKNIFTY" else 100)
             
             dem_high = float(best_pe_strike)
             dem_low = float(best_pe_strike - (30 if target_symbol == "NIFTY" else 150 if target_symbol == "BANKNIFTY" else 100))
@@ -329,8 +311,9 @@ p_point = round((sup_low + dem_high) / 2)
 now_ist = datetime.now().strftime("%Y-%m-%d %H:%M:%S IST")
 
 # ==============================================================================
-# 🖥️ 7. CLEAN DYNAMIC DATA GRID PRESENTATION CORE
+# 🖥️ 7. MACRO RENDER CORE (NO RAW TEXT INJECTIONS LEAKED)
 # ==============================================================================
+# Render clean structural component blocks with corrected layout bounds
 terminal_html = f"""
 <div class="terminal-container">
     <div class="zones-grid">
@@ -347,8 +330,7 @@ terminal_html = f"""
             <div class="card-value val-green">{int(dem_low)} - {int(dem_high)}</div>
         </div>
     </div>
-    
-    <div class="sync-timestamp">🔒 Cloud Broker Node Connected | Last Dynamic Refresh: {now_ist}</div>
+    <span class="sync-timestamp-footer">🔒 Cloud Broker Node Connected | Last Dynamic Refresh: {now_ist}</span>
 </div>
 """
 

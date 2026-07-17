@@ -7,108 +7,96 @@ from streamlit_autorefresh import st_autorefresh
 # ================= 1. PAGE SETUP =================
 st.set_page_config(layout="wide", page_title="SmartWealth Premium Zones Terminal")
 
-# 🌟 CLEAN CYBERPUNK THEME AND UI GLOW RE-ALIGNMENT
+# 🌟 PREMIUM CLASSIC DESKTOP RESURRECTION SHEET
 st.markdown("""
     <style>
         .block-container {
-            padding-top: 1rem !important;
+            padding-top: 1.5rem !important;
             padding-bottom: 1rem !important;
             max-width: 96% !important;
         }
         
-        /* Main Container Box styling */
+        /* Main Cyberpunk Container Box Layout */
         .terminal-container {
             background-color: #151922 !important;
-            border: 1px solid #00d2ff !important;
-            border-radius: 14px !important;
-            padding: 22px 18px !important;
-            box-shadow: 0 0 25px rgba(0, 210, 255, 0.28) !important;
-            margin-bottom: 15px !important;
+            border: 1px solid #232d3f !important;
+            border-radius: 10px !important;
+            padding: 24px !important;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5) !important;
+            margin-top: 5px !important;
             font-family: sans-serif !important;
         }
         
-        /* Custom UI Dropdown wrapper matching right lights */
-        div[data-baseweb="select"] {
-            border-radius: 6px !important;
-            background-color: #11151d !important;
-            width: 140px !important;
-            transition: all 0.3s ease !important;
-        }
-        
-        .glow-dropdown-green div[data-baseweb="select"] {
-            border: 2px solid #00ff66 !important;
-            box-shadow: 0 0 14px rgba(0, 255, 102, 0.45) !important;
-        }
-        
-        .glow-dropdown-red div[data-baseweb="select"] {
-            border: 2px solid #ff3333 !important;
-            box-shadow: 0 0 14px rgba(255, 51, 51, 0.45) !important;
-        }
-        
-        div[data-baseweb="select"] * {
-            color: #ffffff !important;
-            font-size: 13px !important;
-            font-weight: 900 !important;
-        }
-        
-        .stSelectbox label {
-            display: none !important;
-        }
-        
-        /* LTP Right Box Component Badge */
-        .live-ltp-badge-container {
-            font-size: 13px !important;
-            font-weight: 800 !important;
-            padding: 8px 14px !important;
-            border-radius: 8px !important;
+        /* Pic 1 Header Alignment Grid System */
+        .asset-header-row {
             display: flex !important;
-            align-items: center;
-            gap: 8px;
+            justify-content: space-between !important;
+            align-items: center !important;
+            border-bottom: 1px solid #232d3f !important;
+            padding-bottom: 16px !important;
+            margin-bottom: 22px !important;
+        }
+        
+        .asset-title {
+            font-size: 18px !important;
+            font-weight: 800 !important;
+            color: #ffffff !important;
+            letter-spacing: 0.8px !important;
+        }
+        
+        /* Sleek Horizontal Live LTP Containers */
+        .live-ltp-badge-container {
+            font-size: 12px !important;
+            font-weight: 700 !important;
+            padding: 6px 14px !important;
+            border-radius: 4px !important;
+            display: flex !important;
+            align-items: center !important;
+            gap: 8px !important;
             background-color: #11151d !important;
             white-space: nowrap !important;
         }
         
         .index-glow-green {
-            border: 2px solid #00ff66 !important;
-            box-shadow: 0 0 14px rgba(0, 255, 102, 0.45) !important;
+            border: 1px solid #00ff66 !important;
+            box-shadow: 0 0 10px rgba(0, 255, 102, 0.2) !important;
         }
         
         .index-glow-red {
-            border: 2px solid #ff3333 !important;
-            box-shadow: 0 0 14px rgba(255, 51, 51, 0.45) !important;
+            border: 1px solid #ff3333 !important;
+            box-shadow: 0 0 10px rgba(255, 51, 51, 0.2) !important;
         }
         
-        .text-market-up { color: #00ff66 !important; font-weight: 900 !important; }
-        .text-market-down { color: #ff3333 !important; font-weight: 900 !important; }
+        .text-market-up { color: #00ff66 !important; }
+        .text-market-down { color: #ff3333 !important; }
         
-        /* Grid Table Structure Cards */
+        /* Inner Content Grid Core */
         .zones-grid {
             display: flex !important;
-            gap: 14px !important;
+            gap: 16px !important;
             flex-wrap: wrap !important;
             width: 100% !important;
         }
         
         .zone-card {
             flex: 1 !important;
-            min-width: 240px !important;
-            border-radius: 8px !important;
+            min-width: 250px !important;
+            border-radius: 6px !important;
             padding: 22px 12px !important;
             text-align: center !important;
             background-color: #1a202c !important;
         }
         
-        .card-resistance { border: 1px solid #ef4444 !important; }
-        .card-pivot { border: 1px solid #eab308 !important; }
-        .card-support { border: 1px solid #22c55e !important; }
+        .card-resistance { border: 1px solid #ef4444 !important; background-color: rgba(239, 68, 68, 0.02) !important; }
+        .card-pivot { border: 1px solid #eab308 !important; background-color: rgba(234, 179, 8, 0.02) !important; }
+        .card-support { border: 1px solid #22c55e !important; background-color: rgba(34, 197, 94, 0.02) !important; }
         
         .card-label {
-            font-size: 11px !important;
+            font-size: 10px !important;
             font-weight: 700 !important;
             color: #a0aec0 !important;
-            text-transform: uppercase !important;
             letter-spacing: 0.5px !important;
-            margin-bottom: 8px !important;
+            margin-bottom: 10px !important;
         }
         
         .card-value {
@@ -120,13 +108,21 @@ st.markdown("""
         .val-green { color: #33ff77 !important; }
         
         .sync-timestamp-footer {
-            font-size: 10px !important;
-            color: #5c6b73 !important;
+            font-size: 9px !important;
+            color: #4a5568 !important;
             text-align: right !important;
             margin-top: 15px !important;
             font-family: monospace !important;
-            width: 100% !important;
             display: block !important;
+        }
+        
+        /* Floating External Selector Dropdown Box Overrides */
+        div[data-testid="stSelectbox"] {
+            width: 160px !important;
+            margin-bottom: -10px !important;
+        }
+        div[data-testid="stSelectbox"] label {
+            display: none !important;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -151,21 +147,27 @@ if market_data is None:
     st.stop()
 
 # ==============================================================================
-# 🎛️ 3. DYNAMIC SYNC STATE MANAGER
+# 🎛️ 3. FLOATING EXTERNAL DROP-DOWN SELECTOR (PIC 2 SYSTEM POSITION)
 # ==============================================================================
-if "active_selected_index" not in st.session_state:
-    st.session_state.active_selected_index = "NIFTY"
+# Injected safely outside panel constraints to keep grid intact
+ui_outer_cols = st.columns([1.5, 4, 1.5])
+with ui_outer_cols[1]:
+    target_symbol = st.selectbox(
+        "Global System Selector Index",
+        ["NIFTY", "BANKNIFTY", "SENSEX"],
+        index=0,
+        key="global_panel_index_switcher"
+    )
 
-current_selection = st.session_state.active_selected_index
-exchange_type = "BSE" if current_selection == "SENSEX" else "NSE"
+exchange_type = "BSE" if target_symbol == "SENSEX" else "NSE"
 
 prev_close_map = {"NIFTY": 24050.00, "BANKNIFTY": 52200.00, "SENSEX": 79300.00}
 fallback_prices = {"NIFTY": 24081.10, "BANKNIFTY": 57602.00, "SENSEX": 77156.35}
 current_ltp = 0.0
-yesterday_close = prev_close_map.get(current_selection, 24000.0)
+yesterday_close = prev_close_map.get(target_symbol, 24000.0)
 
 try:
-    snap = market_data.current_price(current_selection, exchange=exchange_type)
+    snap = market_data.current_price(target_symbol, exchange=exchange_type)
     if snap:
         if getattr(snap, 'price', None):
             raw_p = float(snap.price)
@@ -181,7 +183,7 @@ except Exception:
     pass
 
 if current_ltp == 0.0:
-    current_ltp = fallback_prices.get(current_selection, yesterday_close)
+    current_ltp = fallback_prices.get(target_symbol, yesterday_close)
 
 net_change = current_ltp - yesterday_close
 change_pct = (net_change / yesterday_close) * 100.0 if yesterday_close > 0 else 0.0
@@ -189,84 +191,39 @@ change_pct = (net_change / yesterday_close) * 100.0 if yesterday_close > 0 else 
 if net_change >= 0:
     color_class = "text-market-up"
     index_glow_class = "index-glow-green"
-    dropdown_glow_class = "glow-dropdown-green"
     arrow = "▲"
     sign = "+"
 else:
     color_class = "text-market-down"
     index_glow_class = "index-glow-red"
-    dropdown_glow_class = "glow-dropdown-red"
     arrow = "▼"
     sign = ""
 
 # ==============================================================================
-# 🎛️ 4. CLEAN HEADER STRUCTURAL GRID (DROP SIDEBAR ACCESS COMPLETELY)
+# 🧠 4. STRIKE CORRECTOR ENGINE (PIC 1 STABLE BOUNDARIES ALIGNED)
 # ==============================================================================
-header_container = st.container()
-with header_container:
-    h_col1, h_col2, h_col3 = st.columns([1.2, 1, 1.8])
-    
-    with h_col1:
-        # Side by side title and aligned selector layout
-        sub_layout1, sub_layout2 = st.columns([1, 1.1])
-        with sub_layout1:
-            st.markdown('<div style="padding-top: 8px; font-size: 16px; font-weight: 800; color: #ffffff; white-space: nowrap;">🎯 INST ZONES</div>', unsafe_allow_html=True)
-        with sub_layout2:
-            st.markdown(f'<div class="{dropdown_glow_class}">', unsafe_allow_html=True)
-            display_list = ["NIFTY", "BANKNIFTY", "SENSEX"]
-            selected_idx = display_list.index(current_selection) if current_selection in display_list else 0
-            
-            chosen_idx = st.selectbox(
-                "Active Selector Node",
-                display_list,
-                index=selected_idx,
-                label_visibility="collapsed",
-                key="clean_integrated_selector"
-            )
-            st.markdown('</div>', unsafe_allow_html=True)
-
-    if chosen_idx != st.session_state.active_selected_index:
-        st.session_state.active_selected_index = chosen_idx
-        st.rerun()
-
-    target_symbol = st.session_state.active_selected_index
-
-    with h_col3:
-        st.markdown(f"""
-            <div style="display: flex; justify-content: flex-end; margin-bottom: 15px;">
-                <div class="live-ltp-badge-container {index_glow_class}">
-                    <span class="{color_class}">⚡ {target_symbol} LTP: ₹{current_ltp:.2f}</span>
-                    <span class="{color_class}">{arrow} {sign}{abs(net_change):.2f} ({sign}{change_pct:.2f}%)</span>
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
-
-# ==============================================================================
-# 🧠 5. EXACT MATHEMATICAL STRIKE MATRIX REALIGNMENT (30 POINT STRIKE REDUCTION)
-# ==============================================================================
-# Fixing mathematical boundaries to prevent premature zone overflows
 if target_symbol == "NIFTY":
-    # Round down lower target boundaries to strictly display standard zones
+    # Locks exact targets like 24150-24180 and 24300-24330 flawlessly
     base_strike = float((current_ltp // 50) * 50)
-    sup_low = base_strike - 30      # Exact 24170 allocation map target
-    sup_high = base_strike          # Exact 24200 allocation map target
-    dem_high = base_strike - 170
+    sup_low = base_strike + 50
+    sup_high = sup_low + 30
+    dem_high = base_strike - 100
     dem_low = dem_high - 30
 elif target_symbol == "BANKNIFTY":
     base_strike = float((current_ltp // 100) * 100)
-    sup_low = base_strike - 100
-    sup_high = base_strike + 50
-    dem_high = base_strike - 350
+    sup_low = base_strike + 100
+    sup_high = sup_low + 150
+    dem_high = base_strike - 300
     dem_low = dem_high - 150
 else: # SENSEX
     base_strike = float((current_ltp // 100) * 100)
-    sup_low = base_strike - 100
-    sup_high = base_strike
-    dem_high = base_strike - 300
+    sup_low = base_strike + 100
+    sup_high = sup_low + 100
+    dem_high = base_strike - 200
     dem_low = dem_high - 100
 
 # ==============================================================================
-# ⚡ 6. HIGH-STABILITY OI DEVIATION SUPPRESSOR ENGINE
+# ⚡ 5. NO-NOISE STABLE OI DATA TRACKER INTERPRETER
 # ==============================================================================
 if "ticks" in st.session_state and isinstance(st.session_state.ticks, dict) and len(st.session_state.ticks) > 0:
     try:
@@ -294,14 +251,9 @@ if "ticks" in st.session_state and isinstance(st.session_state.ticks, dict) and 
                 max_pe_oi = pe_oi
                 best_pe_strike = strike
 
-        # Pull back math thresholds strictly to match institutional target bands
         if best_ce_strike and best_pe_strike:
-            if target_symbol == "NIFTY" and best_ce_strike >= base_strike:
-                best_ce_strike = base_strike - 30
-                
             sup_low = float(best_ce_strike)
-            sup_high = float(best_ce_strike + 30 if target_symbol == "NIFTY" else 150 if target_symbol == "BANKNIFTY" else 100)
-            
+            sup_high = float(best_ce_strike + (30 if target_symbol == "NIFTY" else 150 if target_symbol == "BANKNIFTY" else 100))
             dem_high = float(best_pe_strike)
             dem_low = float(best_pe_strike - (30 if target_symbol == "NIFTY" else 150 if target_symbol == "BANKNIFTY" else 100))
     except Exception:
@@ -311,11 +263,18 @@ p_point = round((sup_low + dem_high) / 2)
 now_ist = datetime.now().strftime("%Y-%m-%d %H:%M:%S IST")
 
 # ==============================================================================
-# 🖥️ 7. MACRO RENDER CORE (NO RAW TEXT INJECTIONS LEAKED)
+# 🖥️ 6. CLEAN DESKTOP SYSTEM MARKDOWN PRESENTATION CORE
 # ==============================================================================
-# Render clean structural component blocks with corrected layout bounds
 terminal_html = f"""
 <div class="terminal-container">
+    <div class="asset-header-row">
+        <div class="asset-title">NEXT DAY INSTITUTIONAL LEVELS GRID</div>
+        <div class="live-ltp-badge-container {index_glow_class}">
+            <span class="{color_class}">⚡ {target_symbol} LTP: ₹{current_ltp:.2f}</span>
+            <span class="{color_class}">{arrow} {sign}{abs(net_change):.2f} ({sign}{change_pct:.2f}%)</span>
+        </div>
+    </div>
+    
     <div class="zones-grid">
         <div class="zone-card card-resistance">
             <div class="card-label">🔴 SUPPLY / RESISTANCE (DR ZONE)</div>

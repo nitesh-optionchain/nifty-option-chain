@@ -7,7 +7,7 @@ from streamlit_autorefresh import st_autorefresh
 # ================= 1. PAGE SETUP =================
 st.set_page_config(layout="wide", page_title="SmartWealth Premium Zones Terminal")
 
-# 🌟 SOLID TERMINAL BACKBONE DESIGN (RESTORED & FIXED)
+# 🌟 PURE DESKTOP TERMINAL STYLESHEET (NO LAYOUT BREAKOUTS)
 st.markdown("""
     <style>
         .block-container {
@@ -16,44 +16,26 @@ st.markdown("""
             max-width: 96% !important;
         }
         
-        /* The Absolute Solid Black Main Box Container */
-        .terminal-container {
+        /* Pic 2 Style: Target Single Solid Black Container Overrides */
+        div[data-testid="stVerticalBlockBorderWrapper"] {
             background-color: #151922 !important;
             border: 2px solid #232d3f !important;
             border-radius: 10px !important;
             padding: 24px !important;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7) !important;
-            margin-bottom: 15px !important;
-            font-family: sans-serif !important;
         }
         
-        /* Master Layout Row inside the Black Box */
-        .asset-header-row {
-            display: flex !important;
-            justify-content: space-between !important;
-            align-items: center !important;
-            border-bottom: 1px solid #232d3f !important;
-            padding-bottom: 16px !important;
-            margin-bottom: 22px !important;
-            width: 100% !important;
+        /* Hide Boring Streamlit Native Labels & Focus Indicators */
+        div[data-testid="stSelectbox"] label {
+            display: none !important;
         }
         
-        /* LEFT SIDEWAY IN-BOX CUSTOM DROP-DOWN GLOW OVERRIDES */
-        div[data-baseweb="select"] {
-            border-radius: 6px !important;
+        /* Sleek Dropdown Base Settings */
+        div[data-testid="stSelectbox"] div[data-baseweb="select"] {
             background-color: #11151d !important;
-            width: 150px !important;
+            border-radius: 4px !important;
+            width: 160px !important;
             transition: all 0.3s ease !important;
-        }
-        
-        .glow-box-green div[data-baseweb="select"] {
-            border: 2px solid #00ff66 !important;
-            box-shadow: 0 0 14px rgba(0, 255, 102, 0.45) !important;
-        }
-        
-        .glow-box-red div[data-baseweb="select"] {
-            border: 2px solid #ff3333 !important;
-            box-shadow: 0 0 14px rgba(255, 51, 51, 0.45) !important;
         }
         
         div[data-baseweb="select"] * {
@@ -62,11 +44,7 @@ st.markdown("""
             font-weight: 900 !important;
         }
         
-        .stSelectbox label {
-            display: none !important;
-        }
-        
-        /* RIGHT SIDEWAY LIVE LTP BADGES */
+        /* Right Side Live LTP Container Badges */
         .live-ltp-badge-container {
             font-size: 12px !important;
             font-weight: 700 !important;
@@ -92,21 +70,14 @@ st.markdown("""
         .text-market-up { color: #00ff66 !important; font-weight: 900 !important; }
         .text-market-down { color: #ff3333 !important; font-weight: 900 !important; }
         
-        /* ZONE CONTENT BOXES GRID */
-        .zones-grid {
-            display: flex !important;
-            gap: 16px !important;
-            flex-wrap: wrap !important;
-            width: 100% !important;
-        }
-        
+        /* Content Card Grids */
         .zone-card {
-            flex: 1 !important;
-            min-width: 250px !important;
             border-radius: 6px !important;
             padding: 22px 12px !important;
             text-align: center !important;
             background-color: #1a202c !important;
+            width: 100% !important;
+            display: block !important;
         }
         
         .card-resistance { border: 1px solid #ef4444 !important; }
@@ -119,6 +90,7 @@ st.markdown("""
             color: #a0aec0 !important;
             letter-spacing: 0.5px !important;
             margin-bottom: 10px !important;
+            text-transform: uppercase !important;
         }
         
         .card-value {
@@ -133,7 +105,7 @@ st.markdown("""
             font-size: 9px !important;
             color: #4a5568 !important;
             text-align: right !important;
-            margin-top: 15px !important;
+            margin-top: 20px !important;
             font-family: monospace !important;
             display: block !important;
             width: 100% !important;
@@ -161,7 +133,7 @@ if market_data is None:
     st.stop()
 
 # ==============================================================================
-# 🎛️ 3. RUNTIME GLOBAL VARIABLE MANAGEMENT
+# 🎛️ 3. DYNAMIC VALUE PRE-FLIGHT CALCULATOR
 # ==============================================================================
 if "active_selected_index" not in st.session_state:
     st.session_state.active_selected_index = "NIFTY"
@@ -196,21 +168,31 @@ if current_ltp == 0.0:
 net_change = current_ltp - yesterday_close
 change_pct = (net_change / yesterday_close) * 100.0 if yesterday_close > 0 else 0.0
 
+# 🌟 DYNAMIC NEON GLOW ENGINE FOR THE LEFT SELECTBOX RECTANGLE
 if net_change >= 0:
     color_class = "text-market-up"
     index_glow_class = "index-glow-green"
-    dropdown_glow_class = "glow-box-green"
-    arrow = "▲"
-    sign = "+"
+    arrow, sign = "▲", "+"
+    glow_border_css = """
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] {
+        border: 1px solid #00ff66 !important;
+        box-shadow: 0 0 12px rgba(0, 255, 102, 0.45) !important;
+    }
+    """
 else:
     color_class = "text-market-down"
     index_glow_class = "index-glow-red"
-    dropdown_glow_class = "glow-box-red"
-    arrow = "▼"
-    sign = ""
+    arrow, sign = "▼", ""
+    glow_border_css = """
+    div[data-testid="stSelectbox"] div[data-baseweb="select"] {
+        border: 1px solid #ff3333 !important;
+        box-shadow: 0 0 12px rgba(255, 51, 51, 0.45) !important;
+    }
+    """
+st.markdown(f"<style>{glow_border_css}</style>", unsafe_allow_html=True)
 
 # ==============================================================================
-# 🎛️ 4. DATA ENGINE LOGIC BLOCK
+# 🧠 4. STRIKE CORRECTOR MATRIX (Pic 2 Ranges: 24150-180 & 24300-330 Perfectly Aligned)
 # ==============================================================================
 if current_selection == "NIFTY":
     base_strike = float((current_ltp // 50) * 50)
@@ -224,7 +206,7 @@ elif current_selection == "BANKNIFTY":
     sup_high = sup_low + 150
     dem_high = base_strike - 300
     dem_low = dem_high - 150
-else:  # SENSEX
+else: # SENSEX
     base_strike = float((current_ltp // 100) * 100)
     sup_low = base_strike + 100
     sup_high = sup_low + 100
@@ -233,10 +215,8 @@ else:  # SENSEX
 
 if "ticks" in st.session_state and isinstance(st.session_state.ticks, dict) and len(st.session_state.ticks) > 0:
     try:
-        max_ce_oi = -1
-        max_pe_oi = -1
-        best_ce_strike = None
-        best_pe_strike = None
+        max_ce_oi, max_pe_oi = -1, -1
+        best_ce_strike, best_pe_strike = None, None
 
         for key, tick_data in st.session_state.ticks.items():
             if not isinstance(tick_data, dict):
@@ -251,17 +231,15 @@ if "ticks" in st.session_state and isinstance(st.session_state.ticks, dict) and 
             pe_oi = float(tick_data.get("pe_oi", tick_data.get("PE OI", 0)))
             
             if ce_oi > max_ce_oi:
-                max_ce_oi = ce_oi
-                best_ce_strike = strike
+                max_ce_oi, best_ce_strike = ce_oi, strike
             if pe_oi > max_pe_oi:
-                max_pe_oi = pe_oi
-                best_pe_strike = strike
+                max_pe_oi, best_pe_strike = pe_oi, strike
 
         if best_ce_strike and best_pe_strike:
             sup_low = float(best_ce_strike)
-            sup_high = float(best_ce_strike + (30 if current_selection == "NIFTY" else 150 if current_selection == "BANKNIFTY" else 100))
+            sup_high = float(best_ce_strike + (30 if current_selection == "NIFTY" else 150))
             dem_high = float(best_pe_strike)
-            dem_low = float(best_pe_strike - (30 if current_selection == "NIFTY" else 150 if current_selection == "BANKNIFTY" else 100))
+            dem_low = float(best_pe_strike - (30 if current_selection == "NIFTY" else 150))
     except Exception:
         pass
 
@@ -269,66 +247,74 @@ p_point = round((sup_low + dem_high) / 2)
 now_ist = datetime.now().strftime("%Y-%m-%d %H:%M:%S IST")
 
 # ==============================================================================
-# 🖥️ 5. SOLID STRUCTURAL VISUAL RENDER (PURE HTML WRAPPER FOR EXACT LAYOUT)
+# 🖥️ 5. UNIFIED TERMINAL CONTAINER ARCHITECTURE (PIC 2 FIXED LOOK)
 # ==============================================================================
-# Injected main container system box securely
-st.markdown('<div class="terminal-container">', unsafe_allow_html=True)
-
-# Native horizontal flow control column mapping to avoid HTML fragmentation
-inbox_cols = st.columns([2, 4])
-
-with inbox_cols[0]:
-    # Left Side inside Main Box: Clean Rectangular Dropdown Box with Target Neon Glow Stylesheet
-    st.markdown(f'<div class="{dropdown_glow_class}">', unsafe_allow_html=True)
-    opts_list = ["NIFTY", "BANKNIFTY", "SENSEX"]
-    active_idx = opts_list.index(current_selection) if current_selection in opts_list else 0
+# Single continuous solid box framework holding all native elements securely
+with st.container(border=True):
     
-    chosen_symbol = st.selectbox(
-        "Box Embedded Selector Element Control",
-        opts_list,
-        index=active_idx,
-        label_visibility="collapsed",
-        key="master_terminal_inbox_dropdown"
-    )
-    st.markdown('</div>', unsafe_allow_html=True)
-
-if chosen_symbol != st.session_state.active_selected_index:
-    st.session_state.active_selected_index = chosen_symbol
-    st.rerun()
-
-with inbox_cols[1]:
-    # Right Side inside Main Box: Perfect Sleek Horizontal LTP Gimmick
-    st.markdown(f"""
-        <div style="display: flex; justify-content: flex-end;">
-            <div class="live-ltp-badge-container {index_glow_class}">
-                <span class="{color_class}">⚡ {current_selection} LTP: ₹{current_ltp:.2f}</span>
-                <span class="{color_class}">{arrow} {sign}{abs(net_change):.2f} ({sign}{change_pct:.2f}%)</span>
+    # Header Layout Split Inside the Main Box
+    h_cols = st.columns([2, 4])
+    
+    with h_cols[0]:
+        # Left Side: Integrated Rectangular Neon Glow Selection Dropdown Button
+        display_opts = ["NIFTY", "BANKNIFTY", "SENSEX"]
+        sel_idx = display_opts.index(current_selection) if current_selection in display_opts else 0
+        
+        chosen_symbol = st.selectbox(
+            "Terminal Selector Dropdown Control",
+            display_opts,
+            index=sel_idx,
+            label_visibility="collapsed",
+            key="unbroken_box_internal_selector"
+        )
+        
+    if chosen_symbol != st.session_state.active_selected_index:
+        st.session_state.active_selected_index = chosen_symbol
+        st.rerun()
+        
+    with h_cols[1]:
+        # Right Side: Perfect Sleek LTP Showcase Badge aligned right
+        st.markdown(f"""
+            <div style="display: flex; justify-content: flex-end; padding-top: 2px;">
+                <div class="live-ltp-badge-container {index_glow_class}">
+                    <span class="{color_class}">⚡ {current_selection} LTP: ₹{current_ltp:.2f}</span>
+                    <span class="{color_class}">{arrow} {sign}{abs(net_change):.2f} ({sign}{change_pct:.2f}%)</span>
+                </div>
             </div>
-        </div>
-    """, unsafe_allow_html=True)
-
-# Main Solid Black Table Grid Content Core injection
-cards_html_render = f"""
-    <div style="border-bottom: 1px solid #232d3f; margin-bottom: 22px; margin-top: 18px; width: 100%;"></div>
-    <div class="zones-grid">
-        <div class="zone-card card-resistance">
-            <div class="card-label">🔴 SUPPLY / RESISTANCE (DR ZONE)</div>
-            <div class="card-value val-red">{int(sup_low)} - {int(sup_high)}</div>
-        </div>
-        <div class="zone-card card-pivot">
-            <div class="card-label">⚖️ INSTITUTIONAL BALANCE PIVOT (PP)</div>
-            <div class="card-value val-yellow">{int(p_point)}</div>
-        </div>
-        <div class="zone-card card-support">
-            <div class="card-label">🟢 DEMAND / SUPPORT (DS ZONE)</div>
-            <div class="card-value val-green">{int(dem_low)} - {int(dem_high)}</div>
-        </div>
-    </div>
-    <span class="sync-timestamp-footer">🔒 Cloud Broker Node Connected | Last Dynamic Refresh: {now_ist}</span>
-</div>
-"""
-
-st.markdown(cards_html_render, unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
+        
+    # Thin clean line divider inside the solid block border
+    st.markdown('<div style="border-bottom: 1px solid #232d3f; margin-bottom: 22px; margin-top: 14px; width: 100%;"></div>', unsafe_allow_html=True)
+    
+    # Core Data Grid Layout Columns inside the main container
+    card_cols = st.columns(3)
+    
+    with card_cols[0]:
+        st.markdown(f"""
+            <div class="zone-card card-resistance">
+                <div class="card-label">🔴 SUPPLY / RESISTANCE (DR ZONE)</div>
+                <div class="card-value val-red">{int(sup_low)} - {int(sup_high)}</div>
+            </div>
+        """, unsafe_allow_html=True)
+        
+    with card_cols[1]:
+        st.markdown(f"""
+            <div class="zone-card card-pivot">
+                <div class="card-label">⚖️ INSTITUTIONAL BALANCE PIVOT (PP)</div>
+                <div class="card-value val-yellow">{int(p_point)}</div>
+            </div>
+        """, unsafe_allow_html=True)
+        
+    with card_cols[2]:
+        st.markdown(f"""
+            <div class="zone-card card-support">
+                <div class="card-label">🟢 DEMAND / SUPPORT (DS ZONE)</div>
+                <div class="card-value val-green">{int(dem_low)} - {int(dem_high)}</div>
+            </div>
+        """, unsafe_allow_html=True)
+        
+    # System Timestamp attached inside the main box frame
+    st.markdown(f'<span class="sync-timestamp-footer">🔒 Cloud Broker Node Connected | Last Dynamic Refresh: {now_ist}</span>', unsafe_allow_html=True)
 
 # 🔄 AUTOMATIC 2-SECOND RUNTIME REFRESH
 st_autorefresh(interval=2000, key="premium_zones_auto_sync")

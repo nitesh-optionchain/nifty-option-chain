@@ -7,7 +7,7 @@ from streamlit_autorefresh import st_autorefresh
 # ================= 1. PAGE SETUP =================
 st.set_page_config(layout="wide", page_title="SmartWealth Premium Zones Terminal")
 
-# 🌟 PURE INJECTED INTEGRATED TERMINAL ENVIRONMENT CSS
+# 🌟 PURE INJECTED DYNAMIC CYBERPUNK BOX CSS (NO COLS BREAKOUT)
 st.markdown("""
     <style>
         .block-container {
@@ -16,28 +16,28 @@ st.markdown("""
             max-width: 96% !important;
         }
         
-        /* Master Container Terminal System */
+        /* Fixed Master Solid Black Container Box matching Pic 2 Layout */
         .terminal-container {
-            background-color: #151922 !important;
-            border: 1px solid #232d3f !important;
+            background-color: #1a1e29 !important;
+            border: 1px solid #2d3748 !important;
             border-radius: 10px !important;
             padding: 24px !important;
-            box-shadow: 0 0 25px rgba(0, 0, 0, 0.6) !important;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7) !important;
             margin-bottom: 15px !important;
             font-family: sans-serif !important;
         }
         
-        /* Strict Layout Row inside the Black Box Border Limits */
+        /* Inside Layout Header Alignment Structure */
         .asset-header-row {
             display: flex !important;
             justify-content: space-between !important;
             align-items: center !important;
-            border-bottom: 1px solid #232d3f !important;
+            border-bottom: 1px solid #2d3748 !important;
             padding-bottom: 16px !important;
             margin-bottom: 22px !important;
         }
         
-        /* LEFT INTEGRATED DROPDOWN CONTROLLER SPECIFICATIONS */
+        /* LEFT CORNER RECTANGULAR SELECTBOX GLOW BUTTON OVERRIDES */
         div[data-baseweb="select"] {
             border-radius: 6px !important;
             background-color: #11151d !important;
@@ -45,7 +45,7 @@ st.markdown("""
             transition: all 0.3s ease !important;
         }
         
-        /* Glow Overrides tied exactly to Market Status */
+        /* Dynamic Neon Glow Borders for Left Selector Match */
         .glow-box-green div[data-baseweb="select"] {
             border: 2px solid #00ff66 !important;
             box-shadow: 0 0 14px rgba(0, 255, 102, 0.45) !important;
@@ -66,7 +66,7 @@ st.markdown("""
             display: none !important;
         }
         
-        /* RIGHT SPEC LIVE LTP FRAMEWORK MATCHING PIC 2 */
+        /* RIGHT CORNER Sleek Live LTP Container Badges */
         .live-ltp-badge-container {
             font-size: 12px !important;
             font-weight: 700 !important;
@@ -92,7 +92,7 @@ st.markdown("""
         .text-market-up { color: #00ff66 !important; }
         .text-market-down { color: #ff3333 !important; }
         
-        /* CONTENT COMPONENT TABLES CARDS */
+        /* CONTENT COMPONENT TABLES CARDS GRAPHIC LINK */
         .zones-grid {
             display: flex !important;
             gap: 16px !important;
@@ -106,12 +106,12 @@ st.markdown("""
             border-radius: 6px !important;
             padding: 22px 12px !important;
             text-align: center !important;
-            background-color: #1a202c !important;
+            background-color: #141722 !important;
         }
         
-        .card-resistance { border: 1px solid #ef4444 !important; background-color: rgba(239, 68, 68, 0.01) !important; }
-        .card-pivot { border: 1px solid #eab308 !important; background-color: rgba(234, 179, 8, 0.01) !important; }
-        .card-support { border: 1px solid #22c55e !important; background-color: rgba(34, 197, 94, 0.01) !important; }
+        .card-resistance { border: 1px solid #ef4444 !important; }
+        .card-pivot { border: 1px solid #eab308 !important; }
+        .card-support { border: 1px solid #22c55e !important; }
         
         .card-label {
             font-size: 10px !important;
@@ -138,6 +138,11 @@ st.markdown("""
             display: block !important;
             width: 100% !important;
         }
+        
+        /* Fix to hide external container breaks */
+        .element-container iframe {
+            display: none !important;
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -161,7 +166,7 @@ if market_data is None:
     st.stop()
 
 # ==============================================================================
-# 🎛️ 3. RUNTIME GLOBAL VARIABLE DETECTION Matrix
+# 🎛️ 3. RUNTIME ARGS DETECTION MATRIX
 # ==============================================================================
 if "active_selected_index" not in st.session_state:
     st.session_state.active_selected_index = "NIFTY"
@@ -210,7 +215,7 @@ else:
     sign = ""
 
 # ==============================================================================
-# 🎛️ 4. STRIKE CORRECTOR MATRIX (Target Aligned: 24150-180 and 24300-330)
+# 🧠 4. STRIKE CORRECTOR ENGINE (Target Locked: 24150-180 and 24300-330)
 # ==============================================================================
 if current_selection == "NIFTY":
     base_strike = float((current_ltp // 50) * 50)
@@ -232,7 +237,7 @@ else:  # SENSEX
     dem_low = dem_high - 100
 
 # ==============================================================================
-# ⚡ 5. NO-NOISE HIGH STABILITY OI PROCESSOR
+# ⚡ 5. HIGH STABILITY OI PROCESSOR ENGINE
 # ==============================================================================
 if "ticks" in st.session_state and isinstance(st.session_state.ticks, dict) and len(st.session_state.ticks) > 0:
     try:
@@ -272,38 +277,38 @@ p_point = round((sup_low + dem_high) / 2)
 now_ist = datetime.now().strftime("%Y-%m-%d %H:%M:%S IST")
 
 # ==============================================================================
-# 🖥️ 6. INTEGRATED CONTAINER DISPLAY RENDERING CORE
+# 🖥️ 6. SINGLE BALANCED CONTAINER PRESENTATION BLOCK (PIC 2 MIRROR)
 # ==============================================================================
-# Injected main terminal boundary box wrapper safely
+# Injected single continuous solid container block securely
 st.markdown('<div class="terminal-container">', unsafe_allow_html=True)
 
-# Internal structural grid layout for precise header component placement
-header_columns_mesh = st.columns([2, 4])
+# Generate inner layout columns architecture explicitly to separate left and right top ends
+h_mesh = st.columns([2, 4])
 
-with header_columns_mesh[0]:
-    # Left Side Inside Container: Glowing Rectangular Dropdown Selector Button
-    st.markdown(f'<div class="{dropdown_glow_class}" style="margin-bottom: 12px;">', unsafe_allow_html=True)
-    display_arr = ["NIFTY", "BANKNIFTY", "SENSEX"]
-    sel_idx = display_arr.index(current_selection) if current_selection in display_arr else 0
+with h_mesh[0]:
+    # Left Box Corner: Glowing Rectangular Dropdown Selector Button (Replaces Heading Text)
+    st.markdown(f'<div class="{dropdown_glow_class}">', unsafe_allow_html=True)
+    opts_arr = ["NIFTY", "BANKNIFTY", "SENSEX"]
+    active_idx = opts_arr.index(current_selection) if current_selection in opts_arr else 0
     
-    chosen_idx = st.selectbox(
-        "Integrated Selector Core Controls Node",
-        display_arr,
-        index=sel_idx,
+    chosen_symbol = st.selectbox(
+        "Box Header Selector Controller",
+        opts_arr,
+        index=active_idx,
         label_visibility="collapsed",
-        key="master_inbox_aligned_dropdown"
+        key="terminal_embedded_rectangular_dropdown"
     )
     st.markdown('</div>', unsafe_allow_html=True)
 
-# Execute hot reload immediately on toggle state
-if chosen_idx != st.session_state.active_selected_index:
-    st.session_state.active_selected_index = chosen_idx
+# Hot reload immediate trigger loop state
+if chosen_symbol != st.session_state.active_selected_index:
+    st.session_state.active_selected_index = chosen_symbol
     st.rerun()
 
-with header_columns_mesh[1]:
-    # Right Side Inside Container: Perfect Pic 2 Match Horizontal LTP Element
+with h_mesh[1]:
+    # Right Box Corner: Sleek Neon LTP Badge Container
     st.markdown(f"""
-        <div style="display: flex; justify-content: flex-end; margin-bottom: 12px;">
+        <div style="display: flex; justify-content: flex-end;">
             <div class="live-ltp-badge-container {index_glow_class}">
                 <span class="{color_class}">⚡ {current_selection} LTP: ₹{current_ltp:.2f}</span>
                 <span class="{color_class}">{arrow} {sign}{abs(net_change):.2f} ({sign}{change_pct:.2f}%)</span>
@@ -311,9 +316,9 @@ with header_columns_mesh[1]:
         </div>
     """, unsafe_allow_html=True)
 
-# Content Tables & Footer structural injection
-terminal_cards_body = f"""
-    <div style="border-bottom: 1px solid #232d3f; margin-bottom: 22px; width: 100%;"></div>
+# Lower Cards Section Layout Map inside the main container boundary framework
+cards_html_body = f"""
+    <div style="border-bottom: 1px solid #2d3748; margin-bottom: 22px; margin-top: 16px; width: 100%;"></div>
     <div class="zones-grid">
         <div class="zone-card card-resistance">
             <div class="card-label">🔴 SUPPLY / RESISTANCE (DR ZONE)</div>
@@ -332,7 +337,7 @@ terminal_cards_body = f"""
 </div>
 """
 
-st.markdown(terminal_cards_body, unsafe_allow_html=True)
+st.markdown(cards_html_body, unsafe_allow_html=True)
 
 # 🔄 AUTOMATIC 2-SECOND RUNTIME REFRESH
 st_autorefresh(interval=2000, key="premium_zones_auto_sync")

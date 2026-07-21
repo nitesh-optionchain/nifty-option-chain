@@ -68,28 +68,84 @@ else:
     arrow = "▼"
     sign = ""
 
-# ================= 4. FIXED CORRECTOR MATRIX ENGINE (1 STRIKE DROP RESET) =================
-if target_symbol == "NIFTY":
-    base_strike = float((current_ltp // 50) * 50)
-    sup_low = base_strike
-    sup_high = base_strike + 30
-    dem_high = base_strike - 100
-    dem_low = dem_high - 30
-elif target_symbol == "BANKNIFTY":
-    base_strike = float((current_ltp // 100) * 100)
-    sup_low = base_strike
-    sup_high = base_strike + 150
-    dem_high = base_strike - 300
-    dem_low = dem_high - 150
-else: # SENSEX
-    base_strike = float((current_ltp // 100) * 100)
-    sup_low = base_strike
-    sup_high = base_strike + 100
-    dem_high = base_strike - 200
-    dem_low = dem_high - 100
- 
+# ================= 4. STABLE MAX-OI INSTITUTIONAL ZONES ENGINE =================
+# Cache key taaki har symbol (NIFTY/BANKNIFTY/SENSEX) ke zones alag lock rahein
+cache_key = f"locked_zones_{target_symbol}"
+
+# Agar session mein pehle se locked nahi hai, tabhi Max OI dhoondh kar lock karenge
+if cache_key not in st.session_state:
+    best_ce_strike = None
+    best_pe_strike = None
+    
+    if "ticks" in st.session_state and isinstance(st.session_state.ticks, dict) and len(st.session_state.ticks) > 0:
+        try:
+            max_ce_score = -1
+            max_pe_score = -1
+            
+            for key, tick_data in st.session_state.ticks.items():
+                if not isinstance(tick_data, dict):
+                    continue
+                symbol_tag = tick_data.get("symbol", "").upper()
+                if target_symbol not in symbol_tag:
+                    continue
+                strike = float(tick_data.get("strike", 0))
+                if strike == 0:
+                    continue
+                
+                # OI aur Volume dono ko combine karke strongest institutional weight nikalna
+                ce_oi = float(tick_data.get("ce_oi", tick_data.get("CE OI", 0)))
+                ce_vol = float(tick_data.get("ce_volume", tick_data.get("CE Volume", 0)))
+                ce_score = ce_oi + (ce_vol * 0.1)
+                
+                pe_oi = float(tick_data.get("pe_oi", tick_data.get("PE OI", 0)))
+                pe_vol = float(tick_data.get("pe_volume", tick_data.get("PE Volume", 0)))
+                pe_score = pe_oi + (pe_vol * 0.1)
+                
+                if ce_score > max_ce_score:
+                    max_ce_score = ce_score
+                    best_ce_strike = strike
+                if pe_score > max_pe_score:
+                    max_pe_score = pe_score
+                    best_pe_strike = strike
+        except Exception:
+            pass
+
+    # Fallback agar ticks turant na milein toh base strike use hoga
+    if target_symbol == "NIFTY":
+        bs = float((current_ltp // 50) * 50)
+        s_low = best_ce_strike if best_ce_strike else bs
+        s_high = s_low + 30
+        d_high = best_pe_strike if best_pe_strike else (bs - 100)
+        d_low = d_high - 30
+    elif target_symbol == "BANKNIFTY":
+        bs = float((current_ltp // 100) * 100)
+        s_low = best_ce_strike if best_ce_strike else bs
+        s_high = s_low + 150
+        d_high = best_pe_strike if best_pe_strike else (bs - 300)
+        d_low = d_high - 150
+    else: # SENSEX
+        bs = float((current_ltp // 100) * 100)
+        s_low = best_ce_strike if best_ce_strike else bs
+        s_high = s_low + 100
+        d_high = best_pe_strike if best_pe_strike else (bs - 200)
+        d_low = d_high - 100
+
+    # Values ko session mein lock kar do taaki baar-baar change na ho
+    st.session_state[cache_key] = {
+        "sup_low": s_low,
+        "sup_high": s_high,
+        "dem_high": d_high,
+        "dem_low": d_low
+    }
+
+# Locked values ko fetch karna
+locked_zones = st.session_state[cache_key]
+sup_low = locked_zones["sup_low"]
+sup_high = locked_zones["sup_high"]
+dem_high = locked_zones["dem_high"]
+dem_low = locked_zones["dem_low"]
+
 p_point = round((sup_low + dem_high) / 2)
-# Server ke UTC time mein seedha 5 ghante 30 minute jod do (IST ban gaya)
 now_ist = (datetime.utcnow() + timedelta(hours=5, minutes=30)).strftime("%Y-%m-%d %H:%M:%S IST")
 # ================= 5. DYNAMIC HTML/CSS VISUAL ENGINE =================
 st.html(f"""

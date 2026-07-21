@@ -2,6 +2,7 @@ import streamlit as st
 import time
 import os
 from datetime import datetime
+import pytz
 from streamlit_autorefresh import st_autorefresh
 
 # ================= 1. PAGE SETUP =================
@@ -128,7 +129,7 @@ if "ticks" in st.session_state and isinstance(st.session_state.ticks, dict) and 
         pass
 
 p_point = round((sup_low + dem_high) / 2)
-now_ist = datetime.now().strftime("%Y-%m-%d %H:%M:%S IST")
+now_ist = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S IST")
 
 # ================= 5. DYNAMIC HTML/CSS VISUAL ENGINE =================
 st.html(f"""

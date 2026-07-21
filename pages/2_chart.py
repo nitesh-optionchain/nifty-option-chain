@@ -70,7 +70,6 @@ else:
 
 # ================= 4. FIXED CORRECTOR MATRIX ENGINE (1 STRIKE DROP RESET) =================
 if target_symbol == "NIFTY":
-    # Pure base rounding calculation to pull back 1 strike overflow
     base_strike = float((current_ltp // 50) * 50)
     sup_low = base_strike
     sup_high = base_strike + 30
@@ -88,45 +87,7 @@ else: # SENSEX
     sup_high = base_strike + 100
     dem_high = base_strike - 200
     dem_low = dem_high - 100
-
-if "ticks" in st.session_state and isinstance(st.session_state.ticks, dict) and len(st.session_state.ticks) > 0:
-    try:
-        max_ce_oi = -1
-        max_pe_oi = -1
-        best_ce_strike = None
-        best_pe_strike = None
-
-        for key, tick_data in st.session_state.ticks.items():
-            if not isinstance(tick_data, dict):
-                continue
-            symbol_tag = tick_data.get("symbol", "").upper()
-            if target_symbol not in symbol_tag:
-                continue
-            strike = float(tick_data.get("strike", 0))
-            if strike == 0:
-                continue
-            ce_oi = float(tick_data.get("ce_oi", tick_data.get("CE OI", 0)))
-            pe_oi = float(tick_data.get("pe_oi", tick_data.get("PE OI", 0)))
-            
-            if ce_oi > max_ce_oi:
-                max_ce_oi = ce_oi
-                best_ce_strike = strike
-            if pe_oi > max_pe_oi:
-                max_pe_oi = pe_oi
-                best_pe_strike = strike
-
-        if best_ce_strike and best_pe_strike:
-            # Anchor constraints to prevent live high noise spikes
-            if target_symbol == "NIFTY" and best_ce_strike > current_ltp + 50:
-                best_ce_strike -= 50
-                
-            sup_low = float(best_ce_strike)
-            sup_high = float(best_ce_strike + (30 if target_symbol == "NIFTY" else 150))
-            dem_high = float(best_pe_strike)
-            dem_low = float(best_pe_strike - (30 if target_symbol == "NIFTY" else 150))
-    except Exception:
-        pass
-
+ 
 p_point = round((sup_low + dem_high) / 2)
 # Server ke UTC time mein seedha 5 ghante 30 minute jod do (IST ban gaya)
 now_ist = (datetime.utcnow() + timedelta(hours=5, minutes=30)).strftime("%Y-%m-%d %H:%M:%S IST")

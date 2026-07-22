@@ -318,13 +318,12 @@ st.html(f"""
 # 🔄 AUTOMATIC 2-SECOND RUNTIME REFRESH
 st_autorefresh(interval=2000, key="premium_zones_auto_sync")
 
-# ================= EXPIRY MAX PAIN STRIKE DEDICATED GRID =================
+# ================= EXPIRY MAX PAIN INDEX GRID (DIRECT RENDER) =================
 st.markdown("---")
 
 max_ce_strike_found = None
 highest_ce_oi_val = -1
 
-# Option chain data se exact Max Pain / Highest OI strike dhoondna
 if "ticks" in st.session_state and isinstance(st.session_state.ticks, dict):
     try:
         for k, t_data in st.session_state.ticks.items():
@@ -333,17 +332,14 @@ if "ticks" in st.session_state and isinstance(st.session_state.ticks, dict):
             symbol_tag = t_data.get("symbol", "").upper()
             if target_symbol not in symbol_tag:
                 continue
-                
             strike_val = float(t_data.get("strike", 0))
             c_oi = float(t_data.get("ce_oi", t_data.get("CE OI", 0)))
-            
             if c_oi > highest_ce_oi_val:
                 highest_ce_oi_val = c_oi
                 max_ce_strike_found = strike_val
     except Exception:
         pass
 
-# Fallback agar ticks na milein
 if not max_ce_strike_found:
     if target_symbol == "NIFTY":
         max_ce_strike_found = float((current_ltp // 50) * 50)
@@ -353,32 +349,22 @@ if not max_ce_strike_found:
         max_ce_strike_found = float((current_ltp // 100) * 100)
 
 display_max_pain_strike = int(max_ce_strike_found)
-
-# Index ke mutabiq Market Bias / Expiry Status
 market_bias = "Bullish Control" if current_ltp >= display_max_pain_strike else "Bearish Pressure"
 
-# Clean Neon Glow Card showing only Max Pain Strike & Bias
-html_content = f"""
+st.markdown(f"""
 <div style="background-color: #0b0f19; border: 1px solid #3b82f6; border-radius: 12px; padding: 20px; margin-top: 10px; box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);">
     <div style="color: #60a5fa; font-size: 14px; font-weight: 700; letter-spacing: 1px; margin-bottom: 12px; text-shadow: 0 0 8px rgba(96, 165, 250, 0.5);">
         ⚡ EXPIRY MAX PAIN INDEX GRID ({target_symbol})
     </div>
     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
-        
-        <!-- Max Pain Strike Box -->
         <div style="flex: 2; min-width: 250px; background: #111827; border: 1px solid #60a5fa; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 0 10px rgba(96, 165, 250, 0.2);">
             <div style="color: #93c5fd; font-size: 12px; font-weight: bold; margin-bottom: 5px;">MAX PAIN STRIKE LEVEL</div>
             <div style="color: #ffffff; font-size: 26px; font-weight: 800; text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);">{display_max_pain_strike}</div>
         </div>
-        
-        <!-- Market Bias / Trend Box -->
         <div style="flex: 1; min-width: 200px; background: #111827; border: 1px solid #38bdf8; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);">
             <div style="color: #7dd3fc; font-size: 12px; font-weight: bold; margin-bottom: 5px;">EXPIRY SETTLEMENT BIAS</div>
             <div style="color: #38bdf8; font-size: 18px; font-weight: 700; text-shadow: 0 0 8px rgba(56, 189, 248, 0.4);">{market_bias}</div>
         </div>
-        
     </div>
 </div>
-"""
-
-st.markdown(html_content, unsafe_allow_html=True)
+""", unsafe_allow_html=True)

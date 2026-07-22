@@ -68,12 +68,19 @@ else:
     arrow = "▼"
     sign = ""
 
-# ================= 4. STABLE MAX-OI INSTITUTIONAL ZONES ENGINE =================
-# Cache key taaki har symbol (NIFTY/BANKNIFTY/SENSEX) ke zones alag lock rahein
-cache_key = f"locked_zones_{target_symbol}"
+# ================= 4. TRADECLUE STYLE 9:20 LOCKED ZONES ENGINE =================
+from datetime import datetime, timedelta
 
-# Agar session mein pehle se locked nahi hai, tabhi Max OI dhoondh kar lock karenge
-if cache_key not in st.session_state:
+# Current IST Time nikalna
+now_ist = datetime.utcnow() + timedelta(hours=5, minutes=30)
+current_time_str = now_ist.strftime("%H:%M")
+current_date_str = now_ist.strftime("%Y-%m-%d")
+
+# Unique cache key jisme date bhi ho taaki har naye din naya zone lock ho sake
+cache_key = f"locked_zones_{target_symbol}_{current_date_str}"
+
+# Agar subah 9:20 ke baad pehli baar chal raha hai aur session mein nahi hai, tabhi lock karein
+if cache_key not in st.session_state and current_time_str >= "09:20":
     best_ce_strike = None
     best_pe_strike = None
     
@@ -110,7 +117,7 @@ if cache_key not in st.session_state:
         except Exception:
             pass
 
-    # Fallback agar ticks turant na milein toh base strike use hoga
+    # Fallback aur Zone Range Calculation
     if target_symbol == "NIFTY":
         bs = float((current_ltp // 50) * 50)
         s_low = best_ce_strike if best_ce_strike else bs
@@ -130,7 +137,7 @@ if cache_key not in st.session_state:
         d_high = best_pe_strike if best_pe_strike else (bs - 200)
         d_low = d_high - 100
 
-    # Values ko session mein lock kar do taaki baar-baar change na ho
+    # Values ko us din ke liye session mein permanently lock kar do
     st.session_state[cache_key] = {
         "sup_low": s_low,
         "sup_high": s_high,
@@ -138,15 +145,29 @@ if cache_key not in st.session_state:
         "dem_low": d_low
     }
 
-# Locked values ko fetch karna
-locked_zones = st.session_state[cache_key]
-sup_low = locked_zones["sup_low"]
-sup_high = locked_zones["sup_high"]
-dem_high = locked_zones["dem_high"]
-dem_low = locked_zones["dem_low"]
+# Zones ko fetch karna (Agar 9:20 ke baad lock ho gaya hai toh wahi dikhega poore din)
+if cache_key in st.session_state:
+    locked_zones = st.session_state[cache_key]
+    sup_low = locked_zones["sup_low"]
+    sup_high = locked_zones["sup_high"]
+    dem_high = locked_zones["dem_high"]
+    dem_low = locked_zones["dem_low"]
+else:
+    # 9:20 se pehle ya ticks aane se pehle ka default fallback level
+    if target_symbol == "NIFTY":
+        bs = float((current_ltp // 50) * 50)
+    elif target_symbol == "BANKNIFTY":
+        bs = float((current_ltp // 100) * 100)
+    else:
+        bs = float((current_ltp // 100) * 100)
+        
+    sup_low = bs
+    sup_high = sup_low + 30
+    dem_high = sup_low - 100
+    dem_low = dem_high - 30
 
 p_point = round((sup_low + dem_high) / 2)
-now_ist = (datetime.utcnow() + timedelta(hours=5, minutes=30)).strftime("%Y-%m-%d %H:%M:%S IST")
+now_ist_str = (datetime.utcnow() + timedelta(hours=5, minutes=30)).strftime("%Y-%m-%d %H:%M:%S IST")
 # ================= 5. DYNAMIC HTML/CSS VISUAL ENGINE =================
 st.html(f"""
 <style>
@@ -296,3 +317,49 @@ st.html(f"""
 
 # 🔄 AUTOMATIC 2-SECOND RUNTIME REFRESH
 st_autorefresh(interval=2000, key="premium_zones_auto_sync")
+
+# ================= EXPIRY MAX PAIN & SETTLEMENT NEON GLOW CARD =================
+st.markdown("---")
+
+# Safe fallback values
+display_max_pain_strike = best_ce_strike if 'best_ce_strike' in locals() and best_ce_strike else current_ltp
+display_ce_score = max_ce_score if 'max_ce_score' in locals() and max_ce_score else 0
+display_pe_score = max_pe_score if 'max_pe_score' in locals() and max_pe_score else 0
+
+# Neon Glow Card Design
+st.markdown(f"""
+<div style="
+    background-color: #0b0f19; 
+    border: 1px solid #3b82f6; 
+    border-radius: 12px; 
+    padding: 20px; 
+    margin-top: 10px;
+    box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);">
+    
+    <div style="color: #60a5fa; font-size: 14px; font-weight: 700; letter-spacing: 1px; margin-bottom: 12px; text-shadow: 0 0 8px rgba(96, 165, 250, 0.5);">
+        ⚡ EXPIRY MAX PAIN & SETTLEMENT GRID
+    </div>
+    
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
+        
+        <!-- Max Pain Box with Blue Neon Glow -->
+        <div style="flex: 1; min-width: 200px; background: #111827; border: 1px solid #60a5fa; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 0 10px rgba(96, 165, 250, 0.2);">
+            <div style="color: #93c5fd; font-size: 12px; font-weight: bold; margin-bottom: 5px;">MAX PAIN STRIKE</div>
+            <div style="color: #ffffff; font-size: 24px; font-weight: 800; text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);">{display_max_pain_strike}</div>
+        </div>
+        
+        <!-- CE Weight Box with Red Neon Glow -->
+        <div style="flex: 1; min-width: 200px; background: #111827; border: 1px solid #f87171; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 0 10px rgba(248, 113, 113, 0.2);">
+            <div style="color: #fca5a5; font-size: 12px; font-weight: bold; margin-bottom: 5px;">CE TOTAL WEIGHT</div>
+            <div style="color: #f87171; font-size: 20px; font-weight: 700; text-shadow: 0 0 8px rgba(248, 113, 113, 0.4);">{display_ce_score:,.0f}</div>
+        </div>
+        
+        <!-- PE Weight Box with Green Neon Glow -->
+        <div style="flex: 1; min-width: 200px; background: #111827; border: 1px solid #4ade80; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 0 10px rgba(74, 222, 128, 0.2);">
+            <div style="color: #86efac; font-size: 12px; font-weight: bold; margin-bottom: 5px;">PE TOTAL WEIGHT</div>
+            <div style="color: #4ade80; font-size: 20px; font-weight: 700; text-shadow: 0 0 8px rgba(74, 222, 128, 0.4);">{display_pe_score:,.0f}</div>
+        </div>
+        
+    </div>
+</div>
+""", unsafe_allow_html=True)

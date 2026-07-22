@@ -317,6 +317,7 @@ st.html(f"""
 
 # 🔄 AUTOMATIC 2-SECOND RUNTIME REFRESH
 st_autorefresh(interval=2000, key="premium_zones_auto_sync")
+
 # ================= EXPIRY MAX PAIN & SETTLEMENT NEON GLOW CARD =================
 st.markdown("---")
 
@@ -325,40 +326,27 @@ display_max_pain_strike = best_ce_strike if 'best_ce_strike' in locals() and bes
 display_ce_score = max_ce_score if 'max_ce_score' in locals() and max_ce_score else 0
 display_pe_score = max_pe_score if 'max_pe_score' in locals() and max_pe_score else 0
 
-# Neon Glow Card Design with Proper Streamlit Markdown Wrapping
-st.markdown(f"""
-<div style="
-    background-color: #0b0f19; 
-    border: 1px solid #3b82f6; 
-    border-radius: 12px; 
-    padding: 20px; 
-    margin-top: 10px;
-    box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);">
-    
+# HTML string build karke clean render karna
+html_content = f"""
+<div style="background-color: #0b0f19; border: 1px solid #3b82f6; border-radius: 12px; padding: 20px; margin-top: 10px; box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);">
     <div style="color: #60a5fa; font-size: 14px; font-weight: 700; letter-spacing: 1px; margin-bottom: 12px; text-shadow: 0 0 8px rgba(96, 165, 250, 0.5);">
         ⚡ EXPIRY MAX PAIN & SETTLEMENT GRID
     </div>
-    
     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
-        
-        <!-- Max Pain Box with Blue Neon Glow -->
         <div style="flex: 1; min-width: 200px; background: #111827; border: 1px solid #60a5fa; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 0 10px rgba(96, 165, 250, 0.2);">
             <div style="color: #93c5fd; font-size: 12px; font-weight: bold; margin-bottom: 5px;">MAX PAIN STRIKE</div>
             <div style="color: #ffffff; font-size: 24px; font-weight: 800; text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);">{display_max_pain_strike}</div>
         </div>
-        
-        <!-- CE Weight Box with Red Neon Glow -->
         <div style="flex: 1; min-width: 200px; background: #111827; border: 1px solid #f87171; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 0 10px rgba(248, 113, 113, 0.2);">
             <div style="color: #fca5a5; font-size: 12px; font-weight: bold; margin-bottom: 5px;">CE TOTAL WEIGHT</div>
             <div style="color: #f87171; font-size: 20px; font-weight: 700; text-shadow: 0 0 8px rgba(248, 113, 113, 0.4);">{display_ce_score:,.0f}</div>
         </div>
-        
-        <!-- PE Weight Box with Green Neon Glow -->
         <div style="flex: 1; min-width: 200px; background: #111827; border: 1px solid #4ade80; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 0 10px rgba(74, 222, 128, 0.2);">
             <div style="color: #86efac; font-size: 12px; font-weight: bold; margin-bottom: 5px;">PE TOTAL WEIGHT</div>
             <div style="color: #4ade80; font-size: 20px; font-weight: 700; text-shadow: 0 0 8px rgba(74, 222, 128, 0.4);">{display_pe_score:,.0f}</div>
         </div>
-        
     </div>
 </div>
-""", unsafe_allow_html=True)
+"""
+
+st.markdown(html_content, unsafe_allow_html=True)

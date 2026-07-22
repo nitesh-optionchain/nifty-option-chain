@@ -318,7 +318,11 @@ st.html(f"""
 # 🔄 AUTOMATIC 2-SECOND RUNTIME REFRESH
 st_autorefresh(interval=2000, key="premium_zones_auto_sync")
 
-Qst.markdown("---")
+st.markdown("---")
+
+# Safe variable defaults taaki NameError na aaye
+target_symbol = locals().get('target_symbol', 'NIFTY')
+current_ltp = locals().get('current_ltp', 24000.0)
 
 max_ce_strike_found = None
 max_pe_strike_found = None
@@ -397,10 +401,8 @@ else:
 
 vol_status = "High Volatility Expansion" if avg_iv > 18 else "Low Volatility Pinning Zone"
 
-# Header Title
 st.markdown(f"<h4 style='color: #60a5fa;'>⚡ INSTITUTIONAL QUANT MATRIX: MAX PAIN, IV & DELTA ({target_symbol})</h4>", unsafe_allow_html=True)
 
-# 3 Equal Columns using Streamlit Native Layout
 col1, col2, col3 = st.columns(3)
 
 with col1:

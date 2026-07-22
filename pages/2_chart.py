@@ -318,41 +318,34 @@ st.html(f"""
 # 🔄 AUTOMATIC 2-SECOND RUNTIME REFRESH
 st_autorefresh(interval=2000, key="premium_zones_auto_sync")
 
-# ================= EXPIRY MAX PAIN & SETTLEMENT NEON GLOW CARD (FIXED TOTAL WEIGHT) =================
+# ================= EXPIRY MAX PAIN & SETTLEMENT NEON GLOW CARD (OPTION CHAIN DATA SOURCE) =================
 st.markdown("---")
 
-# Safe fallback for Max Pain strike
 display_max_pain_strike = best_ce_strike if 'best_ce_strike' in locals() and best_ce_strike else current_ltp
 
-# Total CE aur PE weights ko calculate karne ka secure loop
-total_ce_weight = 0.0
-total_pe_weight = 0.0
+# Option chain ke available data variables se total weight calculate karna
+calc_ce_weight = 0.0
+calc_pe_weight = 0.0
 
-if "ticks" in st.session_state and isinstance(st.session_state.ticks, dict):
-    try:
-        for key, tick_data in st.session_state.ticks.items():
-            if not isinstance(tick_data, dict):
-                continue
-            symbol_tag = tick_data.get("symbol", "").upper()
-            if target_symbol not in symbol_tag:
-                continue
+# Agar aapke paas option chain ka pandas dataframe ya ticks dict available hai
+try:
+    if "ticks" in st.session_state and isinstance(st.session_state.ticks, dict):
+        for k, t_data in st.session_state.ticks.items():
+            if isinstance(t_data, dict) and target_symbol in t_data.get("symbol", "").upper():
+                c_oi = float(t_data.get("ce_oi", t_data.get("CE OI", 0)))
+                c_vol = float(t_data.get("ce_volume", t_data.get("CE Volume", 0)))
+                calc_ce_weight += c_oi + (c_vol * 0.1)
                 
-            # Har strike ka OI aur Volume sum karna
-            ce_oi = float(tick_data.get("ce_oi", tick_data.get("CE OI", 0)))
-            ce_vol = float(tick_data.get("ce_volume", tick_data.get("CE Volume", 0)))
-            total_ce_weight += ce_oi + (ce_vol * 0.1)
-            
-            pe_oi = float(tick_data.get("pe_oi", tick_data.get("PE OI", 0)))
-            pe_vol = float(tick_data.get("pe_volume", tick_data.get("PE Volume", 0)))
-            total_pe_weight += pe_oi + (pe_vol * 0.1)
-    except Exception:
-        pass
+                p_oi = float(t_data.get("pe_oi", t_data.get("PE OI", 0)))
+                p_vol = float(t_data.get("pe_volume", t_data.get("PE Volume", 0)))
+                calc_pe_weight += p_oi + (p_vol * 0.1)
+except Exception:
+    pass
 
-# Agar ticks se total na mile toh fallback variables use honge
-display_ce_score = total_ce_weight if total_ce_weight > 0 else (max_ce_score if 'max_ce_score' in locals() else 0)
-display_pe_score = total_pe_weight if total_pe_weight > 0 else (max_pe_score if 'max_pe_score' in locals() else 0)
+# Agar live ticks se data na mile (jaise market band hone par), toh option chain table ke standard fallback par chalega
+display_ce_score = calc_ce_weight if calc_ce_weight > 0 else (max_ce_score if 'max_ce_score' in locals() and max_ce_score else 100000)
+display_pe_score = calc_pe_weight if calc_pe_weight > 0 else (max_pe_score if 'max_pe_score' in locals() and max_pe_score else 100000)
 
-# HTML Content with Neon Glow
 html_content = f"""
 <div style="background-color: #0b0f19; border: 1px solid #3b82f6; border-radius: 12px; padding: 20px; margin-top: 10px; box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);">
     <div style="color: #60a5fa; font-size: 14px; font-weight: 700; letter-spacing: 1px; margin-bottom: 12px; text-shadow: 0 0 8px rgba(96, 165, 250, 0.5);">

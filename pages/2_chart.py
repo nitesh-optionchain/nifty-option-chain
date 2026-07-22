@@ -318,7 +318,6 @@ st.html(f"""
 # 🔄 AUTOMATIC 2-SECOND RUNTIME REFRESH
 st_autorefresh(interval=2000, key="premium_zones_auto_sync")
 
-# ================= ADVANCED MAX PAIN, IV & DELTA GRID (BOTTOM BLOCK) =================
 st.markdown("---")
 
 max_ce_strike_found = None
@@ -342,7 +341,6 @@ if "ticks" in st.session_state and isinstance(st.session_state.ticks, dict):
             c_oi = float(t_data.get("ce_oi", t_data.get("CE OI", 0)))
             p_oi = float(t_data.get("pe_oi", t_data.get("PE OI", 0)))
             
-            # IV aur Delta extract karna (agar broker data mein available ho)
             iv_val = float(t_data.get("iv", t_data.get("IV", 15.0)))
             delta_val = float(t_data.get("delta", t_data.get("Delta", 0.5)))
             
@@ -352,7 +350,6 @@ if "ticks" in st.session_state and isinstance(st.session_state.ticks, dict):
             total_ce_oi_sum += c_oi
             total_pe_oi_sum += p_oi
             
-            # Delta weighted calculation
             delta_weighted_sum += delta_val * (c_oi + p_oi)
             total_weight_count += (c_oi + p_oi)
             
@@ -362,7 +359,6 @@ if "ticks" in st.session_state and isinstance(st.session_state.ticks, dict):
     except Exception:
         pass
 
-# Fallback strikes agar ticks na milein
 if not max_ce_strike_found:
     if target_symbol == "NIFTY":
         max_ce_strike_found = float((current_ltp // 50) * 50)
@@ -372,56 +368,42 @@ if not max_ce_strike_found:
         max_ce_strike_found = float((current_ltp // 100) * 100)
 
 display_max_pain_strike = int(max_ce_strike_found)
-
-# Average IV calculation
 avg_iv = sum(iv_list) / len(iv_list) if iv_list else 14.5
-
-# Net Delta Bias calculation
 net_delta = (delta_weighted_sum / total_weight_count) if total_weight_count > 0 else 0.5
 
-# Market Bias & Color Decision based on OI + IV + Delta
 if total_ce_oi_sum > 0 and total_pe_oi_sum > 0:
     if total_ce_oi_sum > total_pe_oi_sum:
-        market_bias, bias_color = "Bearish Resistance (CE Heavy)", "#f87171"
+        market_bias, bias_color = "Bearish Resistance", "#f87171"
     elif total_pe_oi_sum > total_ce_oi_sum:
-        market_bias, bias_color = "Bullish Support (PE Heavy)", "#4ade80"
+        market_bias, bias_color = "Bullish Support", "#4ade80"
     else:
-        market_bias, bias_color = "Neutral / Pinning Range", "#38bdf8"
+        market_bias, bias_color = "Neutral Range", "#38bdf8"
 else:
     if current_ltp >= display_max_pain_strike:
         market_bias, bias_color = "Bullish Control", "#4ade80"
     else:
         market_bias, bias_color = "Bearish Pressure", "#f87171"
 
-# Volatility Status
-vol_status = "High Volatility (Expansion)" if avg_iv > 18 else "Low Volatility (Pinning/Theta Decay)"
+vol_status = "High Volatility" if avg_iv > 18 else "Low Volatility (Pinning)"
 
-# Advanced UI Render with 3 Cards (Max Pain, Bias, IV & Delta)
 st.markdown(f"""
 <div style="background-color: #0b0f19; border: 1px solid #3b82f6; border-radius: 12px; padding: 20px; margin-top: 10px; box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);">
     <div style="color: #60a5fa; font-size: 14px; font-weight: 700; letter-spacing: 1px; margin-bottom: 12px; text-shadow: 0 0 8px rgba(96, 165, 250, 0.5);">
         ⚡ INSTITUTIONAL QUANT MATRIX: MAX PAIN, IV & DELTA ({target_symbol})
     </div>
     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
-        
-        <!-- Max Pain Strike Box -->
         <div style="flex: 1; min-width: 200px; background: #111827; border: 1px solid #60a5fa; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 0 10px rgba(96, 165, 250, 0.2);">
             <div style="color: #93c5fd; font-size: 12px; font-weight: bold; margin-bottom: 5px;">MAX PAIN STRIKE</div>
             <div style="color: #ffffff; font-size: 24px; font-weight: 800; text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);">{display_max_pain_strike}</div>
         </div>
-        
-        <!-- Expiry Settlement Bias Box -->
         <div style="flex: 1; min-width: 200px; background: #111827; border: 1px solid {bias_color}; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 0 10px {bias_color}40;">
             <div style="color: {bias_color}; font-size: 12px; font-weight: bold; margin-bottom: 5px;">SETTLEMENT BIAS</div>
             <div style="color: {bias_color}; font-size: 16px; font-weight: 700; text-shadow: 0 0 8px {bias_color}80;">{market_bias}</div>
         </div>
-        
-        <!-- IV & Delta Analytics Box -->
         <div style="flex: 1; min-width: 200px; background: #111827; border: 1px solid #c084fc; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 0 10px rgba(192, 132, 252, 0.2);">
-            <div style="color: #d8b4fe; font-size: 12px; font-weight: bold; margin-bottom: 5px;">AVG IV ({avg_iv:.1f}%) | DELTA ({net_delta:.2f})</div>
+            <div style="color: #d8b4fe; font-size: 12px; font-weight: bold; margin-bottom: 5px;">IV ({avg_iv:.1f}%) | DELTA ({net_delta:.2f})</div>
             <div style="color: #c084fc; font-size: 14px; font-weight: 700; text-shadow: 0 0 8px rgba(192, 132, 252, 0.4);">{vol_status}</div>
         </div>
-        
     </div>
 </div>
 """, unsafe_allow_html=True)

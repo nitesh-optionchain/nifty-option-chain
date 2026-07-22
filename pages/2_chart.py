@@ -317,7 +317,6 @@ st.html(f"""
 
 # 🔄 AUTOMATIC 2-SECOND RUNTIME REFRESH
 st_autorefresh(interval=2000, key="premium_zones_auto_sync")
-
 # ================= EXPIRY MAX PAIN & SETTLEMENT NEON GLOW CARD =================
 st.markdown("---")
 
@@ -326,7 +325,7 @@ display_max_pain_strike = best_ce_strike if 'best_ce_strike' in locals() and bes
 display_ce_score = max_ce_score if 'max_ce_score' in locals() and max_ce_score else 0
 display_pe_score = max_pe_score if 'max_pe_score' in locals() and max_pe_score else 0
 
-# Neon Glow Card Design
+# Neon Glow Card Design with Proper Streamlit Markdown Wrapping
 st.markdown(f"""
 <div style="
     background-color: #0b0f19; 

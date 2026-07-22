@@ -385,19 +385,19 @@ display_pe_pain = int(max_pe_strike_found) if max_pe_strike_found else display_c
 avg_iv = sum(iv_list) / len(iv_list) if iv_list else 14.5
 net_delta = (delta_weighted_sum / total_weight_count) if total_weight_count > 0 else 0.5
 
-# Short & Clear Bias Logic
+# Short Bias Logic
 if total_ce_oi_sum > 0 and total_pe_oi_sum > 0:
     if total_ce_oi_sum > total_pe_oi_sum:
-        market_bias, border_color, text_color = "BEARISH ACTIVE", "#f87171", "#f87171"
+        market_bias = "BEARISH ACTIVE"
     elif total_pe_oi_sum > total_ce_oi_sum:
-        market_bias, border_color, text_color = "BULLISH ACTIVE", "#4ade80", "#4ade80"
+        market_bias = "BULLISH ACTIVE"
     else:
-        market_bias, border_color, text_color = "SIDEWAYS ACTIVE", "#38bdf8", "#38bdf8"
+        market_bias = "SIDEWAYS ACTIVE"
 else:
     if current_ltp >= display_ce_pain:
-        market_bias, border_color, text_color = "BULLISH ACTIVE", "#4ade80", "#4ade80"
+        market_bias = "BULLISH ACTIVE"
     else:
-        market_bias, border_color, text_color = "BEARISH ACTIVE", "#f87171", "#f87171"
+        market_bias = "BEARISH ACTIVE"
 
 # Volatility Short Labels
 if avg_iv > 18:
@@ -407,32 +407,16 @@ elif avg_iv < 12:
 else:
     vol_status = "Sideways Volatility"
 
-# Exact Upper Box UI Matching Design
-st.markdown(f"""
-<div style="background-color: #12161f; border: 1px solid #2d3748; border-radius: 14px; padding: 22px; margin-top: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.5);">
-    <div style="color: #e2e8f0; font-size: 14px; font-weight: 700; letter-spacing: 1px; margin-bottom: 16px; font-family: sans-serif;">
-        ⚡ INSTITUTIONAL QUANT MATRIX: MAX PAIN, IV & DELTA ({target_symbol})
-    </div>
-    <div style="display: flex; gap: 15px; flex-wrap: wrap;">
-        
-        <!-- Box 1: Max Pain -->
-        <div style="flex: 1; min-width: 240px; background: #0b0f19; border: 1px solid #4a5568; padding: 18px; border-radius: 10px; text-align: center;">
-            <div style="color: #a0aec0; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 8px;">MAX PAIN STRIKES (CE / PE)</div>
-            <div style="color: #ffffff; font-size: 22px; font-weight: 800; letter-spacing: 0.5px;">{display_ce_pain} / {display_pe_pain}</div>
-        </div>
-        
-        <!-- Box 2: Settlement Bias -->
-        <div style="flex: 1; min-width: 240px; background: #0b0f19; border: 1px solid {border_color}; padding: 18px; border-radius: 10px; text-align: center; box-shadow: 0 0 10px {border_color}25;">
-            <div style="color: {text_color}; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 8px;">SETTLEMENT BIAS MESSAGE</div>
-            <div style="color: {text_color}; font-size: 16px; font-weight: 800; letter-spacing: 0.5px;">{market_bias}</div>
-        </div>
-        
-        <!-- Box 3: Volatility & Delta -->
-        <div style="flex: 1; min-width: 240px; background: #0b0f19; border: 1px solid #c084fc; padding: 18px; border-radius: 10px; text-align: center; box-shadow: 0 0 10px rgba(192, 132, 252, 0.2);">
-            <div style="color: #d8b4fe; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 8px;">IV & DELTA STATUS</div>
-            <div style="color: #c084fc; font-size: 15px; font-weight: 800; letter-spacing: 0.5px;">{vol_status}</div>
-        </div>
-        
-    </div>
-</div>
-""", unsafe_allow_html=True)
+# Native Streamlit Layout (No HTML Parsing Issues)
+st.markdown(f"**⚡ INSTITUTIONAL QUANT MATRIX: MAX PAIN, IV & DELTA ({target_symbol})**")
+
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    st.metric(label="MAX PAIN STRIKES (CE / PE)", value=f"{display_ce_pain} / {display_pe_pain}")
+
+with col2:
+    st.metric(label="SETTLEMENT BIAS MESSAGE", value=market_bias)
+
+with col3:
+    st.metric(label="IV & DELTA STATUS", value=vol_status)

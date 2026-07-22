@@ -318,7 +318,7 @@ st.html(f"""
 # 🔄 AUTOMATIC 2-SECOND RUNTIME REFRESH
 st_autorefresh(interval=2000, key="premium_zones_auto_sync")
 
-# ================= EXPIRY MAX PAIN INDEX GRID (ACCURATE BIAS FIX) =================
+# ================= EXPIRY MAX PAIN & SETTLEMENT GRID (BOTTOM BLOCK) =================
 st.markdown("---")
 
 max_ce_strike_found = None
@@ -357,16 +357,18 @@ if not max_ce_strike_found:
 
 display_max_pain_strike = int(max_ce_strike_found)
 
-# Real Open Interest comparison ke mutabiq Market Bias
-if total_ce_oi_sum > total_pe_oi_sum:
-    market_bias = "Bearish Resistance"
-    bias_color = "#f87171"
-elif total_pe_oi_sum > total_ce_oi_sum:
-    market_bias = "Bullish Support"
-    bias_color = "#4ade80"
+if total_ce_oi_sum > 0 and total_pe_oi_sum > 0:
+    if total_ce_oi_sum > total_pe_oi_sum:
+        market_bias, bias_color = "Bearish Resistance", "#f87171"
+    elif total_pe_oi_sum > total_ce_oi_sum:
+        market_bias, bias_color = "Bullish Support", "#4ade80"
+    else:
+        market_bias, bias_color = "Neutral Range", "#38bdf8"
 else:
-    market_bias = "Neutral Range"
-    bias_color = "#38bdf8"
+    if current_ltp >= display_max_pain_strike:
+        market_bias, bias_color = "Bullish Control", "#4ade80"
+    else:
+        market_bias, bias_color = "Bearish Pressure", "#f87171"
 
 st.markdown(f"""
 <div style="background-color: #0b0f19; border: 1px solid #3b82f6; border-radius: 12px; padding: 20px; margin-top: 10px; box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);">

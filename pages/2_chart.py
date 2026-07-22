@@ -318,10 +318,12 @@ st.html(f"""
 # 🔄 AUTOMATIC 2-SECOND RUNTIME REFRESH
 st_autorefresh(interval=2000, key="premium_zones_auto_sync")
 
-st.markdown("---")
+Qst.markdown("---")
 
 max_ce_strike_found = None
+max_pe_strike_found = None
 highest_ce_oi_val = -1
+highest_pe_oi_val = -1
 total_ce_oi_sum = 0
 total_pe_oi_sum = 0
 iv_list = []
@@ -356,54 +358,71 @@ if "ticks" in st.session_state and isinstance(st.session_state.ticks, dict):
             if c_oi > highest_ce_oi_val:
                 highest_ce_oi_val = c_oi
                 max_ce_strike_found = strike_val
+                
+            if p_oi > highest_pe_oi_val:
+                highest_pe_oi_val = p_oi
+                max_pe_strike_found = strike_val
     except Exception:
         pass
 
 if not max_ce_strike_found:
     if target_symbol == "NIFTY":
         max_ce_strike_found = float((current_ltp // 50) * 50)
+        max_pe_strike_found = max_ce_strike_found - 100
     elif target_symbol == "BANKNIFTY":
         max_ce_strike_found = float((current_ltp // 100) * 100)
+        max_pe_strike_found = max_ce_strike_found - 200
     else:
         max_ce_strike_found = float((current_ltp // 100) * 100)
+        max_pe_strike_found = max_ce_strike_found - 200
 
-display_max_pain_strike = int(max_ce_strike_found)
+display_ce_pain = int(max_ce_strike_found)
+display_pe_pain = int(max_pe_strike_found) if max_pe_strike_found else display_ce_pain - 100
+
 avg_iv = sum(iv_list) / len(iv_list) if iv_list else 14.5
 net_delta = (delta_weighted_sum / total_weight_count) if total_weight_count > 0 else 0.5
 
 if total_ce_oi_sum > 0 and total_pe_oi_sum > 0:
     if total_ce_oi_sum > total_pe_oi_sum:
-        market_bias, bias_color = "Bearish Resistance", "#f87171"
+        market_bias = "Bearish Resistance Heavy (CE Control)"
     elif total_pe_oi_sum > total_ce_oi_sum:
-        market_bias, bias_color = "Bullish Support", "#4ade80"
+        market_bias = "Bullish Support Heavy (PE Control)"
     else:
-        market_bias, bias_color = "Neutral Range", "#38bdf8"
+        market_bias = "Neutral Range / Consolidation"
 else:
-    if current_ltp >= display_max_pain_strike:
-        market_bias, bias_color = "Bullish Control", "#4ade80"
+    if current_ltp >= display_ce_pain:
+        market_bias = "Bullish Momentum Active"
     else:
-        market_bias, bias_color = "Bearish Pressure", "#f87171"
+        market_bias = "Bearish Pressure Active"
 
-vol_status = "High Volatility" if avg_iv > 18 else "Low Volatility (Pinning)"
+vol_status = "High Volatility Expansion" if avg_iv > 18 else "Low Volatility Pinning Zone"
 
-st.markdown(f"""
-<div style="background-color: #0b0f19; border: 1px solid #3b82f6; border-radius: 12px; padding: 20px; margin-top: 10px; box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);">
-    <div style="color: #60a5fa; font-size: 14px; font-weight: 700; letter-spacing: 1px; margin-bottom: 12px; text-shadow: 0 0 8px rgba(96, 165, 250, 0.5);">
-        ⚡ INSTITUTIONAL QUANT MATRIX: MAX PAIN, IV & DELTA ({target_symbol})
+# Header Title
+st.markdown(f"<h4 style='color: #60a5fa;'>⚡ INSTITUTIONAL QUANT MATRIX: MAX PAIN, IV & DELTA ({target_symbol})</h4>", unsafe_allow_html=True)
+
+# 3 Equal Columns using Streamlit Native Layout
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    st.markdown(f"""
+    <div style="background: #111827; border: 1px solid #60a5fa; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 0 10px rgba(96, 165, 250, 0.2);">
+        <div style="color: #93c5fd; font-size: 12px; font-weight: bold; margin-bottom: 5px;">MAX PAIN STRIKES (CE / PE)</div>
+        <div style="color: #ffffff; font-size: 20px; font-weight: 800;">{display_ce_pain} / {display_pe_pain}</div>
     </div>
-    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
-        <div style="flex: 1; min-width: 200px; background: #111827; border: 1px solid #60a5fa; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 0 10px rgba(96, 165, 250, 0.2);">
-            <div style="color: #93c5fd; font-size: 12px; font-weight: bold; margin-bottom: 5px;">MAX PAIN STRIKE</div>
-            <div style="color: #ffffff; font-size: 24px; font-weight: 800; text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);">{display_max_pain_strike}</div>
-        </div>
-        <div style="flex: 1; min-width: 200px; background: #111827; border: 1px solid {bias_color}; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 0 10px {bias_color}40;">
-            <div style="color: {bias_color}; font-size: 12px; font-weight: bold; margin-bottom: 5px;">SETTLEMENT BIAS</div>
-            <div style="color: {bias_color}; font-size: 16px; font-weight: 700; text-shadow: 0 0 8px {bias_color}80;">{market_bias}</div>
-        </div>
-        <div style="flex: 1; min-width: 200px; background: #111827; border: 1px solid #c084fc; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 0 10px rgba(192, 132, 252, 0.2);">
-            <div style="color: #d8b4fe; font-size: 12px; font-weight: bold; margin-bottom: 5px;">IV ({avg_iv:.1f}%) | DELTA ({net_delta:.2f})</div>
-            <div style="color: #c084fc; font-size: 14px; font-weight: 700; text-shadow: 0 0 8px rgba(192, 132, 252, 0.4);">{vol_status}</div>
-        </div>
+    """, unsafe_allow_html=True)
+
+with col2:
+    st.markdown(f"""
+    <div style="background: #111827; border: 1px solid #4ade80; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 0 10px rgba(74, 222, 128, 0.2);">
+        <div style="color: #4ade80; font-size: 12px; font-weight: bold; margin-bottom: 5px;">SETTLEMENT BIAS MESSAGE</div>
+        <div style="color: #4ade80; font-size: 14px; font-weight: 700;">{market_bias}</div>
     </div>
-</div>
-""", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
+
+with col3:
+    st.markdown(f"""
+    <div style="background: #111827; border: 1px solid #c084fc; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 0 10px rgba(192, 132, 252, 0.2);">
+        <div style="color: #d8b4fe; font-size: 12px; font-weight: bold; margin-bottom: 5px;">IV ({avg_iv:.1f}%) | DELTA ({net_delta:.2f})</div>
+        <div style="color: #c084fc; font-size: 13px; font-weight: 700;">{vol_status}</div>
+    </div>
+    """, unsafe_allow_html=True)

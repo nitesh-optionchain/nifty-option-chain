@@ -318,11 +318,13 @@ st.html(f"""
 # 🔄 AUTOMATIC 2-SECOND RUNTIME REFRESH
 st_autorefresh(interval=2000, key="premium_zones_auto_sync")
 
-# ================= EXPIRY MAX PAIN INDEX GRID (DIRECT RENDER) =================
+# ================= EXPIRY MAX PAIN INDEX GRID (ACCURATE BIAS FIX) =================
 st.markdown("---")
 
 max_ce_strike_found = None
 highest_ce_oi_val = -1
+total_ce_oi_sum = 0
+total_pe_oi_sum = 0
 
 if "ticks" in st.session_state and isinstance(st.session_state.ticks, dict):
     try:
@@ -334,6 +336,11 @@ if "ticks" in st.session_state and isinstance(st.session_state.ticks, dict):
                 continue
             strike_val = float(t_data.get("strike", 0))
             c_oi = float(t_data.get("ce_oi", t_data.get("CE OI", 0)))
+            p_oi = float(t_data.get("pe_oi", t_data.get("PE OI", 0)))
+            
+            total_ce_oi_sum += c_oi
+            total_pe_oi_sum += p_oi
+            
             if c_oi > highest_ce_oi_val:
                 highest_ce_oi_val = c_oi
                 max_ce_strike_found = strike_val
@@ -349,7 +356,17 @@ if not max_ce_strike_found:
         max_ce_strike_found = float((current_ltp // 100) * 100)
 
 display_max_pain_strike = int(max_ce_strike_found)
-market_bias = "Bullish Control" if current_ltp >= display_max_pain_strike else "Bearish Pressure"
+
+# Real Open Interest comparison ke mutabiq Market Bias
+if total_ce_oi_sum > total_pe_oi_sum:
+    market_bias = "Bearish Resistance"
+    bias_color = "#f87171"
+elif total_pe_oi_sum > total_ce_oi_sum:
+    market_bias = "Bullish Support"
+    bias_color = "#4ade80"
+else:
+    market_bias = "Neutral Range"
+    bias_color = "#38bdf8"
 
 st.markdown(f"""
 <div style="background-color: #0b0f19; border: 1px solid #3b82f6; border-radius: 12px; padding: 20px; margin-top: 10px; box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);">
@@ -361,9 +378,9 @@ st.markdown(f"""
             <div style="color: #93c5fd; font-size: 12px; font-weight: bold; margin-bottom: 5px;">MAX PAIN STRIKE LEVEL</div>
             <div style="color: #ffffff; font-size: 26px; font-weight: 800; text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);">{display_max_pain_strike}</div>
         </div>
-        <div style="flex: 1; min-width: 200px; background: #111827; border: 1px solid #38bdf8; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);">
-            <div style="color: #7dd3fc; font-size: 12px; font-weight: bold; margin-bottom: 5px;">EXPIRY SETTLEMENT BIAS</div>
-            <div style="color: #38bdf8; font-size: 18px; font-weight: 700; text-shadow: 0 0 8px rgba(56, 189, 248, 0.4);">{market_bias}</div>
+        <div style="flex: 1; min-width: 200px; background: #111827; border: 1px solid {bias_color}; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 0 10px {bias_color}40;">
+            <div style="color: {bias_color}; font-size: 12px; font-weight: bold; margin-bottom: 5px;">EXPIRY SETTLEMENT BIAS</div>
+            <div style="color: {bias_color}; font-size: 18px; font-weight: 700; text-shadow: 0 0 8px {bias_color}80;">{market_bias}</div>
         </div>
     </div>
 </div>

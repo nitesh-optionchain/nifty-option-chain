@@ -69,7 +69,6 @@ else:
     sign = ""
 
 # ================= TWO-STAGE LOCKED ZONES ENGINE (9:15 & 9:26) =================
-from datetime import datetime, timedelta
 
 # Current IST Time nikalna
 now_ist = datetime.utcnow() + timedelta(hours=5, minutes=30)
@@ -99,13 +98,13 @@ def calculate_master_zones(target_symbol, current_ltp):
                 if strike == 0:
                     continue
                 
-                # OI aur Volume dono ko combine karke strongest institutional weight nikalna
-                ce_oi = float(tick_data.get("ce_oi", tick_data.get("CE OI", 0)))
-                ce_vol = float(tick_data.get("ce_volume", tick_data.get("CE Volume", 0)))
+                # Robust key mapping for all possible formats
+                ce_oi = float(tick_data.get("ce_oi", tick_data.get("CE OI", tick_data.get("ce_open_interest", 0))))
+                ce_vol = float(tick_data.get("ce_volume", tick_data.get("CE Volume", tick_data.get("ce_vol", 0))))
                 ce_score = ce_oi + (ce_vol * 0.1)
                 
-                pe_oi = float(tick_data.get("pe_oi", tick_data.get("PE OI", 0)))
-                pe_vol = float(tick_data.get("pe_volume", tick_data.get("PE Volume", 0)))
+                pe_oi = float(tick_data.get("pe_oi", tick_data.get("PE OI", tick_data.get("pe_open_interest", 0))))
+                pe_vol = float(tick_data.get("pe_volume", tick_data.get("PE Volume", tick_data.get("pe_vol", 0))))
                 pe_score = pe_oi + (pe_vol * 0.1)
                 
                 if ce_score > max_ce_score:

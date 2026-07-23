@@ -68,7 +68,7 @@ else:
     arrow = "▼"
     sign = ""
 
-# ================= 4. TRADECLUE STYLE 9:20 LOCKED ZONES ENGINE =================
+# ================= TWO-STAGE LOCKED ZONES ENGINE (9:15 & 9:26) =================
 from datetime import datetime, timedelta
 
 # Current IST Time nikalna
@@ -76,11 +76,11 @@ now_ist = datetime.utcnow() + timedelta(hours=5, minutes=30)
 current_time_str = now_ist.strftime("%H:%M")
 current_date_str = now_ist.strftime("%Y-%m-%d")
 
-# Unique cache key jisme date bhi ho taaki har naye din naya zone lock ho sake
-cache_key = f"locked_zones_{target_symbol}_{current_date_str}"
+# Unique cache keys for 9:15 freeze and 9:26 final lock
+freeze_915_key = f"zones_915_{target_symbol}_{current_date_str}"
+final_lock_key = f"zones_final_926_{target_symbol}_{current_date_str}"
 
-# Agar subah 9:20 ke baad pehli baar chal raha hai aur session mein nahi hai, tabhi lock karein
-if cache_key not in st.session_state and current_time_str >= "09:20":
+def calculate_master_zones(target_symbol, current_ltp):
     best_ce_strike = None
     best_pe_strike = None
     
@@ -117,57 +117,76 @@ if cache_key not in st.session_state and current_time_str >= "09:20":
         except Exception:
             pass
 
-    # Fallback aur Zone Range Calculation
+    # Index ke mutabiq step size, buffer aur safe max offset limits
     if target_symbol == "NIFTY":
-        bs = float((current_ltp // 50) * 50)
-        s_low = best_ce_strike if best_ce_strike else bs
-        s_high = s_low + 30
-        d_high = best_pe_strike if best_pe_strike else (bs - 100)
-        d_low = d_high - 30
+        step = 50
+        buffer = 30
+        max_offset = 60
     elif target_symbol == "BANKNIFTY":
-        bs = float((current_ltp // 100) * 100)
-        s_low = best_ce_strike if best_ce_strike else bs
-        s_high = s_low + 150
-        d_high = best_pe_strike if best_pe_strike else (bs - 300)
-        d_low = d_high - 150
+        step = 100
+        buffer = 100
+        max_offset = 150
     else: # SENSEX
-        bs = float((current_ltp // 100) * 100)
-        s_low = best_ce_strike if best_ce_strike else bs
-        s_high = s_low + 100
-        d_high = best_pe_strike if best_pe_strike else (bs - 200)
-        d_low = d_high - 100
+        step = 100
+        buffer = 100
+        max_offset = 150
 
-    # Values ko us din ke liye session mein permanently lock kar do
-    st.session_state[cache_key] = {
-        "sup_low": s_low,
-        "sup_high": s_high,
-        "dem_high": d_high,
-        "dem_low": d_low
+    bs = float((current_ltp // step) * step)
+
+    # Safe Bounded Zones Calculation (Bina be-wajah door bhage)
+    s_low = best_ce_strike if best_ce_strike else (bs + step)
+    d_high = best_pe_strike if best_pe_strike else (bs - max_offset)
+
+    # --- SMART OVERLAP SHIFT LOGIC ---
+    # Agar CE aur PE ka max strike same ho jaye, toh step ke mutabiq shift do
+    if s_low == d_high:
+        s_low = s_low + step      # CE ek step upar
+        d_high = d_high - step    # PE ek step niche
+
+    s_high = s_low + buffer
+    d_low = d_high - buffer
+
+    return {
+        "sup_low": int(s_low),
+        "sup_high": int(s_high),
+        "dem_high": int(d_high),
+        "dem_low": int(d_low)
     }
 
-# Zones ko fetch karna (Agar 9:20 ke baad lock ho gaya hai toh wahi dikhega poore din)
-if cache_key in st.session_state:
-    locked_zones = st.session_state[cache_key]
-    sup_low = locked_zones["sup_low"]
-    sup_high = locked_zones["sup_high"]
-    dem_high = locked_zones["dem_high"]
-    dem_low = locked_zones["dem_low"]
+# Stage 1: Subah 9:15 ke baad pehla freeze
+if current_time_str >= "09:15" and freeze_915_key not in st.session_state:
+    st.session_state[freeze_915_key] = calculate_master_zones(target_symbol, current_ltp)
+
+# Stage 2: Strictly 9:26 ke baad final institutional zone 3:30 PM tak ke liye lock
+if current_time_str >= "09:26" and final_lock_key not in st.session_state:
+    st.session_state[final_lock_key] = calculate_master_zones(target_symbol, current_ltp)
+
+# Zones ko fetch karna display ya aapke existing UI ke liye
+if final_lock_key in st.session_state:
+    locked_zones = st.session_state[final_lock_key]
+elif freeze_915_key in st.session_state:
+    locked_zones = st.session_state[freeze_915_key]
 else:
-    # 9:20 se pehle ya ticks aane se pehle ka default fallback level
-    if target_symbol == "NIFTY":
-        bs = float((current_ltp // 50) * 50)
-    elif target_symbol == "BANKNIFTY":
-        bs = float((current_ltp // 100) * 100)
-    else:
-        bs = float((current_ltp // 100) * 100)
-        
-    sup_low = bs
-    sup_high = sup_low + 30
-    dem_high = sup_low - 100
-    dem_low = dem_high - 30
+    # 9:15 se pehle ka default fallback level
+    step = 50 if target_symbol == "NIFTY" else 100
+    bs = float((current_ltp // step) * step)
+    max_offset = 60 if target_symbol == "NIFTY" else 150
+    buf = 30 if target_symbol == "NIFTY" else 100
+    
+    locked_zones = {
+        "sup_low": int(bs + step),
+        "sup_high": int(bs + step + buf),
+        "dem_high": int(bs - max_offset),
+        "dem_low": int(bs - max_offset - buf)
+    }
+
+sup_low = locked_zones["sup_low"]
+sup_high = locked_zones["sup_high"]
+dem_high = locked_zones["dem_high"]
+dem_low = locked_zones["dem_low"]
 
 p_point = round((sup_low + dem_high) / 2)
-now_ist_str = (datetime.utcnow() + timedelta(hours=5, minutes=30)).strftime("%Y-%m-%d %H:%M:%S IST")
+now_ist_str = now_ist.strftime("%Y-%m-%d %H:%M:%S IST")
 # ================= 5. DYNAMIC HTML/CSS VISUAL ENGINE =================
 st.html(f"""
 <style>

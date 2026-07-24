@@ -98,18 +98,15 @@ def calculate_master_zones(target_symbol, current_ltp):
                 if strike == 0:
                     continue
                 
-                # Robust key mapping for OI, Change in OI and Volume
+                # Table ke real parameters: OI, Change in OI, aur Volume
                 ce_oi = float(tick_data.get("ce_oi", tick_data.get("CE OI", tick_data.get("ce_open_interest", 0))))
                 ce_chg_oi = float(tick_data.get("ce_change_oi", tick_data.get("CE Chg OI", tick_data.get("ce_chg_oi", 0))))
                 ce_vol = float(tick_data.get("ce_volume", tick_data.get("CE Volume", tick_data.get("ce_vol", 0))))
-                
-                # Balanced Scoring: OI (Base) + Change in OI (High Priority) + Volume (Support)
                 ce_score = ce_oi + (ce_chg_oi * 1.5) + (ce_vol * 0.05)
                 
                 pe_oi = float(tick_data.get("pe_oi", tick_data.get("PE OI", tick_data.get("pe_open_interest", 0))))
                 pe_chg_oi = float(tick_data.get("pe_change_oi", tick_data.get("PE Chg OI", tick_data.get("pe_chg_oi", 0))))
                 pe_vol = float(tick_data.get("pe_volume", tick_data.get("PE Volume", tick_data.get("pe_vol", 0))))
-                
                 pe_score = pe_oi + (pe_chg_oi * 1.5) + (pe_vol * 0.05)
                 
                 if ce_score > max_ce_score:
@@ -121,33 +118,31 @@ def calculate_master_zones(target_symbol, current_ltp):
         except Exception:
             pass
 
-    # Index ke mutabiq step size aur buffer limits
+    # Index ke mutabiq step size limits
     if target_symbol == "NIFTY":
         step = 50
-        buffer = 30
         max_offset = 30
     elif target_symbol == "BANKNIFTY":
         step = 100
-        buffer = 100
         max_offset = 100
     else: # SENSEX
         step = 100
-        buffer = 100
         max_offset = 100
 
     bs = float((current_ltp // step) * step)
 
-    # Safe Bounded Zones Calculation
+    # Buffer hatakar direct strike values ko zone range banana
     s_low = best_ce_strike if best_ce_strike else (bs + step)
     d_high = best_pe_strike if best_pe_strike else (bs - max_offset)
 
-    # --- SMART OVERLAP SHIFT LOGIC ---
+    # Overlap protection shift
     if s_low == d_high:
         s_low = s_low + step      
         d_high = d_high - step    
 
-    s_high = s_low + buffer
-    d_low = d_high - buffer
+    # Bina buffer ke exact range (jaise 23900 - 23950 ya direct strike size)
+    s_high = s_low + step
+    d_low = d_high - step
 
     return {
         "sup_low": int(s_low),

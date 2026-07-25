@@ -463,7 +463,6 @@ st.html(f"""
 """)
 
 # 🔄 AUTOMATIC 2-SECOND RUNTIME REFRESH
-import streamlit as st
 
 st.markdown("---")
 
@@ -565,7 +564,7 @@ else:
 
 # 5. UI Rendering (Exactly top box ke design ke sath)
 st.markdown(f"""
-<div style="background-color: #12161f; border: 1px solid #2d3748; border-radius: 14px; padding: 22px; box-shadow: 0 4px 20px rgba(0,0,0,0.5);">
+<div style="background-color: #12161f; border: 1px solid #2d3748; border-radius: 14px; padding: 22px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); margin-top: 20px;">
     
     <div style="margin-bottom: 16px;">
         <div style="color: #e2e8f0; font-size: 14px; font-weight: 700; letter-spacing: 1px; font-family: sans-serif; text-transform: uppercase;">

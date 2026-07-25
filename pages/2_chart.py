@@ -571,35 +571,30 @@ else:
 
 
 # ==========================================
-# 5. FINAL UI RENDERING (Crucial Part)
+# 5. FINAL UI RENDERING (Zero Indentation Fix)
 # ==========================================
-st.markdown(f"""
+html_code = f"""
 <div style="background-color: #12161f; border: 1px solid #2d3748; border-radius: 14px; padding: 22px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); margin-top: 10px;">
-    
-    <div style="margin-bottom: 16px;">
-        <div style="color: #e2e8f0; font-size: 14px; font-weight: 700; letter-spacing: 1px; font-family: sans-serif; text-transform: uppercase;">
-            ⚡ INSTITUTIONAL QUANT MATRIX: MAX PAIN, IV & DELTA ({target_symbol})
-        </div>
-    </div>
-
-    <div style="display: flex; gap: 15px; flex-wrap: wrap;">
-        <!-- Box 1: Max Pain -->
-        <div style="flex: 1; min-width: 240px; background: #0b0f19; border: 1px solid #4a5568; padding: 18px; border-radius: 10px; text-align: center;">
-            <div style="color: #a0aec0; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 8px;">🎯 MAX PAIN STRIKES (CE / PE)</div>
-            <div style="color: #ffffff; font-size: 22px; font-weight: 800; letter-spacing: 0.5px;">{display_ce_pain} / {display_pe_pain}</div>
-        </div>
-        
-        <!-- Box 2: Bias Message -->
-        <div style="flex: 1; min-width: 240px; background: #0b0f19; border: 1px solid {border_color}; padding: 18px; border-radius: 10px; text-align: center; box-shadow: 0 0 10px {border_color}25;">
-            <div style="color: {text_color}; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 8px;">📈 SETTLEMENT BIAS MESSAGE</div>
-            <div style="color: {border_color}; font-size: 16px; font-weight: 800; letter-spacing: 0.5px;">{market_bias}</div>
-        </div>
-        
-        <!-- Box 3: IV & Delta -->
-        <div style="flex: 1; min-width: 240px; background: #0b0f19; border: 1px solid #c084fc; padding: 18px; border-radius: 10px; text-align: center; box-shadow: 0 0 10px rgba(192, 132, 252, 0.15);">
-            <div style="color: #d8b4fe; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 8px;">🔮 IV ({avg_iv:.1f}%) | DELTA ({net_delta:.2f})</div>
-            <div style="color: #c084fc; font-size: 16px; font-weight: 800; letter-spacing: 0.5px;">{vol_status}</div>
-        </div>
-    </div>
+<div style="margin-bottom: 16px;">
+<div style="color: #e2e8f0; font-size: 14px; font-weight: 700; letter-spacing: 1px; font-family: sans-serif; text-transform: uppercase;">
+⚡ INSTITUTIONAL QUANT MATRIX: MAX PAIN, IV & DELTA ({target_symbol})
 </div>
-""", unsafe_allow_html=True)
+</div>
+<div style="display: flex; gap: 15px; flex-wrap: wrap;">
+<div style="flex: 1; min-width: 240px; background: #0b0f19; border: 1px solid #4a5568; padding: 18px; border-radius: 10px; text-align: center;">
+<div style="color: #a0aec0; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 8px;">🎯 MAX PAIN STRIKES (CE / PE)</div>
+<div style="color: #ffffff; font-size: 22px; font-weight: 800; letter-spacing: 0.5px;">{display_ce_pain} / {display_pe_pain}</div>
+</div>
+<div style="flex: 1; min-width: 240px; background: #0b0f19; border: 1px solid {border_color}; padding: 18px; border-radius: 10px; text-align: center; box-shadow: 0 0 10px {border_color}25;">
+<div style="color: {text_color}; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 8px;">📈 SETTLEMENT BIAS MESSAGE</div>
+<div style="color: {border_color}; font-size: 16px; font-weight: 800; letter-spacing: 0.5px;">{market_bias}</div>
+</div>
+<div style="flex: 1; min-width: 240px; background: #0b0f19; border: 1px solid #c084fc; padding: 18px; border-radius: 10px; text-align: center; box-shadow: 0 0 10px rgba(192, 132, 252, 0.15);">
+<div style="color: #d8b4fe; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 8px;">🔮 IV ({avg_iv:.1f}%) | DELTA ({net_delta:.2f})</div>
+<div style="color: #c084fc; font-size: 16px; font-weight: 800; letter-spacing: 0.5px;">{vol_status}</div>
+</div>
+</div>
+</div>
+"""
+
+st.markdown(html_code, unsafe_allow_html=True)

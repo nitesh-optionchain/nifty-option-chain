@@ -69,11 +69,23 @@ else:
     arrow = "▼"
     sign = ""
 
-# ================= 1. FILE STORAGE ENGINE (For 7:30 PM & Overnight Data) =================
+# =====================================================================
+# 0. INPUT VARIABLES (NameError Fix)
+# Yahan apne live data variables assign karein. 
+# Agar aapke variables ka naam kuch aur hai, toh unhe yahan map karein.
+# =====================================================================
+# target_symbol = aapka_dropdown_variable (e.g., "NIFTY")
+# current_ltp = aapka_live_price_variable (e.g., 23787.00)
+
+target_symbol = "NIFTY"  # Placeholder: Replace with your actual symbol variable
+current_ltp = 23787.00   # Placeholder: Replace with your actual live LTP variable
+
+# =====================================================================
+# 1. FILE STORAGE ENGINE (For 7:30 PM & Overnight Data)
+# =====================================================================
 DATA_FILE = "daily_zones.json"
 
 def save_zone_to_file(date_key, time_key, symbol, data):
-    # Purana data load karein
     if os.path.exists(DATA_FILE):
         try:
             with open(DATA_FILE, 'r') as f:
@@ -90,7 +102,6 @@ def save_zone_to_file(date_key, time_key, symbol, data):
         
     all_data[date_key][time_key][symbol] = data
     
-    # File me update karein
     with open(DATA_FILE, 'w') as f:
         json.dump(all_data, f, indent=4)
 
@@ -104,7 +115,9 @@ def load_zone_from_file(date_key, time_key, symbol):
             return None
     return None
 
-# ================= 2. ALERT SETUP (Audio & Toast) =================
+# =====================================================================
+# 2. ALERT SETUP (Audio & Toast)
+# =====================================================================
 if 'supply_alert_played' not in st.session_state:
     st.session_state.supply_alert_played = False
 if 'demand_alert_played' not in st.session_state:
@@ -120,18 +133,22 @@ def play_audio_alert(text_message):
     """
     components.html(js_code, height=0, width=0)
 
-# ================= 3. TIME & DATE CALCULATION =================
+# =====================================================================
+# 3. TIME & DATE CALCULATION
+# =====================================================================
 now_ist = datetime.utcnow() + timedelta(hours=5, minutes=30)
 current_time_str = now_ist.strftime("%H:%M")
 current_date_str = now_ist.strftime("%Y-%m-%d")
 
-# Agar time 19:30 (7:30 PM) cross kar gaya hai, toh hum 'Kal' ki date ko target banayenge
+# Agar time 19:30 (7:30 PM) cross kar gaya hai, toh hum 'Kal' ki date target karenge
 if current_time_str >= "19:30":
     target_date_str = (now_ist + timedelta(days=1)).strftime("%Y-%m-%d")
 else:
     target_date_str = current_date_str
 
-# ================= 4. CORE ZONES CALCULATION ENGINE =================
+# =====================================================================
+# 4. CORE ZONES CALCULATION ENGINE
+# =====================================================================
 def calculate_master_zones(target_symbol, current_ltp):
     best_ce_strike = None
     best_pe_strike = None
@@ -189,7 +206,7 @@ def calculate_master_zones(target_symbol, current_ltp):
     ce_base = best_ce_strike if best_ce_strike else (bs + step)
     pe_base = best_pe_strike if best_pe_strike else (bs - max_offset)
 
-    # Nifty ke liye exact 30 point ki window banegi (e.g. 23800 aur 23770)
+    # Zone mapping
     s_high = ce_base
     s_low = s_high - zone_width  
 
@@ -210,9 +227,10 @@ def calculate_master_zones(target_symbol, current_ltp):
         "dem_low": int(d_low)
     }
 
-# ================= 5. MULTI-STAGE TRIGGER ENGINE =================
-
-# Stage 0: Night 7:30 PM Freeze (EOD Calculation for next day)
+# =====================================================================
+# 5. MULTI-STAGE TRIGGER ENGINE (Save Logic)
+# =====================================================================
+# Stage 0: Night 7:30 PM Freeze
 if current_time_str >= "19:30":
     eod_zones = calculate_master_zones(target_symbol, current_ltp)
     save_zone_to_file(target_date_str, "19:30", target_symbol, eod_zones)
@@ -227,8 +245,10 @@ if current_time_str >= "09:26":
     temp_926_zones = calculate_master_zones(target_symbol, current_ltp)
     save_zone_to_file(current_date_str, "09:26", target_symbol, temp_926_zones)
 
-# ================= 6. LOAD PRIORITY LOGIC =================
-# Pehle 9:26 ka data check karega, agar nahi mila toh 9:15 ka, warna 19:30 (Previous Night) ka.
+
+# =====================================================================
+# 6. LOAD PRIORITY LOGIC (Retrieve Logic)
+# =====================================================================
 locked_zones = load_zone_from_file(current_date_str, "09:26", target_symbol)
 
 if not locked_zones:
@@ -238,7 +258,7 @@ if not locked_zones:
     locked_zones = load_zone_from_file(current_date_str, "19:30", target_symbol)
 
 if not locked_zones:
-    # Default Fallback (agar pehli baar setup ho raha ho)
+    # Default Fallback (agar pehli baar chal raha hai aur file khali hai)
     step = 50 if target_symbol == "NIFTY" else 100
     bs = float((current_ltp // step) * step)
     zw = 30 if target_symbol == "NIFTY" else 100
@@ -249,7 +269,7 @@ if not locked_zones:
         "dem_low": int(bs - step - zw)
     }
 
-# Assign variables for dashboard UI
+# Variables for UI Cards
 sup_low = locked_zones["sup_low"]
 sup_high = locked_zones["sup_high"]
 dem_high = locked_zones["dem_high"]
@@ -257,9 +277,10 @@ dem_low = locked_zones["dem_low"]
 p_point = round((sup_low + dem_high) / 2)
 now_ist_str = now_ist.strftime("%Y-%m-%d %H:%M:%S IST")
 
-# ================= 7. LIVE ALERT CHECK ENGINE =================
 
-# 1. Supply Zone Alert
+# =====================================================================
+# 7. LIVE ALERT CHECK ENGINE
+# =====================================================================
 if current_ltp >= sup_low:
     if not st.session_state.supply_alert_played:
         st.toast(f"🚨 ALERT: {target_symbol} Supply Zone ({sup_low}) hit!", icon="⚠️")
@@ -268,7 +289,6 @@ if current_ltp >= sup_low:
 elif current_ltp < sup_low:
     st.session_state.supply_alert_played = False
 
-# 2. Demand Zone Alert
 if current_ltp <= dem_high:
     if not st.session_state.demand_alert_played:
         st.toast(f"🚨 ALERT: {target_symbol} Demand Zone ({dem_high}) hit!", icon="⚠️")
@@ -276,6 +296,7 @@ if current_ltp <= dem_high:
         st.session_state.demand_alert_played = True
 elif current_ltp > dem_high:
     st.session_state.demand_alert_played = False
+    
     # ================= 5. DYNAMIC HTML/CSS VISUAL ENGINE =================
 st.html(f"""
 <style>

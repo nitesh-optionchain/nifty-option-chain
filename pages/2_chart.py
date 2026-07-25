@@ -275,7 +275,8 @@ if current_ltp <= dem_high:
         play_audio_alert(f"Attention! {target_symbol} has reached the Demand Zone at {dem_high}")
         st.session_state.demand_alert_played = True
 elif current_ltp > dem_high:
-    st.session_state.demand_alert_played = False# ================= 5. DYNAMIC HTML/CSS VISUAL ENGINE =================
+    st.session_state.demand_alert_played = False
+    # ================= 5. DYNAMIC HTML/CSS VISUAL ENGINE =================
 st.html(f"""
 <style>
     .block-container {{

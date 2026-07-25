@@ -463,47 +463,54 @@ st.html(f"""
 """)
 
 # 🔄 AUTOMATIC 2-SECOND RUNTIME REFRESH
-st_autorefresh(interval=2000, key="premium_zones_auto_sync")
+import streamlit as st
 
 st.markdown("---")
 
-target_symbol = locals().get('target_symbol', 'NIFTY')
-current_ltp = locals().get('current_ltp', 24000.0)
+# 1. Variables safey memory se fetch karna
+target_symbol = st.session_state.get('target_symbol', 'NIFTY')
+current_ltp = float(st.session_state.get('current_ltp', 0.0))
 
 max_ce_strike_found = None
 max_pe_strike_found = None
 highest_ce_oi_val = -1
 highest_pe_oi_val = -1
+
 total_ce_oi_sum = 0
 total_pe_oi_sum = 0
 iv_list = []
 delta_weighted_sum = 0
 total_weight_count = 0
 
+# 2. Live Data Extraction Logic (Fixed)
 if "ticks" in st.session_state and isinstance(st.session_state.ticks, dict):
-    try:
-        for k, t_data in st.session_state.ticks.items():
-            if not isinstance(t_data, dict):
-                continue
-            symbol_tag = t_data.get("symbol", "").upper()
-            if target_symbol not in symbol_tag:
-                continue
-                
+    for k, t_data in st.session_state.ticks.items():
+        if not isinstance(t_data, dict):
+            continue
+            
+        symbol_tag = t_data.get("symbol", "").upper()
+        if target_symbol not in symbol_tag:
+            continue
+            
+        try:
             strike_val = float(t_data.get("strike", 0))
-            c_oi = float(t_data.get("ce_oi", t_data.get("CE OI", 0)))
-            p_oi = float(t_data.get("pe_oi", t_data.get("PE OI", 0)))
             
-            iv_val = float(t_data.get("iv", t_data.get("IV", 15.0)))
-            delta_val = float(t_data.get("delta", t_data.get("Delta", 0.5)))
+            c_oi = float(t_data.get("ce_oi", t_data.get("CE OI", t_data.get("open_interest_CE", 0))))
+            p_oi = float(t_data.get("pe_oi", t_data.get("PE OI", t_data.get("open_interest_PE", 0))))
             
-            if iv_val > 0:
-                iv_list.append(iv_val)
+            c_iv = float(t_data.get("iv", t_data.get("ce_iv", 0.0)))
+            p_iv = float(t_data.get("pe_iv", 0.0))
+            c_delta = float(t_data.get("delta", t_data.get("ce_delta", 0.0)))
+            
+            if c_iv > 0: iv_list.append(c_iv)
+            if p_iv > 0: iv_list.append(p_iv)
             
             total_ce_oi_sum += c_oi
             total_pe_oi_sum += p_oi
             
-            delta_weighted_sum += delta_val * (c_oi + p_oi)
-            total_weight_count += (c_oi + p_oi)
+            if c_delta != 0.0:
+                delta_weighted_sum += (c_delta * c_oi)
+                total_weight_count += c_oi
             
             if c_oi > highest_ce_oi_val:
                 highest_ce_oi_val = c_oi
@@ -512,62 +519,76 @@ if "ticks" in st.session_state and isinstance(st.session_state.ticks, dict):
             if p_oi > highest_pe_oi_val:
                 highest_pe_oi_val = p_oi
                 max_pe_strike_found = strike_val
-    except Exception:
-        pass
+                
+        except Exception:
+            pass
 
+# 3. Fallback logic
 if not max_ce_strike_found:
-    if target_symbol == "NIFTY":
-        max_ce_strike_found = float((current_ltp // 50) * 50)
-        max_pe_strike_found = max_ce_strike_found - 100
-    elif target_symbol == "BANKNIFTY":
-        max_ce_strike_found = float((current_ltp // 100) * 100)
-        max_pe_strike_found = max_ce_strike_found - 200
+    step = 50 if target_symbol == "NIFTY" else 100
+    if current_ltp > 0:
+        max_ce_strike_found = float((current_ltp // step) * step)
+        max_pe_strike_found = max_ce_strike_found - (step * 2)
     else:
-        max_ce_strike_found = float((current_ltp // 100) * 100)
-        max_pe_strike_found = max_ce_strike_found - 200
+        max_ce_strike_found = 0
+        max_pe_strike_found = 0
 
 display_ce_pain = int(max_ce_strike_found)
 display_pe_pain = int(max_pe_strike_found) if max_pe_strike_found else display_ce_pain - 100
 
-avg_iv = sum(iv_list) / len(iv_list) if iv_list else 14.5
-net_delta = (delta_weighted_sum / total_weight_count) if total_weight_count > 0 else 0.5
+avg_iv = sum(iv_list) / len(iv_list) if len(iv_list) > 0 else 0.0
+net_delta = (delta_weighted_sum / total_weight_count) if total_weight_count > 0 else 0.0
 
+# 4. Sentiment Colors (Upar wale design ke matching colors)
 if total_ce_oi_sum > 0 and total_pe_oi_sum > 0:
     if total_ce_oi_sum > total_pe_oi_sum:
-        market_bias, border_color, text_color = "BEARISH ACTIVE", "#f87171", "#f87171"
+        market_bias, border_color, text_color = "BEARISH ACTIVE", "#f87171", "#fca5a5"
     elif total_pe_oi_sum > total_ce_oi_sum:
-        market_bias, border_color, text_color = "BULLISH ACTIVE", "#4ade80", "#4ade80"
+        market_bias, border_color, text_color = "BULLISH ACTIVE", "#4ade80", "#86efac"
     else:
-        market_bias, border_color, text_color = "SIDEWAYS ACTIVE", "#38bdf8", "#38bdf8"
+        market_bias, border_color, text_color = "SIDEWAYS ACTIVE", "#fbbf24", "#fcd34d"
 else:
-    if current_ltp >= display_ce_pain:
-        market_bias, border_color, text_color = "BULLISH ACTIVE", "#4ade80", "#4ade80"
+    if current_ltp >= display_ce_pain and display_ce_pain != 0:
+        market_bias, border_color, text_color = "BULLISH ACTIVE", "#4ade80", "#86efac"
     else:
-        market_bias, border_color, text_color = "BEARISH ACTIVE", "#f87171", "#f87171"
+        market_bias, border_color, text_color = "WAITING DATA...", "#a0aec0", "#e2e8f0"
 
-if avg_iv > 18:
+if avg_iv == 0.0:
+    vol_status = "Fetching..."
+elif avg_iv > 18:
     vol_status = "High"
 elif avg_iv < 12:
     vol_status = "Low"
 else:
     vol_status = "Sideways"
 
+
+# 5. UI Rendering (Exactly top box ke design ke sath)
 st.markdown(f"""
-<div style="background-color: #12161f; border: 1px solid #2d3748; border-radius: 14px; padding: 22px; margin-top: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.5);">
-    <div style="color: #e2e8f0; font-size: 14px; font-weight: 700; letter-spacing: 1px; margin-bottom: 16px; font-family: sans-serif;">
-        ⚡ INSTITUTIONAL QUANT MATRIX: MAX PAIN, IV & DELTA ({target_symbol})
+<div style="background-color: #12161f; border: 1px solid #2d3748; border-radius: 14px; padding: 22px; box-shadow: 0 4px 20px rgba(0,0,0,0.5);">
+    
+    <div style="margin-bottom: 16px;">
+        <div style="color: #e2e8f0; font-size: 14px; font-weight: 700; letter-spacing: 1px; font-family: sans-serif; text-transform: uppercase;">
+            ⚡ INSTITUTIONAL QUANT MATRIX: MAX PAIN, IV & DELTA ({target_symbol})
+        </div>
     </div>
+
     <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+        <!-- Box 1: Max Pain -->
         <div style="flex: 1; min-width: 240px; background: #0b0f19; border: 1px solid #4a5568; padding: 18px; border-radius: 10px; text-align: center;">
-            <div style="color: #a0aec0; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 8px;">MAX PAIN STRIKES (CE / PE)</div>
+            <div style="color: #a0aec0; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 8px;">🎯 MAX PAIN STRIKES (CE / PE)</div>
             <div style="color: #ffffff; font-size: 22px; font-weight: 800; letter-spacing: 0.5px;">{display_ce_pain} / {display_pe_pain}</div>
         </div>
+        
+        <!-- Box 2: Bias Message (Dynamic Borders) -->
         <div style="flex: 1; min-width: 240px; background: #0b0f19; border: 1px solid {border_color}; padding: 18px; border-radius: 10px; text-align: center; box-shadow: 0 0 10px {border_color}25;">
-            <div style="color: {text_color}; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 8px;">SETTLEMENT BIAS MESSAGE</div>
-            <div style="color: {text_color}; font-size: 16px; font-weight: 800; letter-spacing: 0.5px;">{market_bias}</div>
+            <div style="color: {text_color}; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 8px;">📈 SETTLEMENT BIAS MESSAGE</div>
+            <div style="color: {border_color}; font-size: 16px; font-weight: 800; letter-spacing: 0.5px;">{market_bias}</div>
         </div>
-        <div style="flex: 1; min-width: 240px; background: #0b0f19; border: 1px solid #c084fc; padding: 18px; border-radius: 10px; text-align: center; box-shadow: 0 0 10px rgba(192, 132, 252, 0.2);">
-            <div style="color: #d8b4fe; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 8px;">IV ({avg_iv:.1f}%) | DELTA ({net_delta:.2f})</div>
+        
+        <!-- Box 3: IV & Delta (Purple) -->
+        <div style="flex: 1; min-width: 240px; background: #0b0f19; border: 1px solid #c084fc; padding: 18px; border-radius: 10px; text-align: center; box-shadow: 0 0 10px rgba(192, 132, 252, 0.15);">
+            <div style="color: #d8b4fe; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 8px;">🔮 IV ({avg_iv:.1f}%) | DELTA ({net_delta:.2f})</div>
             <div style="color: #c084fc; font-size: 16px; font-weight: 800; letter-spacing: 0.5px;">{vol_status}</div>
         </div>
     </div>

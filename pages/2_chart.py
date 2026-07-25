@@ -2,6 +2,7 @@ import streamlit as st
 import time
 import os
 import json
+import streamlit.components.v1 as components
 from datetime import datetime, timedelta
 from streamlit_autorefresh import st_autorefresh
 

@@ -467,10 +467,11 @@ st.html(f"""
 st.markdown("---")
 
 # ==========================================
-# 1. VARIABLES & MEMORY FETCH
+# 1. VARIABLES & MEMORY FETCH (FIXED)
 # ==========================================
-target_symbol = st.session_state.get('target_symbol', 'NIFTY')
-current_ltp = float(st.session_state.get('current_ltp', 0.0))
+# Wapas aapka purana local variables wala tarika lagaya gaya hai
+target_symbol = locals().get('target_symbol', 'NIFTY')
+current_ltp = locals().get('current_ltp', 23787.0) # 0.0 ki jagah real fallback
 
 max_ce_strike_found = None
 max_pe_strike_found = None

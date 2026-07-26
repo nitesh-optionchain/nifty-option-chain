@@ -599,4 +599,4 @@ html_code = f"""
 """
 
 st.markdown(html_code, unsafe_allow_html=True)
-st.write(st.session_state.ticks)
+st.write(st.session_state)

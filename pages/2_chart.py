@@ -473,11 +473,6 @@ target_symbol = st.session_state.get('target_symbol', 'NIFTY')
 current_ltp = float(st.session_state.get('current_ltp', 0.0))
 exchange_type = "BSE" if target_symbol == "SENSEX" else "NSE"
 
-# WEEKEND FIX: Agar market band hone ki wajah se ltp 0.0 hai, to Friday ka tentative fallback use karein
-if current_ltp <= 0.0:
-    fallback_prices = {"NIFTY": 24000.0, "BANKNIFTY": 52200.0, "SENSEX": 79300.0}
-    current_ltp = fallback_prices.get(target_symbol, 24000.0)
-
 max_ce_strike_found = None
 max_pe_strike_found = None
 highest_ce_oi_val = -1
@@ -533,19 +528,15 @@ if market_data:
         pass  # API fails silently during weekends
 
 # ==========================================
-# 3. FALLBACKS & CALCULATIONS
+# 3. CALCULATIONS & HONEST FALLBACK
 # ==========================================
-if not max_ce_strike_found:
-    step = 50 if target_symbol == "NIFTY" else 100
-    if current_ltp > 0:
-        max_ce_strike_found = float((current_ltp // step) * step)
-        max_pe_strike_found = max_ce_strike_found - (step * 2)
-    else:
-        max_ce_strike_found = 0
-        max_pe_strike_found = 0
-
-display_ce_pain = int(max_ce_strike_found)
-display_pe_pain = int(max_pe_strike_found) if max_pe_strike_found else display_ce_pain - 100
+# Agar data milega to asli value dikhayega, warna strictly N/A (No Fake Data)
+if max_ce_strike_found:
+    display_ce_pain = str(int(max_ce_strike_found))
+    display_pe_pain = str(int(max_pe_strike_found)) if max_pe_strike_found else str(int(max_ce_strike_found - 100))
+else:
+    display_ce_pain = "N/A"
+    display_pe_pain = "N/A"
 
 avg_iv = sum(iv_list) / len(iv_list) if len(iv_list) > 0 else 0.0
 net_delta = (delta_weighted_sum / total_weight_count) if total_weight_count > 0 else 0.0

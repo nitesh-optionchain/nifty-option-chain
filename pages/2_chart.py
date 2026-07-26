@@ -467,7 +467,7 @@ st.html(f"""
 st.markdown("---")
 
 # ==========================================
-# 1. VARIABLES FETCH (Safely from memory)
+# 1. VARIABLES FETCH
 # ==========================================
 target_symbol = st.session_state.get('target_symbol', 'NIFTY')
 current_ltp = float(st.session_state.get('current_ltp', 0.0))
@@ -483,54 +483,63 @@ total_pe_oi_sum = 0
 iv_list = []
 delta_weighted_sum = 0
 total_weight_count = 0
+api_error_message = None  # Error track karne ke liye
 
 # ==========================================
-# 2. THE MASTER STROKE: LIVE API FETCH
+# 2. BULLETPROOF API FETCH
 # ==========================================
 market_data = st.session_state.get("direct_market_engine")
 
 if market_data:
     try:
         result = market_data.option_chain(instrument=target_symbol, exchange=exchange_type)
+        
+        # Format Handle karna (Object ya Dictionary dono ke liye)
+        chain = None
         if hasattr(result, 'chain'):
             chain = result.chain
+        elif isinstance(result, dict) and 'chain' in result:
+            chain = result['chain']
             
-            if hasattr(chain, 'ce'):
-                for opt in chain.ce:
-                    c_oi = float(getattr(opt, 'open_interest', 0))
-                    c_iv = float(getattr(opt, 'iv', 0.0))
-                    c_delta = float(getattr(opt, 'delta', 0.0))
-                    strike = float(getattr(opt, 'strike_price', 0))
+        if chain:
+            # --- CE DATA ---
+            ce_data = getattr(chain, 'ce', []) if not isinstance(chain, dict) else chain.get('ce', [])
+            for opt in ce_data:
+                c_oi = float(getattr(opt, 'open_interest', opt.get('open_interest', 0)) if type(opt) != dict else opt.get('open_interest', 0))
+                c_iv = float(getattr(opt, 'iv', opt.get('iv', 0.0)) if type(opt) != dict else opt.get('iv', 0.0))
+                c_delta = float(getattr(opt, 'delta', opt.get('delta', 0.0)) if type(opt) != dict else opt.get('delta', 0.0))
+                strike = float(getattr(opt, 'strike_price', opt.get('strike_price', 0)) if type(opt) != dict else opt.get('strike_price', 0))
+                
+                total_ce_oi_sum += c_oi
+                if c_iv > 0: iv_list.append(c_iv)
+                if c_delta != 0.0:
+                    delta_weighted_sum += (c_delta * c_oi)
+                    total_weight_count += c_oi
                     
-                    total_ce_oi_sum += c_oi
-                    if c_iv > 0: iv_list.append(c_iv)
-                    if c_delta != 0.0:
-                        delta_weighted_sum += (c_delta * c_oi)
-                        total_weight_count += c_oi
-                        
-                    if c_oi > highest_ce_oi_val:
-                        highest_ce_oi_val = c_oi
-                        max_ce_strike_found = strike
+                if c_oi > highest_ce_oi_val:
+                    highest_ce_oi_val = c_oi
+                    max_ce_strike_found = strike
 
-            if hasattr(chain, 'pe'):
-                for opt in chain.pe:
-                    p_oi = float(getattr(opt, 'open_interest', 0))
-                    p_iv = float(getattr(opt, 'iv', 0.0))
-                    strike = float(getattr(opt, 'strike_price', 0))
-                    
-                    total_pe_oi_sum += p_oi
-                    if p_iv > 0: iv_list.append(p_iv)
-                    
-                    if p_oi > highest_pe_oi_val:
-                        highest_pe_oi_val = p_oi
-                        max_pe_strike_found = strike
+            # --- PE DATA ---
+            pe_data = getattr(chain, 'pe', []) if not isinstance(chain, dict) else chain.get('pe', [])
+            for opt in pe_data:
+                p_oi = float(getattr(opt, 'open_interest', opt.get('open_interest', 0)) if type(opt) != dict else opt.get('open_interest', 0))
+                p_iv = float(getattr(opt, 'iv', opt.get('iv', 0.0)) if type(opt) != dict else opt.get('iv', 0.0))
+                strike = float(getattr(opt, 'strike_price', opt.get('strike_price', 0)) if type(opt) != dict else opt.get('strike_price', 0))
+                
+                total_pe_oi_sum += p_oi
+                if p_iv > 0: iv_list.append(p_iv)
+                
+                if p_oi > highest_pe_oi_val:
+                    highest_pe_oi_val = p_oi
+                    max_pe_strike_found = strike
+
     except Exception as e:
-        pass  # API fails silently during weekends
+        api_error_message = str(e) # Agar error aayega to ab hume pata chal jayega!
 
 # ==========================================
 # 3. CALCULATIONS & HONEST FALLBACK
 # ==========================================
-# Agar data milega to asli value dikhayega, warna strictly N/A (No Fake Data)
 if max_ce_strike_found:
     display_ce_pain = str(int(max_ce_strike_found))
     display_pe_pain = str(int(max_pe_strike_found)) if max_pe_strike_found else str(int(max_ce_strike_found - 100))
@@ -542,7 +551,7 @@ avg_iv = sum(iv_list) / len(iv_list) if len(iv_list) > 0 else 0.0
 net_delta = (delta_weighted_sum / total_weight_count) if total_weight_count > 0 else 0.0
 
 # ==========================================
-# 4. DYNAMIC SENTIMENT COLORS (Weekend Aware)
+# 4. DYNAMIC SENTIMENT COLORS 
 # ==========================================
 if total_ce_oi_sum > 0 and total_pe_oi_sum > 0:
     if total_ce_oi_sum > total_pe_oi_sum:
@@ -552,7 +561,6 @@ if total_ce_oi_sum > 0 and total_pe_oi_sum > 0:
     else:
         market_bias, border_color, text_color = "SIDEWAYS ACTIVE", "#fbbf24", "#fcd34d"
 else:
-    # Agar data nahi hai (Market Close)
     market_bias, border_color, text_color = "MARKET CLOSED", "#a0aec0", "#e2e8f0"
 
 if avg_iv == 0.0:
@@ -592,3 +600,7 @@ html_code = f"""
 """
 
 st.markdown(html_code, unsafe_allow_html=True)
+
+# Agar market open hone par bhi N/A aata hai, to yeh error dikhayega jisse hume solution turant mil jayega!
+if api_error_message and current_ltp > 0.0:
+    st.error(f"API Error Tracked: {api_error_message}")

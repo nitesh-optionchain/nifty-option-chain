@@ -473,6 +473,11 @@ target_symbol = st.session_state.get('target_symbol', 'NIFTY')
 current_ltp = float(st.session_state.get('current_ltp', 0.0))
 exchange_type = "BSE" if target_symbol == "SENSEX" else "NSE"
 
+# WEEKEND FIX: Agar market band hone ki wajah se ltp 0.0 hai, to Friday ka tentative fallback use karein
+if current_ltp <= 0.0:
+    fallback_prices = {"NIFTY": 24000.0, "BANKNIFTY": 52200.0, "SENSEX": 79300.0}
+    current_ltp = fallback_prices.get(target_symbol, 24000.0)
+
 max_ce_strike_found = None
 max_pe_strike_found = None
 highest_ce_oi_val = -1
@@ -485,20 +490,16 @@ delta_weighted_sum = 0
 total_weight_count = 0
 
 # ==========================================
-# 2. THE MASTER STROKE: LIVE API FETCH ON PAGE 2
+# 2. THE MASTER STROKE: LIVE API FETCH
 # ==========================================
-# Hum seedha Nubra API Engine ko yahan bulayenge!
 market_data = st.session_state.get("direct_market_engine")
 
 if market_data:
     try:
-        # Page 2 par chupchaap live option chain fetch kar rahe hain
         result = market_data.option_chain(instrument=target_symbol, exchange=exchange_type)
-        
         if hasattr(result, 'chain'):
             chain = result.chain
             
-            # CALL OPTIONS (CE) DATA PARSE
             if hasattr(chain, 'ce'):
                 for opt in chain.ce:
                     c_oi = float(getattr(opt, 'open_interest', 0))
@@ -516,7 +517,6 @@ if market_data:
                         highest_ce_oi_val = c_oi
                         max_ce_strike_found = strike
 
-            # PUT OPTIONS (PE) DATA PARSE
             if hasattr(chain, 'pe'):
                 for opt in chain.pe:
                     p_oi = float(getattr(opt, 'open_interest', 0))
@@ -530,7 +530,7 @@ if market_data:
                         highest_pe_oi_val = p_oi
                         max_pe_strike_found = strike
     except Exception as e:
-        pass  # Agar API mein error aaye to app crash na ho
+        pass  # API fails silently during weekends
 
 # ==========================================
 # 3. FALLBACKS & CALCULATIONS
@@ -547,12 +547,11 @@ if not max_ce_strike_found:
 display_ce_pain = int(max_ce_strike_found)
 display_pe_pain = int(max_pe_strike_found) if max_pe_strike_found else display_ce_pain - 100
 
-# TRUE AVERAGE LOGIC
 avg_iv = sum(iv_list) / len(iv_list) if len(iv_list) > 0 else 0.0
 net_delta = (delta_weighted_sum / total_weight_count) if total_weight_count > 0 else 0.0
 
 # ==========================================
-# 4. DYNAMIC SENTIMENT COLORS
+# 4. DYNAMIC SENTIMENT COLORS (Weekend Aware)
 # ==========================================
 if total_ce_oi_sum > 0 and total_pe_oi_sum > 0:
     if total_ce_oi_sum > total_pe_oi_sum:
@@ -562,13 +561,11 @@ if total_ce_oi_sum > 0 and total_pe_oi_sum > 0:
     else:
         market_bias, border_color, text_color = "SIDEWAYS ACTIVE", "#fbbf24", "#fcd34d"
 else:
-    if current_ltp >= display_ce_pain and display_ce_pain != 0:
-        market_bias, border_color, text_color = "BULLISH ACTIVE", "#4ade80", "#86efac"
-    else:
-        market_bias, border_color, text_color = "WAITING API DATA...", "#a0aec0", "#e2e8f0"
+    # Agar data nahi hai (Market Close)
+    market_bias, border_color, text_color = "MARKET CLOSED", "#a0aec0", "#e2e8f0"
 
 if avg_iv == 0.0:
-    vol_status = "No Live Data"
+    vol_status = "Offline"
 elif avg_iv > 18:
     vol_status = "High"
 elif avg_iv < 12:
